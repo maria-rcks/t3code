@@ -1,8 +1,4 @@
-import {
-  type CodexReasoningEffort,
-  CODEX_REASONING_EFFORT_OPTIONS,
-  ProviderModelOptions,
-} from "@t3tools/contracts";
+import { type CodexReasoningEffort, ProviderModelOptions } from "@t3tools/contracts";
 import { normalizeModelSlug } from "@t3tools/shared/model";
 import { Schema } from "effect";
 import { useCallback } from "react";
@@ -31,14 +27,9 @@ const DEFAULT_STICKY_COMPOSER_SETTINGS_STORAGE: StickyComposerSettingsStorage = 
 function normalizeStickyComposerSettings(
   value: Partial<StickyComposerSettings> | StickyComposerSettings,
 ): StickyComposerSettings {
-  const effort = value.effort;
   return {
     model: normalizeModelSlug(value.model, "codex") ?? null,
-    effort:
-      typeof effort === "string" &&
-      (CODEX_REASONING_EFFORT_OPTIONS as readonly string[]).includes(effort)
-        ? (effort as CodexReasoningEffort)
-        : null,
+    effort: value.effort ?? null,
     codexFastMode: value.codexFastMode === true,
   };
 }
