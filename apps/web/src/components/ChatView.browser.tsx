@@ -1323,6 +1323,64 @@ describe("ChatView timeline estimator parity (full app)", () => {
     }
   });
 
+  it("prefers draft codex traits over sticky settings", async () => {
+    localStorage.setItem(
+      "t3code:sticky-composer-settings:v1",
+      JSON.stringify({
+        model: null,
+        modelOptions: {
+          codex: {
+            reasoningEffort: "medium",
+            fastMode: true,
+          },
+        },
+      }),
+    );
+
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-draft-codex-traits-precedence-test" as MessageId,
+        targetText: "draft codex traits precedence test",
+      }),
+    });
+
+    try {
+      const newThreadButton = page.getByTestId("new-thread-button");
+      await expect.element(newThreadButton).toBeInTheDocument();
+
+      await newThreadButton.click();
+
+      const threadPath = await waitForURL(
+        mounted.router,
+        (path) => UUID_ROUTE_RE.test(path),
+        "Route should have changed to a sticky draft thread UUID.",
+      );
+      const threadId = threadPath.slice(1) as ThreadId;
+
+      expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toMatchObject({
+        effort: "medium",
+        codexFastMode: true,
+      });
+
+      useComposerDraftStore.getState().setEffort(threadId, "low");
+
+      await newThreadButton.click();
+
+      await waitForURL(
+        mounted.router,
+        (path) => path === threadPath,
+        "New-thread should reuse the existing project draft thread.",
+      );
+      expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toMatchObject({
+        effort: "low",
+        codexFastMode: true,
+      });
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
   it("creates a new thread from the global chat.new shortcut", async () => {
     const mounted = await mountChatView({
       viewport: DEFAULT_VIEWPORT,
