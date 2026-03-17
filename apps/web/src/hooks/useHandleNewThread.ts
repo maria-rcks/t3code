@@ -6,16 +6,14 @@ import {
   type DraftThreadState,
   useComposerDraftStore,
 } from "../composerDraftStore";
-import { useStickyComposerSettings } from "../stickyComposerSettings";
 import { newThreadId } from "../lib/utils";
 import { useStore } from "../store";
 
 export function useHandleNewThread() {
   const projects = useStore((store) => store.projects);
   const threads = useStore((store) => store.threads);
-  const {
-    settings: { model: stickyModel, effort: stickyEffort, codexFastMode: stickyCodexFastMode },
-  } = useStickyComposerSettings();
+  const stickyModel = useComposerDraftStore((store) => store.stickyModel);
+  const stickyModelOptions = useComposerDraftStore((store) => store.stickyModelOptions);
   const navigate = useNavigate();
   const routeThreadId = useParams({
     strict: false,
@@ -106,10 +104,10 @@ export function useHandleNewThread() {
         if (stickyModel) {
           setModel(threadId, stickyModel);
         }
-        if (stickyEffort) {
-          setEffort(threadId, stickyEffort);
+        if (stickyModelOptions.codex?.reasoningEffort) {
+          setEffort(threadId, stickyModelOptions.codex.reasoningEffort);
         }
-        if (stickyCodexFastMode) {
+        if (stickyModelOptions.codex?.fastMode) {
           setCodexFastMode(threadId, true);
         }
 
@@ -119,7 +117,7 @@ export function useHandleNewThread() {
         });
       })();
     },
-    [navigate, routeThreadId, stickyCodexFastMode, stickyEffort, stickyModel],
+    [navigate, routeThreadId, stickyModel, stickyModelOptions],
   );
 
   return {

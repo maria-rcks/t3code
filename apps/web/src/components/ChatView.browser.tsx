@@ -752,6 +752,8 @@ describe("ChatView timeline estimator parity (full app)", () => {
       draftsByThreadId: {},
       draftThreadsByThreadId: {},
       projectDraftThreadIdByProjectId: {},
+      stickyModel: null,
+      stickyModelOptions: {},
     });
     useStore.setState({
       projects: [],
@@ -1279,19 +1281,16 @@ describe("ChatView timeline estimator parity (full app)", () => {
     }
   });
 
-  it("snapshots sticky codex traits into a new draft thread", async () => {
-    localStorage.setItem(
-      "t3code:sticky-composer-settings:v1",
-      JSON.stringify({
-        model: null,
-        modelOptions: {
-          codex: {
-            reasoningEffort: "medium",
-            fastMode: true,
-          },
+  it("snapshots sticky codex settings into a new draft thread", async () => {
+    useComposerDraftStore.setState({
+      stickyModel: "gpt-5.3-codex",
+      stickyModelOptions: {
+        codex: {
+          reasoningEffort: "medium",
+          fastMode: true,
         },
-      }),
-    );
+      },
+    });
 
     const mounted = await mountChatView({
       viewport: DEFAULT_VIEWPORT,
@@ -1315,6 +1314,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       const newThreadId = newThreadPath.slice(1) as ThreadId;
 
       expect(useComposerDraftStore.getState().draftsByThreadId[newThreadId]).toMatchObject({
+        model: "gpt-5.3-codex",
         effort: "medium",
         codexFastMode: true,
       });
@@ -1323,19 +1323,44 @@ describe("ChatView timeline estimator parity (full app)", () => {
     }
   });
 
-  it("prefers draft codex traits over sticky settings", async () => {
-    localStorage.setItem(
-      "t3code:sticky-composer-settings:v1",
-      JSON.stringify({
-        model: null,
-        modelOptions: {
-          codex: {
-            reasoningEffort: "medium",
-            fastMode: true,
-          },
-        },
+  it("falls back to defaults when no sticky composer settings exist", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-default-codex-traits-test" as MessageId,
+        targetText: "default codex traits test",
       }),
-    );
+    });
+
+    try {
+      const newThreadButton = page.getByTestId("new-thread-button");
+      await expect.element(newThreadButton).toBeInTheDocument();
+
+      await newThreadButton.click();
+
+      const newThreadPath = await waitForURL(
+        mounted.router,
+        (path) => UUID_ROUTE_RE.test(path),
+        "Route should have changed to a new draft thread UUID.",
+      );
+      const newThreadId = newThreadPath.slice(1) as ThreadId;
+
+      expect(useComposerDraftStore.getState().draftsByThreadId[newThreadId]).toBeUndefined();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("prefers draft state over sticky composer settings and defaults", async () => {
+    useComposerDraftStore.setState({
+      stickyModel: "gpt-5.3-codex",
+      stickyModelOptions: {
+        codex: {
+          reasoningEffort: "medium",
+          fastMode: true,
+        },
+      },
+    });
 
     const mounted = await mountChatView({
       viewport: DEFAULT_VIEWPORT,
@@ -1359,10 +1384,12 @@ describe("ChatView timeline estimator parity (full app)", () => {
       const threadId = threadPath.slice(1) as ThreadId;
 
       expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toMatchObject({
+        model: "gpt-5.3-codex",
         effort: "medium",
         codexFastMode: true,
       });
 
+      useComposerDraftStore.getState().setModel(threadId, "gpt-5.4");
       useComposerDraftStore.getState().setEffort(threadId, "low");
 
       await newThreadButton.click();
@@ -1373,6 +1400,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
         "New-thread should reuse the existing project draft thread.",
       );
       expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toMatchObject({
+        model: "gpt-5.4",
         effort: "low",
         codexFastMode: true,
       });

@@ -62,17 +62,23 @@ function makeTerminalContext(input: {
   };
 }
 
+function resetComposerDraftStore() {
+  useComposerDraftStore.setState({
+    draftsByThreadId: {},
+    draftThreadsByThreadId: {},
+    projectDraftThreadIdByProjectId: {},
+    stickyModel: null,
+    stickyModelOptions: {},
+  });
+}
+
 describe("composerDraftStore addImages", () => {
   const threadId = ThreadId.makeUnsafe("thread-dedupe");
   let originalRevokeObjectUrl: typeof URL.revokeObjectURL;
   let revokeSpy: ReturnType<typeof vi.fn<(url: string) => void>>;
 
   beforeEach(() => {
-    useComposerDraftStore.setState({
-      draftsByThreadId: {},
-      draftThreadsByThreadId: {},
-      projectDraftThreadIdByProjectId: {},
-    });
+    resetComposerDraftStore();
     originalRevokeObjectUrl = URL.revokeObjectURL;
     revokeSpy = vi.fn();
     URL.revokeObjectURL = revokeSpy;
@@ -157,11 +163,7 @@ describe("composerDraftStore clearComposerContent", () => {
   let revokeSpy: ReturnType<typeof vi.fn<(url: string) => void>>;
 
   beforeEach(() => {
-    useComposerDraftStore.setState({
-      draftsByThreadId: {},
-      draftThreadsByThreadId: {},
-      projectDraftThreadIdByProjectId: {},
-    });
+    resetComposerDraftStore();
     originalRevokeObjectUrl = URL.revokeObjectURL;
     revokeSpy = vi.fn();
     URL.revokeObjectURL = revokeSpy;
@@ -423,11 +425,7 @@ describe("composerDraftStore project draft thread mapping", () => {
   const otherThreadId = ThreadId.makeUnsafe("thread-b");
 
   beforeEach(() => {
-    useComposerDraftStore.setState({
-      draftsByThreadId: {},
-      draftThreadsByThreadId: {},
-      projectDraftThreadIdByProjectId: {},
-    });
+    resetComposerDraftStore();
   });
 
   it("stores and reads project draft thread ids via actions", () => {
@@ -599,11 +597,7 @@ describe("composerDraftStore modelOptions", () => {
   const threadId = ThreadId.makeUnsafe("thread-model-options");
 
   beforeEach(() => {
-    useComposerDraftStore.setState({
-      draftsByThreadId: {},
-      draftThreadsByThreadId: {},
-      projectDraftThreadIdByProjectId: {},
-    });
+    resetComposerDraftStore();
   });
 
   it("stores provider-scoped model options in the draft", () => {
@@ -648,11 +642,7 @@ describe("composerDraftStore setModel", () => {
   const threadId = ThreadId.makeUnsafe("thread-model");
 
   beforeEach(() => {
-    useComposerDraftStore.setState({
-      draftsByThreadId: {},
-      draftThreadsByThreadId: {},
-      projectDraftThreadIdByProjectId: {},
-    });
+    resetComposerDraftStore();
   });
 
   it("keeps explicit DEFAULT_MODEL overrides instead of coercing to null", () => {
@@ -666,15 +656,51 @@ describe("composerDraftStore setModel", () => {
   });
 });
 
+describe("composerDraftStore sticky composer settings", () => {
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
+  it("stores sticky model and codex model options", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setStickyModel("gpt-5.3-codex");
+    store.setStickyModelOptions({
+      codex: {
+        reasoningEffort: "medium",
+        fastMode: true,
+      },
+    });
+
+    expect(useComposerDraftStore.getState()).toMatchObject({
+      stickyModel: "gpt-5.3-codex",
+      stickyModelOptions: {
+        codex: {
+          reasoningEffort: "medium",
+          fastMode: true,
+        },
+      },
+    });
+  });
+
+  it("normalizes empty sticky model options", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setStickyModelOptions({
+      codex: {
+        fastMode: false,
+      },
+    });
+
+    expect(useComposerDraftStore.getState().stickyModelOptions).toEqual({});
+  });
+});
+
 describe("composerDraftStore setProvider", () => {
   const threadId = ThreadId.makeUnsafe("thread-provider");
 
   beforeEach(() => {
-    useComposerDraftStore.setState({
-      draftsByThreadId: {},
-      draftThreadsByThreadId: {},
-      projectDraftThreadIdByProjectId: {},
-    });
+    resetComposerDraftStore();
   });
 
   it("persists provider-only selection even when prompt/model are empty", () => {
@@ -699,11 +725,7 @@ describe("composerDraftStore runtime and interaction settings", () => {
   const threadId = ThreadId.makeUnsafe("thread-settings");
 
   beforeEach(() => {
-    useComposerDraftStore.setState({
-      draftsByThreadId: {},
-      draftThreadsByThreadId: {},
-      projectDraftThreadIdByProjectId: {},
-    });
+    resetComposerDraftStore();
   });
 
   it("stores runtime mode overrides in the composer draft", () => {
