@@ -1315,9 +1315,61 @@ describe("ChatView timeline estimator parity (full app)", () => {
 
       expect(useComposerDraftStore.getState().draftsByThreadId[newThreadId]).toMatchObject({
         model: "gpt-5.3-codex",
-        effort: "medium",
-        codexFastMode: true,
+        provider: "codex",
+        modelOptions: {
+          codex: {
+            fastMode: true,
+          },
+        },
       });
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("hydrates the provider alongside a sticky claude model", async () => {
+    useComposerDraftStore.setState({
+      stickyModel: "claude-opus-4-6",
+      stickyModelOptions: {
+        claudeAgent: {
+          effort: "max",
+          fastMode: true,
+        },
+      },
+    });
+
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-sticky-claude-model-test" as MessageId,
+        targetText: "sticky claude model test",
+      }),
+    });
+
+    try {
+      const newThreadButton = page.getByTestId("new-thread-button");
+      await expect.element(newThreadButton).toBeInTheDocument();
+
+      await newThreadButton.click();
+
+      const newThreadPath = await waitForURL(
+        mounted.router,
+        (path) => UUID_ROUTE_RE.test(path),
+        "Route should have changed to a new sticky claude draft thread UUID.",
+      );
+      const newThreadId = newThreadPath.slice(1) as ThreadId;
+
+      expect(useComposerDraftStore.getState().draftsByThreadId[newThreadId]).toMatchObject({
+        provider: "claudeAgent",
+        model: "claude-opus-4-6",
+        modelOptions: {
+          claudeAgent: {
+            effort: "max",
+            fastMode: true,
+          },
+        },
+      });
+      await expect.element(page.getByText("Claude Opus 4.6")).toBeInTheDocument();
     } finally {
       await mounted.cleanup();
     }

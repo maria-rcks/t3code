@@ -66,13 +66,35 @@ describe("getAppModelOptions", () => {
 
 describe("resolveAppModelSelection", () => {
   it("preserves saved custom model slugs instead of falling back to the default", () => {
-    expect(resolveAppModelSelection("codex", ["galapagos-alpha"], "galapagos-alpha")).toBe(
-      "galapagos-alpha",
-    );
+    expect(
+      resolveAppModelSelection(
+        "codex",
+        { codex: ["galapagos-alpha"], claudeAgent: [] },
+        "galapagos-alpha",
+      ),
+    ).toBe("galapagos-alpha");
   });
 
   it("falls back to the provider default when no model is selected", () => {
-    expect(resolveAppModelSelection("codex", [], "")).toBe("gpt-5.4");
+    expect(resolveAppModelSelection("codex", { codex: [], claudeAgent: [] }, "")).toBe("gpt-5.4");
+  });
+
+  it("resolves display names through the shared resolver", () => {
+    expect(resolveAppModelSelection("codex", { codex: [], claudeAgent: [] }, "GPT-5.3 Codex")).toBe(
+      "gpt-5.3-codex",
+    );
+  });
+
+  it("resolves aliases through the shared resolver", () => {
+    expect(resolveAppModelSelection("claudeAgent", { codex: [], claudeAgent: [] }, "sonnet")).toBe(
+      "claude-sonnet-4-6",
+    );
+  });
+
+  it("resolves transient selected custom models included in app model options", () => {
+    expect(
+      resolveAppModelSelection("codex", { codex: [], claudeAgent: [] }, "custom/selected-model"),
+    ).toBe("custom/selected-model");
   });
 });
 

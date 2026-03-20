@@ -21,6 +21,7 @@ import {
   normalizeCodexModelOptions,
   normalizeModelSlug,
   resolveReasoningEffortForProvider,
+  resolveSelectableModel,
   resolveModelSlug,
   resolveModelSlugForProvider,
   supportsClaudeAdaptiveReasoning,
@@ -91,6 +92,70 @@ describe("resolveModelSlug", () => {
     expect(getDefaultModel()).toBe(DEFAULT_MODEL);
     expect(getModelOptions()).toEqual(MODEL_OPTIONS);
     expect(getModelOptions("claudeAgent")).toEqual(MODEL_OPTIONS_BY_PROVIDER.claudeAgent);
+  });
+});
+
+describe("resolveSelectableModel", () => {
+  it("resolves exact slug matches", () => {
+    expect(
+      resolveSelectableModel("codex", "gpt-5.3-codex", [
+        { slug: "gpt-5.4", name: "GPT-5.4" },
+        { slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" },
+      ]),
+    ).toBe("gpt-5.3-codex");
+  });
+
+  it("resolves case-insensitive display-name matches", () => {
+    expect(
+      resolveSelectableModel("codex", "gpt-5.3 codex", [
+        { slug: "gpt-5.4", name: "GPT-5.4" },
+        { slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" },
+      ]),
+    ).toBe("gpt-5.3-codex");
+  });
+
+  it("resolves provider-specific aliases after normalization", () => {
+    expect(
+      resolveSelectableModel("claudeAgent", "sonnet", [
+        { slug: "claude-opus-4-6", name: "Claude Opus 4.6" },
+        { slug: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
+      ]),
+    ).toBe("claude-sonnet-4-6");
+  });
+
+  it("returns null for empty input", () => {
+    expect(resolveSelectableModel("codex", "", [{ slug: "gpt-5.4", name: "GPT-5.4" }])).toBeNull();
+    expect(
+      resolveSelectableModel("codex", "   ", [{ slug: "gpt-5.4", name: "GPT-5.4" }]),
+    ).toBeNull();
+    expect(
+      resolveSelectableModel("codex", null, [{ slug: "gpt-5.4", name: "GPT-5.4" }]),
+    ).toBeNull();
+  });
+
+  it("returns null for unknown values that are not present in options", () => {
+    expect(
+      resolveSelectableModel("codex", "gpt-4.1", [{ slug: "gpt-5.4", name: "GPT-5.4" }]),
+    ).toBeNull();
+  });
+
+  it("does not accept normalized custom-looking slugs unless they exist in options", () => {
+    expect(
+      resolveSelectableModel("codex", "custom/internal-model", [
+        { slug: "gpt-5.4", name: "GPT-5.4" },
+      ]),
+    ).toBeNull();
+  });
+
+  it("respects provider boundaries", () => {
+    expect(
+      resolveSelectableModel("codex", "sonnet", [{ slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" }]),
+    ).toBeNull();
+    expect(
+      resolveSelectableModel("claudeAgent", "5.3", [
+        { slug: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
+      ]),
+    ).toBeNull();
   });
 });
 

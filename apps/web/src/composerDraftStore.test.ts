@@ -636,6 +636,158 @@ describe("composerDraftStore modelOptions", () => {
 
     expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toBeUndefined();
   });
+
+  it("replaces only the targeted provider model options", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setModelOptions(threadId, {
+      codex: {
+        reasoningEffort: "xhigh",
+      },
+      claudeAgent: {
+        effort: "max",
+        fastMode: true,
+      },
+    });
+
+    store.setProviderModelOptions(
+      threadId,
+      "claudeAgent",
+      {
+        thinking: false,
+      },
+      { persistSticky: true },
+    );
+
+    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]?.modelOptions).toEqual({
+      codex: {
+        reasoningEffort: "xhigh",
+      },
+      claudeAgent: {
+        thinking: false,
+      },
+    });
+    expect(useComposerDraftStore.getState().stickyModelOptions).toEqual({
+      codex: {
+        reasoningEffort: "xhigh",
+      },
+      claudeAgent: {
+        thinking: false,
+      },
+    });
+  });
+
+  it("removes only the targeted provider entry when next options normalize empty", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setModelOptions(threadId, {
+      codex: {
+        reasoningEffort: "xhigh",
+      },
+      claudeAgent: {
+        effort: "max",
+      },
+    });
+
+    store.setProviderModelOptions(threadId, "claudeAgent", {
+      thinking: true,
+    });
+
+    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]?.modelOptions).toEqual({
+      codex: {
+        reasoningEffort: "xhigh",
+      },
+    });
+    expect(useComposerDraftStore.getState().stickyModelOptions).toEqual({});
+  });
+
+  it("removes model options entirely when the last provider entry normalizes empty", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setModelOptions(threadId, {
+      codex: {
+        fastMode: true,
+      },
+    });
+
+    store.setProviderModelOptions(threadId, "codex", {
+      reasoningEffort: "high",
+      fastMode: false,
+    });
+
+    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toBeUndefined();
+  });
+
+  it("updates only the draft when sticky persistence is omitted", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setStickyModelOptions({
+      codex: {
+        fastMode: true,
+      },
+    });
+    store.setModelOptions(threadId, {
+      codex: {
+        fastMode: true,
+      },
+      claudeAgent: {
+        effort: "max",
+      },
+    });
+
+    store.setProviderModelOptions(threadId, "claudeAgent", {
+      thinking: false,
+    });
+
+    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]?.modelOptions).toEqual({
+      codex: {
+        fastMode: true,
+      },
+      claudeAgent: {
+        thinking: false,
+      },
+    });
+    expect(useComposerDraftStore.getState().stickyModelOptions).toEqual({
+      codex: {
+        fastMode: true,
+      },
+    });
+  });
+
+  it("updates only the draft when sticky persistence is disabled", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setStickyModelOptions({
+      claudeAgent: {
+        effort: "max",
+      },
+    });
+    store.setModelOptions(threadId, {
+      claudeAgent: {
+        effort: "max",
+      },
+    });
+
+    store.setProviderModelOptions(
+      threadId,
+      "claudeAgent",
+      {
+        thinking: false,
+      },
+      { persistSticky: false },
+    );
+
+    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]?.modelOptions).toEqual({
+      claudeAgent: {
+        thinking: false,
+      },
+    });
+    expect(useComposerDraftStore.getState().stickyModelOptions).toEqual({
+      claudeAgent: {
+        effort: "max",
+      },
+    });
+  });
 });
 
 describe("composerDraftStore setModel", () => {

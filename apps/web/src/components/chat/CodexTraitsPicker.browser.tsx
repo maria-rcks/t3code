@@ -116,6 +116,25 @@ describe("CodexTraitsPicker", () => {
     }
   });
 
+  it("persists sticky codex model options when traits change", async () => {
+    const mounted = await mountPicker({
+      fastModeEnabled: false,
+    });
+
+    try {
+      await page.getByRole("button").click();
+      await page.getByRole("menuitemradio", { name: "on" }).click();
+
+      expect(useComposerDraftStore.getState().stickyModelOptions).toMatchObject({
+        codex: {
+          fastMode: true,
+        },
+      });
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
   it("hydrates legacy codex persisted state into modelOptions through the picker", async () => {
     const threadId = ThreadId.makeUnsafe("thread-codex-legacy");
     localStorage.setItem(

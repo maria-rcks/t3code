@@ -91,4 +91,24 @@ describe("ProviderModelPicker", () => {
       await mounted.cleanup();
     }
   });
+
+  it("dispatches the canonical slug when a model is selected", async () => {
+    const mounted = await mountPicker({
+      provider: "claudeAgent",
+      model: "claude-opus-4-6",
+      lockedProvider: "claudeAgent",
+    });
+
+    try {
+      await page.getByRole("button").click();
+      await page.getByRole("menuitemradio", { name: "Claude Sonnet 4.6" }).click();
+
+      expect(mounted.onProviderModelChange).toHaveBeenCalledWith(
+        "claudeAgent",
+        "claude-sonnet-4-6",
+      );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
 });

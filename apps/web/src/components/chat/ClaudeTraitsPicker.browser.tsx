@@ -173,4 +173,25 @@ describe("ClaudeTraitsPicker", () => {
       await mounted.cleanup();
     }
   });
+
+  it("persists sticky claude model options when traits change", async () => {
+    const mounted = await mountPicker({
+      model: "claude-opus-4-6",
+      effort: "medium",
+      fastModeEnabled: false,
+    });
+
+    try {
+      await page.getByRole("button").click();
+      await page.getByRole("menuitemradio", { name: "Max" }).click();
+
+      expect(useComposerDraftStore.getState().stickyModelOptions).toMatchObject({
+        claudeAgent: {
+          effort: "max",
+        },
+      });
+    } finally {
+      await mounted.cleanup();
+    }
+  });
 });

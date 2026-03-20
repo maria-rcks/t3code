@@ -1,7 +1,7 @@
 import type {
   CodexModelOptions,
   CodexReasoningEffort,
-  ProviderModelOptions,
+  ProviderKind,
   ThreadId,
 } from "@t3tools/contracts";
 import {
@@ -24,6 +24,8 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 
+const PROVIDER = "codex" as const satisfies ProviderKind;
+
 const CODEX_REASONING_LABELS: Record<CodexReasoningEffort, string> = {
   low: "Low",
   medium: "Medium",
@@ -35,10 +37,10 @@ function getSelectedCodexTraits(modelOptions: CodexModelOptions | null | undefin
   effort: CodexReasoningEffort;
   fastModeEnabled: boolean;
 } {
-  const defaultReasoningEffort = getDefaultReasoningEffort("codex");
+  const defaultReasoningEffort = getDefaultReasoningEffort(PROVIDER);
   return {
     effort:
-      resolveReasoningEffortForProvider("codex", modelOptions?.reasoningEffort) ??
+      resolveReasoningEffortForProvider(PROVIDER, modelOptions?.reasoningEffort) ??
       defaultReasoningEffort,
     fastModeEnabled: modelOptions?.fastMode === true,
   };
@@ -46,23 +48,11 @@ function getSelectedCodexTraits(modelOptions: CodexModelOptions | null | undefin
 
 function CodexTraitsMenuContentImpl(props: { threadId: ThreadId }) {
   const draft = useComposerThreadDraft(props.threadId);
-  const modelOptions = draft.modelOptions?.codex;
-  const setModelOptions = useComposerDraftStore((store) => store.setModelOptions);
-  const setStickyModelOptions = useComposerDraftStore((store) => store.setStickyModelOptions);
-  const options = getReasoningEffortOptions("codex");
-  const defaultReasoningEffort = getDefaultReasoningEffort("codex");
+  const modelOptions = draft.modelOptions?.[PROVIDER];
+  const setProviderModelOptions = useComposerDraftStore((store) => store.setProviderModelOptions);
+  const options = getReasoningEffortOptions(PROVIDER);
+  const defaultReasoningEffort = getDefaultReasoningEffort(PROVIDER);
   const { effort, fastModeEnabled } = getSelectedCodexTraits(modelOptions);
-
-  const setCodexModelOptions = (nextCodexModelOptions: CodexModelOptions | undefined) => {
-    const { codex: _discardedCodex, ...otherProviderModelOptions } = draft.modelOptions ?? {};
-    const nextProviderModelOptions: ProviderModelOptions | undefined = nextCodexModelOptions
-      ? { ...otherProviderModelOptions, codex: nextCodexModelOptions }
-      : Object.keys(otherProviderModelOptions).length > 0
-        ? otherProviderModelOptions
-        : undefined;
-    setModelOptions(props.threadId, nextProviderModelOptions);
-    setStickyModelOptions(nextProviderModelOptions);
-  };
 
   return (
     <>
@@ -74,11 +64,14 @@ function CodexTraitsMenuContentImpl(props: { threadId: ThreadId }) {
             if (!value) return;
             const nextEffort = options.find((option) => option === value);
             if (!nextEffort) return;
-            setCodexModelOptions(
+            setProviderModelOptions(
+              props.threadId,
+              PROVIDER,
               normalizeCodexModelOptions({
                 ...modelOptions,
                 reasoningEffort: nextEffort,
               }),
+              { persistSticky: true },
             );
           }}
         >
@@ -96,11 +89,14 @@ function CodexTraitsMenuContentImpl(props: { threadId: ThreadId }) {
         <MenuRadioGroup
           value={fastModeEnabled ? "on" : "off"}
           onValueChange={(value) => {
-            setCodexModelOptions(
+            setProviderModelOptions(
+              props.threadId,
+              PROVIDER,
               normalizeCodexModelOptions({
                 ...modelOptions,
                 fastMode: value === "on",
               }),
+              { persistSticky: true },
             );
           }}
         >
