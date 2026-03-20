@@ -228,6 +228,14 @@ function SettingsRouteView() {
   const selectedGitTextGenerationModelLabel =
     gitTextGenerationModelOptions.find((option) => option.slug === currentGitTextGenerationModel)
       ?.name ?? currentGitTextGenerationModel;
+  const titleSummaryModelOptions = getAppModelOptions(
+    "codex",
+    settings.customCodexModels,
+    settings.titleSummaryModel,
+  );
+  const selectedTitleSummaryModelLabel =
+    titleSummaryModelOptions.find((option) => option.slug === settings.titleSummaryModel)?.name ??
+    settings.titleSummaryModel;
   const selectedCustomModelProviderSettings = MODEL_PROVIDER_SETTINGS.find(
     (providerSettings) => providerSettings.provider === selectedCustomModelProvider,
   )!;
@@ -256,6 +264,10 @@ function SettingsRouteView() {
       ? ["Assistant output"]
       : []),
     ...(settings.defaultThreadEnvMode !== defaults.defaultThreadEnvMode ? ["New thread mode"] : []),
+    ...(settings.titleSummaryMode !== defaults.titleSummaryMode
+      ? ["Automatic title summaries"]
+      : []),
+    ...(settings.titleSummaryModel !== defaults.titleSummaryModel ? ["Title summary model"] : []),
     ...(settings.confirmThreadDelete !== defaults.confirmThreadDelete
       ? ["Delete confirmation"]
       : []),
@@ -565,6 +577,73 @@ function SettingsRouteView() {
                       <SelectItem hideIndicator value="worktree">
                         New worktree
                       </SelectItem>
+                    </SelectPopup>
+                  </Select>
+                }
+              />
+
+              <SettingsRow
+                title="Automatic title summaries"
+                description="Turn the first prompt into a short thread title automatically."
+                resetAction={
+                  settings.titleSummaryMode !== defaults.titleSummaryMode ? (
+                    <SettingResetButton
+                      label="automatic title summaries"
+                      onClick={() =>
+                        updateSettings({
+                          titleSummaryMode: defaults.titleSummaryMode,
+                        })
+                      }
+                    />
+                  ) : null
+                }
+                control={
+                  <Switch
+                    checked={settings.titleSummaryMode === "automatic"}
+                    onCheckedChange={(checked) =>
+                      updateSettings({
+                        titleSummaryMode: checked ? "automatic" : "off",
+                      })
+                    }
+                    aria-label="Automatically generate title summaries"
+                  />
+                }
+              />
+
+              <SettingsRow
+                title="Title summary model"
+                description="Starts with the same default as Git writing, but you can change it separately."
+                resetAction={
+                  settings.titleSummaryModel !== defaults.titleSummaryModel ? (
+                    <SettingResetButton
+                      label="title summary model"
+                      onClick={() =>
+                        updateSettings({
+                          titleSummaryModel: defaults.titleSummaryModel,
+                        })
+                      }
+                    />
+                  ) : null
+                }
+                control={
+                  <Select
+                    value={settings.titleSummaryModel}
+                    onValueChange={(value) => {
+                      if (!value) return;
+                      updateSettings({
+                        titleSummaryModel: value,
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="w-full sm:w-52" aria-label="Title summary model">
+                      <SelectValue>{selectedTitleSummaryModelLabel}</SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup align="end" alignItemWithTrigger={false}>
+                      {titleSummaryModelOptions.map((option) => (
+                        <SelectItem hideIndicator key={option.slug} value={option.slug}>
+                          {option.name}
+                        </SelectItem>
+                      ))}
                     </SelectPopup>
                   </Select>
                 }

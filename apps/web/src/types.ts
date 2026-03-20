@@ -12,6 +12,7 @@ import type {
   ProviderKind,
   ProviderInteractionMode,
   RuntimeMode,
+  ThreadTitleSummaryState,
 } from "@t3tools/contracts";
 
 export type SessionPhase = "disconnected" | "connecting" | "ready" | "running";
@@ -90,6 +91,7 @@ export interface Thread {
   codexThreadId: string | null;
   projectId: ProjectId;
   title: string;
+  titleSummaryState?: ThreadTitleSummaryState | undefined;
   model: string;
   runtimeMode: RuntimeMode;
   interactionMode: ProviderInteractionMode;

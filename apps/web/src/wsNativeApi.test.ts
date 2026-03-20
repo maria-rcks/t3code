@@ -359,6 +359,22 @@ describe("wsNativeApi", () => {
     );
   });
 
+  it("forwards thread title generation requests to the websocket server method", async () => {
+    requestMock.mockResolvedValue({ title: "Fix sidebar naming" });
+    const { createWsNativeApi } = await import("./wsNativeApi");
+
+    const api = createWsNativeApi();
+    await api.server.generateThreadTitle({
+      threadId: ThreadId.makeUnsafe("thread-1"),
+      model: "gpt-5.4-mini",
+    });
+
+    expect(requestMock).toHaveBeenCalledWith(WS_METHODS.serverGenerateThreadTitle, {
+      threadId: "thread-1",
+      model: "gpt-5.4-mini",
+    });
+  });
+
   it("forwards full-thread diff requests to the orchestration websocket method", async () => {
     requestMock.mockResolvedValue({ diff: "patch" });
     const { createWsNativeApi } = await import("./wsNativeApi");

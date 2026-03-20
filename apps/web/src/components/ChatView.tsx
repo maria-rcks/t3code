@@ -180,6 +180,7 @@ import {
   SendPhase,
 } from "./ChatView.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
+import { generateAndRenameThreadTitle } from "~/threadTitleGeneration";
 
 const ATTACHMENT_PREVIEW_HANDOFF_TTL_MS = 5000;
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
@@ -2340,6 +2341,21 @@ export default function ChatView({ threadId }: ChatViewProps) {
     [activeThread, isConnecting, isRevertingCheckpoint, isSendBusy, phase, setThreadError],
   );
 
+  const maybeGenerateFirstThreadTitle = useCallback(
+    async (input: { api: NonNullable<ReturnType<typeof readNativeApi>>; threadId: ThreadId }) => {
+      if (settings.titleSummaryMode !== "automatic") {
+        return;
+      }
+
+      await generateAndRenameThreadTitle({
+        api: input.api,
+        threadId: input.threadId,
+        ...(settings.titleSummaryModel ? { model: settings.titleSummaryModel } : {}),
+      });
+    },
+    [settings.titleSummaryMode, settings.titleSummaryModel],
+  );
+
   const onSend = async (e?: { preventDefault: () => void }) => {
     e?.preventDefault();
     const api = readNativeApi();
@@ -2546,6 +2562,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           threadId: threadIdForSend,
           projectId: activeProject.id,
           title,
+          titleSummaryState: "missing",
           model: threadCreateModel,
           runtimeMode,
           interactionMode,
@@ -2579,16 +2596,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
           }
           await runProjectScript(setupScript, setupScriptOptions);
         }
-      }
-
-      // Auto-title from first message
-      if (isFirstMessage && isServerThread) {
-        await api.orchestration.dispatchCommand({
-          type: "thread.meta.update",
-          commandId: newCommandId(),
-          threadId: threadIdForSend,
-          title,
-        });
       }
 
       if (isServerThread) {
@@ -2625,6 +2632,15 @@ export default function ChatView({ threadId }: ChatViewProps) {
         createdAt: messageCreatedAt,
       });
       turnStartSucceeded = true;
+      if (isFirstMessage) {
+        void maybeGenerateFirstThreadTitle({ api, threadId: threadIdForSend }).catch((error) => {
+          toastManager.add({
+            type: "error",
+            title: "Failed to generate title summary",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          });
+        });
+      }
     })().catch(async (err: unknown) => {
       if (createdServerThreadForLocalDraft && !turnStartSucceeded) {
         await api.orchestration
@@ -3004,6 +3020,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         threadId: nextThreadId,
         projectId: activeProject.id,
         title: nextThreadTitle,
+        titleSummaryState: "missing",
         model: nextThreadModel,
         runtimeMode,
         interactionMode: "default",

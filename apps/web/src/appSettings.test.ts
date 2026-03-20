@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
+import { DEFAULT_GIT_TEXT_GENERATION_MODEL } from "@t3tools/contracts";
 
 import {
   AppSettingsSchema,
@@ -246,8 +247,10 @@ describe("AppSettingsSchema", () => {
       confirmThreadDelete: false,
       enableAssistantStreaming: false,
       timestampFormat: DEFAULT_TIMESTAMP_FORMAT,
+      titleSummaryMode: "automatic",
       customCodexModels: [],
       customClaudeModels: [],
+      titleSummaryModel: DEFAULT_GIT_TEXT_GENERATION_MODEL,
     });
   });
 });

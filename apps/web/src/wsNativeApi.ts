@@ -178,6 +178,8 @@ export function createWsNativeApi(): NativeApi {
     },
     server: {
       getConfig: () => transport.request(WS_METHODS.serverGetConfig),
+      generateThreadTitle: (input) =>
+        transport.request(WS_METHODS.serverGenerateThreadTitle, input),
       upsertKeybinding: (input) => transport.request(WS_METHODS.serverUpsertKeybinding, input),
     },
     orchestration: {

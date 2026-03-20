@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { Option, Schema } from "effect";
 import {
+  DEFAULT_GIT_TEXT_GENERATION_MODEL,
   TrimmedNonEmptyString,
   type ProviderKind,
   type ProviderStartOptions,
@@ -21,6 +22,8 @@ export const MAX_CUSTOM_MODEL_LENGTH = 256;
 export const TimestampFormat = Schema.Literals(["locale", "12-hour", "24-hour"]);
 export type TimestampFormat = typeof TimestampFormat.Type;
 export const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "locale";
+export const TitleSummaryMode = Schema.Literals(["automatic", "off"]);
+export type TitleSummaryMode = typeof TitleSummaryMode.Type;
 type CustomModelSettingsKey = "customCodexModels" | "customClaudeModels";
 export type ProviderCustomModelConfig = {
   provider: ProviderKind;
@@ -58,9 +61,15 @@ export const AppSettingsSchema = Schema.Struct({
   confirmThreadDelete: Schema.Boolean.pipe(withDefaults(() => true)),
   enableAssistantStreaming: Schema.Boolean.pipe(withDefaults(() => false)),
   timestampFormat: TimestampFormat.pipe(withDefaults(() => DEFAULT_TIMESTAMP_FORMAT)),
+  titleSummaryMode: TitleSummaryMode.pipe(
+    withDefaults(() => "automatic" as const satisfies TitleSummaryMode),
+  ),
   customCodexModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   textGenerationModel: Schema.optional(TrimmedNonEmptyString),
+  titleSummaryModel: TrimmedNonEmptyString.pipe(
+    withDefaults(() => DEFAULT_GIT_TEXT_GENERATION_MODEL),
+  ),
 });
 export type AppSettings = typeof AppSettingsSchema.Type;
 export interface AppModelOption {

@@ -46,6 +46,7 @@ import { derivePendingApprovals, derivePendingUserInputs } from "../session-logi
 import { gitRemoveWorktreeMutationOptions, gitStatusQueryOptions } from "../lib/gitReactQuery";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { readNativeApi } from "../nativeApi";
+import { generateAndRenameThreadTitle } from "../threadTitleGeneration";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
@@ -536,6 +537,7 @@ export default function Sidebar() {
           commandId: newCommandId(),
           threadId,
           title: trimmed,
+          titleSummaryState: "manual",
         });
       } catch (error) {
         toastManager.add({
@@ -709,6 +711,7 @@ export default function Sidebar() {
       const clicked = await api.contextMenu.show(
         [
           { id: "rename", label: "Rename thread" },
+          { id: "summarize-rename", label: "Generate title summary" },
           { id: "mark-unread", label: "Mark unread" },
           { id: "copy-path", label: "Copy Path" },
           { id: "copy-thread-id", label: "Copy Thread ID" },
@@ -726,6 +729,22 @@ export default function Sidebar() {
 
       if (clicked === "mark-unread") {
         markThreadUnread(threadId);
+        return;
+      }
+      if (clicked === "summarize-rename") {
+        try {
+          await generateAndRenameThreadTitle({
+            api,
+            threadId,
+            ...(appSettings.titleSummaryModel ? { model: appSettings.titleSummaryModel } : {}),
+          });
+        } catch (error) {
+          toastManager.add({
+            type: "error",
+            title: "Failed to generate title summary",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          });
+        }
         return;
       }
       if (clicked === "copy-path") {
@@ -760,6 +779,7 @@ export default function Sidebar() {
     },
     [
       appSettings.confirmThreadDelete,
+      appSettings.titleSummaryModel,
       copyPathToClipboard,
       copyThreadIdToClipboard,
       deleteThread,
