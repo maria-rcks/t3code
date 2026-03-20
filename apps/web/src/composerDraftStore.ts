@@ -11,6 +11,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import * as Equal from "effect/Equal";
 import { DeepMutable } from "effect/Types";
 import { normalizeModelSlug } from "@t3tools/shared/model";
 import { getLocalStorageItem } from "./hooks/useLocalStorage";
@@ -213,15 +214,15 @@ interface ComposerDraftStoreState {
   clearThreadDraft: (threadId: ThreadId) => void;
 }
 
-const EMPTY_PROVIDER_MODEL_OPTIONS = Object.freeze({}) as ProviderModelOptions;
+const EMPTY_PROVIDER_MODEL_OPTIONS = Object.freeze<ProviderModelOptions>({});
 
-const EMPTY_PERSISTED_DRAFT_STORE_STATE: PersistedComposerDraftStoreState = {
+const EMPTY_PERSISTED_DRAFT_STORE_STATE = Object.freeze<PersistedComposerDraftStoreState>({
   draftsByThreadId: {},
   draftThreadsByThreadId: {},
   projectDraftThreadIdByProjectId: {},
   stickyModel: null,
   stickyModelOptions: EMPTY_PROVIDER_MODEL_OPTIONS,
-};
+});
 
 const EMPTY_IMAGES: ComposerImageAttachment[] = [];
 const EMPTY_IDS: string[] = [];
@@ -242,16 +243,6 @@ const EMPTY_THREAD_DRAFT = Object.freeze<ComposerThreadDraftState>({
   runtimeMode: null,
   interactionMode: null,
 });
-
-function areProviderModelOptionsEqual(
-  left: ProviderModelOptions,
-  right: ProviderModelOptions,
-): boolean {
-  return (
-    left.codex?.reasoningEffort === right.codex?.reasoningEffort &&
-    left.codex?.fastMode === right.codex?.fastMode
-  );
-}
 
 function createEmptyThreadDraft(): ComposerThreadDraftState {
   return {
@@ -1161,7 +1152,7 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
         const normalizedModelOptions =
           normalizeProviderModelOptions(modelOptions) ?? EMPTY_PROVIDER_MODEL_OPTIONS;
         set((state) => {
-          if (areProviderModelOptionsEqual(state.stickyModelOptions, normalizedModelOptions)) {
+          if (Equal.equals(state.stickyModelOptions, normalizedModelOptions)) {
             return state;
           }
           return {
