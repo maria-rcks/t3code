@@ -986,13 +986,6 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const removeFromSelection = useThreadSelectionStore((state) => state.removeFromSelection);
   const setSelectionAnchor = useThreadSelectionStore((state) => state.setAnchor);
   const selectedThreadCount = useThreadSelectionStore((state) => state.selectedThreadKeys.size);
-  const clearComposerDraftForThread = useComposerDraftStore((state) => state.clearDraftThread);
-  const getDraftThreadByProjectRef = useComposerDraftStore(
-    (state) => state.getDraftThreadByProjectRef,
-  );
-  const clearProjectDraftThreadId = useComposerDraftStore(
-    (state) => state.clearProjectDraftThreadId,
-  );
   const { copyToClipboard: copyThreadIdToClipboard } = useCopyToClipboard<{
     threadId: ThreadId;
   }>({
@@ -1294,6 +1287,22 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     [suppressProjectClickAfterDragRef, suppressProjectClickForContextMenuRef],
   );
 
+  const removeProject = useCallback(
+    async (projectId: ProjectId, options: { force?: boolean } = {}): Promise<void> => {
+      const projectApi = readEnvironmentApi(project.environmentId);
+      if (!projectApi) {
+        throw new Error("Project API unavailable.");
+      }
+      await projectApi.orchestration.dispatchCommand({
+        type: "project.delete",
+        commandId: newCommandId(),
+        projectId,
+        ...(options.force === true ? { force: true } : {}),
+      });
+    },
+    [project.environmentId],
+  );
+
   const handleProjectButtonContextMenu = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault();
@@ -1318,11 +1327,53 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         }
         if (clicked !== "delete") return;
 
-        if (projectThreads.length > 0) {
-          toastManager.add({
+        const projectRef = scopeProjectRef(project.environmentId, project.id);
+        const projectThreadCount = sidebarThreads.length;
+        if (projectThreadCount > 0) {
+          const warningToastId = toastManager.add({
             type: "warning",
             title: "Project is not empty",
             description: "Delete all threads in this project before removing it.",
+            data: {
+              actionLayout: "stacked-end",
+              actionVariant: "destructive",
+            },
+            actionProps: {
+              children: "Delete anyway",
+              onClick: () => {
+                void (async () => {
+                  toastManager.close(warningToastId);
+                  await new Promise<void>((resolve) => {
+                    window.setTimeout(resolve, 180);
+                  });
+                  const latestProjectThreads = selectSidebarThreadsForProjectRef(
+                    useStore.getState(),
+                    projectRef,
+                  );
+                  const confirmed = await api.dialogs.confirm(
+                    latestProjectThreads.length > 0
+                      ? [
+                          `Remove project "${project.name}" and delete its ${latestProjectThreads.length} thread${
+                            latestProjectThreads.length === 1 ? "" : "s"
+                          }?`,
+                          "This will permanently clear conversation history for those threads.",
+                          "This action cannot be undone.",
+                        ].join("\n")
+                      : `Remove project "${project.name}"?`,
+                  );
+                  if (!confirmed) return;
+
+                  await removeProject(project.id, { force: true });
+                })().catch((error) => {
+                  toastManager.add({
+                    type: "error",
+                    title: `Failed to remove "${project.name}"`,
+                    description:
+                      error instanceof Error ? error.message : "Unknown error removing project.",
+                  });
+                });
+              },
+            },
           });
           return;
         }
@@ -1331,22 +1382,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         if (!confirmed) return;
 
         try {
-          const projectDraftThread = getDraftThreadByProjectRef(
-            scopeProjectRef(project.environmentId, project.id),
-          );
-          if (projectDraftThread) {
-            clearComposerDraftForThread(projectDraftThread.draftId);
-          }
-          clearProjectDraftThreadId(scopeProjectRef(project.environmentId, project.id));
-          const projectApi = readEnvironmentApi(project.environmentId);
-          if (!projectApi) {
-            throw new Error("Project API unavailable.");
-          }
-          await projectApi.orchestration.dispatchCommand({
-            type: "project.delete",
-            commandId: newCommandId(),
-            projectId: project.id,
-          });
+          await removeProject(project.id);
         } catch (error) {
           const message =
             error instanceof Error ? error.message : "Unknown error removing project.";
@@ -1360,15 +1396,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       })();
     },
     [
-      clearComposerDraftForThread,
-      clearProjectDraftThreadId,
       copyPathToClipboard,
-      getDraftThreadByProjectRef,
       project.cwd,
       project.environmentId,
       project.id,
       project.name,
-      projectThreads.length,
+      removeProject,
+      sidebarThreads.length,
       suppressProjectClickForContextMenuRef,
     ],
   );
