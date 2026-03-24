@@ -177,11 +177,15 @@ function SettingsRouteView() {
     settings.customCodexModels,
     settings.textGenerationModel,
   );
+  const currentGitTextGenerationModel =
+    settings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL;
+  const defaultGitTextGenerationModel =
+    defaults.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL;
+  const isGitTextGenerationModelDirty =
+    currentGitTextGenerationModel !== defaultGitTextGenerationModel;
   const selectedGitTextGenerationModelLabel =
-    gitTextGenerationModelOptions.find(
-      (option) =>
-        option.slug === (settings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL),
-    )?.name ?? settings.textGenerationModel;
+    gitTextGenerationModelOptions.find((option) => option.slug === currentGitTextGenerationModel)
+      ?.name ?? currentGitTextGenerationModel;
   const selectedCustomModelProviderSettings = MODEL_PROVIDER_SETTINGS.find(
     (providerSettings) => providerSettings.provider === selectedCustomModelProvider,
   )!;
@@ -209,7 +213,7 @@ function SettingsRouteView() {
     ...(settings.confirmThreadDelete !== defaults.confirmThreadDelete
       ? ["Delete confirmation"]
       : []),
-    ...(settings.textGenerationModel !== defaults.textGenerationModel ? ["Git writing model"] : []),
+    ...(isGitTextGenerationModelDirty ? ["Git writing model"] : []),
     ...(settings.customCodexModels.length > 0 || settings.customClaudeModels.length > 0
       ? ["Custom models"]
       : []),
@@ -554,7 +558,7 @@ function SettingsRouteView() {
                 title="Git writing model"
                 description="Used for generated commit messages, PR titles, and branch names."
                 resetAction={
-                  settings.textGenerationModel !== defaults.textGenerationModel ? (
+                  isGitTextGenerationModelDirty ? (
                     <SettingResetButton
                       label="git writing model"
                       onClick={() =>
@@ -567,7 +571,7 @@ function SettingsRouteView() {
                 }
                 control={
                   <Select
-                    value={settings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL}
+                    value={currentGitTextGenerationModel}
                     onValueChange={(value) => {
                       if (!value) return;
                       updateSettings({
