@@ -64,6 +64,53 @@ const ReadFromSequenceRequestSchema = Schema.Struct({
 const DEFAULT_READ_FROM_SEQUENCE_LIMIT = 1_000;
 const READ_PAGE_SIZE = 500;
 
+function normalizeLegacyProviderValue(provider: unknown): unknown {
+  return provider === "piAgent" ? "codex" : provider;
+}
+
+function normalizeLegacyEventRow(
+  row: Schema.Schema.Type<typeof OrchestrationEventPersistedRowSchema>,
+): Schema.Schema.Type<typeof OrchestrationEventPersistedRowSchema> {
+  const payload =
+    row.payload && typeof row.payload === "object" && !Array.isArray(row.payload)
+      ? (() => {
+          const nextProvider = normalizeLegacyProviderValue(
+            (row.payload as Record<string, unknown>).provider,
+          );
+          return nextProvider === (row.payload as Record<string, unknown>).provider
+            ? row.payload
+            : {
+                ...row.payload,
+                provider: nextProvider,
+              };
+        })()
+      : row.payload;
+  const metadata =
+    row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+      ? (() => {
+          const nextAdapterKey = normalizeLegacyProviderValue(
+            (row.metadata as Record<string, unknown>).adapterKey,
+          );
+          return nextAdapterKey === (row.metadata as Record<string, unknown>).adapterKey
+            ? row.metadata
+            : {
+                ...row.metadata,
+                adapterKey: nextAdapterKey === undefined ? undefined : String(nextAdapterKey),
+              };
+        })()
+      : row.metadata;
+
+  if (payload === row.payload && metadata === row.metadata) {
+    return row;
+  }
+
+  return {
+    ...row,
+    payload,
+    metadata,
+  };
+}
+
 function inferActorKind(
   event: Omit<OrchestrationEvent, "sequence">,
 ): Schema.Schema.Type<typeof OrchestrationActorKind> {
@@ -199,7 +246,7 @@ const makeEventStore = Effect.gen(function* () {
         ),
       ),
       Effect.flatMap((row) =>
-        decodeEvent(row).pipe(
+        decodeEvent(normalizeLegacyEventRow(row)).pipe(
           Effect.mapError(toPersistenceDecodeError("OrchestrationEventStore.append:rowToEvent")),
         ),
       ),
@@ -230,7 +277,7 @@ const makeEventStore = Effect.gen(function* () {
           ),
           Effect.flatMap((rows) =>
             Effect.forEach(rows, (row) =>
-              decodeEvent(row).pipe(
+              decodeEvent(normalizeLegacyEventRow(row)).pipe(
                 Effect.mapError(
                   toPersistenceDecodeError("OrchestrationEventStore.readFromSequence:rowToEvent"),
                 ),

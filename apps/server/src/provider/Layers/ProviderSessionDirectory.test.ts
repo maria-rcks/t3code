@@ -204,4 +204,29 @@ it.layer(makeDirectoryLayer(SqlitePersistenceMemory))("ProviderSessionDirectoryL
 
       fs.rmSync(tempDir, { recursive: true, force: true });
     }));
+
+  it("maps legacy piAgent provider rows to codex on read", () =>
+    Effect.gen(function* () {
+      const directory = yield* ProviderSessionDirectory;
+      const runtimeRepository = yield* ProviderSessionRuntimeRepository;
+      const threadId = ThreadId.makeUnsafe("thread-legacy-provider");
+
+      yield* runtimeRepository.upsert({
+        threadId,
+        providerName: "piAgent",
+        adapterKey: "piAgent",
+        runtimeMode: "full-access",
+        status: "stopped",
+        lastSeenAt: new Date().toISOString(),
+        resumeCursor: null,
+        runtimePayload: null,
+      });
+
+      const binding = yield* directory.getBinding(threadId);
+      assertSome(binding, {
+        threadId,
+        provider: "codex",
+        adapterKey: "codex",
+      });
+    }));
 });

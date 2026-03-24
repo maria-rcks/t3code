@@ -1,4 +1,4 @@
-import { CommandId, EventId, ProjectId } from "@t3tools/contracts";
+import { CommandId, EventId, MessageId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import { Effect, Layer, Schema, Stream } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -114,6 +114,71 @@ layer("OrchestrationEventStore", (it) => {
           ),
         );
       }
+    }),
+  );
+
+  it.effect("maps legacy piAgent provider payloads to codex during replay", () =>
+    Effect.gen(function* () {
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const now = new Date().toISOString();
+
+      yield* sql`
+        INSERT INTO orchestration_events (
+          event_id,
+          aggregate_kind,
+          stream_id,
+          stream_version,
+          event_type,
+          occurred_at,
+          command_id,
+          causation_event_id,
+          correlation_id,
+          actor_kind,
+          payload_json,
+          metadata_json
+        )
+        VALUES (
+          ${EventId.makeUnsafe("evt-store-legacy-provider")},
+          ${"thread"},
+          ${ThreadId.makeUnsafe("thread-legacy-provider")},
+          ${0},
+          ${"thread.turn-start-requested"},
+          ${now},
+          ${CommandId.makeUnsafe("cmd-store-legacy-provider")},
+          ${null},
+          ${CommandId.makeUnsafe("cmd-store-legacy-provider")},
+          ${"client"},
+          ${JSON.stringify({
+            threadId: ThreadId.makeUnsafe("thread-legacy-provider"),
+            messageId: MessageId.makeUnsafe("msg-legacy-provider"),
+            provider: "piAgent",
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            createdAt: now,
+          })},
+          ${JSON.stringify({ adapterKey: "piAgent" })}
+        )
+      `;
+
+      const storedRows = yield* sql<{ readonly sequence: number }>`
+        SELECT sequence
+        FROM orchestration_events
+        WHERE event_id = ${EventId.makeUnsafe("evt-store-legacy-provider")}
+      `;
+
+      const replayed = yield* Stream.runCollect(
+        eventStore.readFromSequence((storedRows[0]?.sequence ?? 1) - 1, 1),
+      ).pipe(Effect.map((chunk) => Array.from(chunk)));
+
+      assert.equal(replayed.length, 1);
+      const event = replayed[0];
+      assert.equal(event?.type, "thread.turn-start-requested");
+      if (!event || event.type !== "thread.turn-start-requested") {
+        return;
+      }
+      assert.equal(event.payload.provider, "codex");
+      assert.equal(event.metadata.adapterKey, "codex");
     }),
   );
 });

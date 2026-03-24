@@ -9,6 +9,16 @@ import {
   type ProviderSessionDirectoryShape,
 } from "../Services/ProviderSessionDirectory.ts";
 
+function normalizePersistedProviderName(providerName: string): ProviderKind | undefined {
+  if (providerName === "codex" || providerName === "claudeAgent") {
+    return providerName;
+  }
+  if (providerName === "piAgent") {
+    return "codex";
+  }
+  return undefined;
+}
+
 function toPersistenceError(operation: string) {
   return (cause: unknown) =>
     new ProviderSessionDirectoryPersistenceError({
@@ -22,8 +32,9 @@ function decodeProviderKind(
   providerName: string,
   operation: string,
 ): Effect.Effect<ProviderKind, ProviderSessionDirectoryPersistenceError> {
-  if (providerName === "codex" || providerName === "claudeAgent") {
-    return Effect.succeed(providerName);
+  const normalizedProviderName = normalizePersistedProviderName(providerName);
+  if (normalizedProviderName) {
+    return Effect.succeed(normalizedProviderName);
   }
   return Effect.fail(
     new ProviderSessionDirectoryPersistenceError({
@@ -65,7 +76,7 @@ const makeProviderSessionDirectory = Effect.gen(function* () {
                 Option.some({
                   threadId: value.threadId,
                   provider,
-                  adapterKey: value.adapterKey,
+                  adapterKey: normalizePersistedProviderName(value.adapterKey) ?? value.adapterKey,
                   runtimeMode: value.runtimeMode,
                   status: value.status,
                   resumeCursor: value.resumeCursor,
