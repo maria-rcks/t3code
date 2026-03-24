@@ -753,7 +753,7 @@ function SettingsRouteView() {
                     />
                   }
                 >
-                  <CollapsibleContent className="overflow-visible">
+                  <CollapsibleContent>
                     <div className="mt-4 border-t border-border pt-4">
                       <div className="space-y-3">
                         <label htmlFor="codex-binary-path" className="block space-y-1">
