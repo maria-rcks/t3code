@@ -124,13 +124,24 @@ jobs:
       group: pr-size-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     steps:
+      - name: Checkout base repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Sync PR size label
         uses: actions/github-script@v8
         env:
           PR_SIZE_LABELS_JSON: ${{ needs.prepare-config.outputs.labels_json }}
         with:
           script: |
+            const { execFileSync } = require("node:child_process");
+
             const issueNumber = context.payload.pull_request.number;
+            const baseSha = context.payload.pull_request.base.sha;
+            const headSha = context.payload.pull_request.head.sha;
+            const headCloneUrl = context.payload.pull_request.head.repo.clone_url;
+            const headRef = context.payload.pull_request.head.ref;
+            const headTrackingRef = `refs/remotes/pr-size/${issueNumber}`;
             const managedLabels = JSON.parse(process.env.PR_SIZE_LABELS_JSON ?? "[]");
             const managedLabelNames = new Set(managedLabels.map((label) => label.name));
             // Keep this aligned with the repo's test entrypoints and test-only support files.
@@ -143,6 +154,28 @@ jobs:
 
             const isTestFile = (filename) =>
               testFilePatterns.some((pattern) => pattern.test(filename));
+
+            const parseNumstat = (text) =>
+              text
+                .split("\n")
+                .filter(Boolean)
+                .map((line) => {
+                  const [insertionsRaw = "0", deletionsRaw = "0", ...pathParts] = line.split("\t");
+                  const filename = pathParts.join("\t").trim();
+
+                  if (!filename) {
+                    return null;
+                  }
+
+                  return {
+                    filename,
+                    additions:
+                      insertionsRaw === "-" ? 0 : Number.parseInt(insertionsRaw, 10) || 0,
+                    deletions:
+                      deletionsRaw === "-" ? 0 : Number.parseInt(deletionsRaw, 10) || 0,
+                  };
+                })
+                .filter((file) => file !== null);
 
             const resolveSizeLabel = (totalChangedLines) => {
               if (totalChangedLines < 10) {
@@ -168,22 +201,46 @@ jobs:
               return "size:XXL";
             };
 
-            const files = await github.paginate(
-              github.rest.pulls.listFiles,
+            execFileSync("git", ["fetch", "--no-tags", "origin", baseSha], {
+              stdio: "inherit",
+            });
+
+            execFileSync(
+              "git",
+              ["fetch", "--no-tags", headCloneUrl, `+refs/heads/${headRef}:${headTrackingRef}`],
               {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: issueNumber,
-                per_page: 100,
+                stdio: "inherit",
               },
-              (response) => response.data,
             );
 
-            if (files.length >= 3000) {
+            const resolvedHeadSha = execFileSync("git", ["rev-parse", headTrackingRef], {
+              encoding: "utf8",
+            }).trim();
+
+            if (resolvedHeadSha !== headSha) {
               core.warning(
-                "The GitHub pull request files API may truncate results at 3,000 files; PR size may be undercounted.",
+                `Fetched head SHA ${resolvedHeadSha} does not match pull request head SHA ${headSha}; using fetched ref for sizing.`,
               );
             }
+
+            execFileSync("git", ["cat-file", "-e", `${baseSha}^{commit}`], {
+              stdio: "inherit",
+            });
+
+            const files = parseNumstat(
+              execFileSync(
+                "git",
+                [
+                  "diff",
+                  "--numstat",
+                  "--ignore-all-space",
+                  "--ignore-blank-lines",
+                  "--no-renames",
+                  `${baseSha}...${resolvedHeadSha}`,
+                ],
+                { encoding: "utf8" },
+              ),
+            );
 
             let testChangedLines = 0;
             let nonTestChangedLines = 0;
