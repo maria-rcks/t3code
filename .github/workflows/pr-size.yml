@@ -139,8 +139,6 @@ jobs:
             const issueNumber = context.payload.pull_request.number;
             const baseSha = context.payload.pull_request.base.sha;
             const headSha = context.payload.pull_request.head.sha;
-            const headCloneUrl = context.payload.pull_request.head.repo.clone_url;
-            const headRef = context.payload.pull_request.head.ref;
             const headTrackingRef = `refs/remotes/pr-size/${issueNumber}`;
             const managedLabels = JSON.parse(process.env.PR_SIZE_LABELS_JSON ?? "[]");
             const managedLabelNames = new Set(managedLabels.map((label) => label.name));
@@ -200,7 +198,7 @@ jobs:
 
             execFileSync(
               "git",
-              ["fetch", "--no-tags", headCloneUrl, `+refs/heads/${headRef}:${headTrackingRef}`],
+              ["fetch", "--no-tags", "origin", `+refs/pull/${issueNumber}/head:${headTrackingRef}`],
               {
                 stdio: "inherit",
               },
