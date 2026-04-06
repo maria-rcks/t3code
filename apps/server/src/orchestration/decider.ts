@@ -7,6 +7,7 @@ import { Effect } from "effect";
 
 import { OrchestrationCommandInvariantError } from "./Errors.ts";
 import {
+  listThreadsByProjectId,
   requireProject,
   requireProjectAbsent,
   requireThread,
@@ -119,20 +120,51 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         projectId: command.projectId,
       });
+      const activeThreads = listThreadsByProjectId(readModel, command.projectId).filter(
+        (thread) => thread.deletedAt === null,
+      );
+      if (activeThreads.length > 0 && command.force !== true) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Project '${command.projectId}' is not empty and cannot be deleted without force=true.`,
+        });
+      }
+
       const occurredAt = nowIso();
-      return {
+      const deletedThreadEvents = activeThreads.map((thread) =>
+        Object.assign(
+          withEventBase({
+            aggregateKind: "thread",
+            aggregateId: thread.id,
+            occurredAt,
+            commandId: command.commandId,
+          }),
+          {
+            type: "thread.deleted" as const,
+            payload: {
+              threadId: thread.id,
+              deletedAt: occurredAt,
+            },
+          },
+        ),
+      );
+      const deletedProjectEvent = {
         ...withEventBase({
           aggregateKind: "project",
           aggregateId: command.projectId,
           occurredAt,
           commandId: command.commandId,
         }),
-        type: "project.deleted",
+        type: "project.deleted" as const,
         payload: {
           projectId: command.projectId,
           deletedAt: occurredAt,
         },
       };
+
+      return deletedThreadEvents.length > 0
+        ? [...deletedThreadEvents, deletedProjectEvent]
+        : deletedProjectEvent;
     }
 
     case "thread.create": {
