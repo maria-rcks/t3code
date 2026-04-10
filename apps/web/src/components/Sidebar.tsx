@@ -1328,7 +1328,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         if (clicked !== "delete") return;
 
         const projectRef = scopeProjectRef(project.environmentId, project.id);
-        const projectThreadCount = sidebarThreads.length;
+        // Keep grouped projects conservative here: a grouped sidebar row should
+        // still warn when any member project currently has threads.
+        const projectThreadCount = projectThreads.length;
         if (projectThreadCount > 0) {
           const warningToastId = toastManager.add({
             type: "warning",
@@ -1401,8 +1403,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       project.environmentId,
       project.id,
       project.name,
+      projectThreads.length,
       removeProject,
-      sidebarThreads.length,
       suppressProjectClickForContextMenuRef,
     ],
   );
