@@ -1275,26 +1275,6 @@ const previewTurns: Record<string, PreviewTurn[]> = {
         },
       ],
     },
-    diff: {
-      title: "Changed files",
-      width: 286,
-      sections: [
-        {
-          items: [
-            { label: "View diff", detail: "23 additions, 14 deletions" },
-            { label: "Collapse all", detail: "File tree", action: "collapse-all" },
-            { label: "Expand all", detail: "File tree", action: "expand-all" },
-          ],
-        },
-        {
-          label: "Files",
-          items: [
-            { label: "apps/marketing/src/components/AppPreview.astro", detail: "+23 -14" },
-            { label: "apps/marketing/src/pages/index.astro", detail: "+2 -1" },
-          ],
-        },
-      ],
-    },
     model: {
       title: "Model",
       width: 252,
@@ -1391,18 +1371,6 @@ const previewTurns: Record<string, PreviewTurn[]> = {
           items: [
             { label: "Create branch from current", detail: "New worktree" },
             { label: "Refresh branches", detail: "git fetch" },
-          ],
-        },
-      ],
-    },
-    archive: {
-      title: "Archived threads",
-      width: 260,
-      sections: [
-        {
-          items: [
-            { label: "Restore marketing shell draft", detail: "2d ago" },
-            { label: "Delete stale hotkeys spike", detail: "13h ago", tone: "danger" },
           ],
         },
       ],
@@ -1526,6 +1494,8 @@ const previewTurns: Record<string, PreviewTurn[]> = {
           if (!(nextIcon instanceof SVGElement)) {
             continue;
           }
+          nextIcon.setAttribute("width", "16");
+          nextIcon.setAttribute("height", "16");
           existingIcon.replaceWith(nextIcon);
         }
       };
@@ -1809,7 +1779,7 @@ const previewTurns: Record<string, PreviewTurn[]> = {
           { label: "Low", detail: "" },
           { label: "Medium", detail: "" },
           { label: "High", detail: "" },
-          { label: "Extra High", detail: "" },
+          { label: "Extra high", detail: "" },
         ] satisfies { label: string; detail?: string }[];
         const accessOptions: { label: string; value: string; detail: string }[] = [
           {
@@ -3274,6 +3244,13 @@ const previewTurns: Record<string, PreviewTurn[]> = {
   }
 
   .app-preview :global(.app-preview__composer-icon--provider) {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    opacity: 0.8;
+  }
+
+  .app-preview :global([data-preview-access-icon]) {
     width: 16px;
     height: 16px;
     flex: 0 0 16px;
