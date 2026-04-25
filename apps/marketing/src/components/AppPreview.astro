@@ -8,14 +8,8 @@ type PreviewThread = {
   checkoutValue: string;
   access: string;
   composerText: string;
-  body: "empty" | "messages";
   status?: string;
   statusTone?: "working" | "completed";
-  messages?: {
-    user: string;
-    assistant: string;
-  };
-  toolCalls?: string[];
 };
 
 type PreviewTurn =
@@ -41,18 +35,6 @@ const previewThreads: PreviewThread[] = [
     checkoutValue: "main",
     access: "Full access",
     composerText: "",
-    body: "messages" as const,
-    messages: {
-      user:
-        "The repo doesn’t have existing Vercel/marketing-site wiring, so I have room to add a purpose-built app instead of working around prior deployment config. I’m checking the monorepo task conventions next, then I’ll scaffold apps/site and build the first version in one pass.",
-      assistant:
-        "I’ve confirmed the new app can stand alone without touching the product runtime. I’m inspecting the existing brand assets now so the marketing site can reuse what you already have rather than inventing a disconnected visual identity.",
-    },
-    toolCalls: [
-      "Command run complete  /bin/zsh -lc \"sed -n '1,220p' scripts/dev-runner.ts\"",
-      "Command run complete  /bin/zsh -lc \"sed -n '1,220p' apps/desktop/package.json\"",
-      "Command run complete  /bin/zsh -lc \"sed -n '1,240p' README.md\"",
-    ],
   },
   {
     id: "mobile-thread",
@@ -65,11 +47,6 @@ const previewThreads: PreviewThread[] = [
     checkoutValue: "main",
     access: "Auto-accept edits",
     composerText: "Continue the mobile layout pass and keep the same app shell spacing.",
-    body: "messages" as const,
-    messages: {
-      user: "I want a way to move between active implementation threads faster.",
-      assistant: "I’m tightening the sidebar interaction and checking the keyboard path before changing the command palette.",
-    },
   },
   {
     id: "hotkeys-thread",
@@ -82,11 +59,6 @@ const previewThreads: PreviewThread[] = [
     checkoutValue: "main",
     access: "Supervised",
     composerText: "Add the global hotkey wiring and keep the shortcut labels consistent.",
-    body: "messages" as const,
-    messages: {
-      user: "I want to add a hotkey to jump back into the current thread.",
-      assistant: "Completed the shortcut registration and verified it does not collide with the existing search command.",
-    },
   },
   {
     id: "old-hotkeys",
@@ -97,7 +69,6 @@ const previewThreads: PreviewThread[] = [
     checkoutValue: "main",
     access: "Full access",
     composerText: "Review the old shortcut branch and extract anything still useful.",
-    body: "empty" as const,
   },
   {
     id: "round-modernize",
@@ -110,11 +81,6 @@ const previewThreads: PreviewThread[] = [
     checkoutValue: "main",
     access: "Full access",
     composerText: "Modernize the UI without changing the route structure.",
-    body: "messages" as const,
-    messages: {
-      user: "I want to modernize the dashboard without making it feel like a separate product.",
-      assistant: "I’m mapping the existing surfaces first, then I’ll update the spacing and icon treatment in one contained pass.",
-    },
   },
   {
     id: "lawn-hard",
@@ -127,11 +93,6 @@ const previewThreads: PreviewThread[] = [
     checkoutValue: "main",
     access: "Supervised",
     composerText: "Estimate the implementation path and call out any hidden risks.",
-    body: "messages" as const,
-    messages: {
-      user: "How hard would it be to replace the current onboarding flow?",
-      assistant: "The main cost is state migration, not the UI. I’d isolate the new flow behind the existing account boundary first.",
-    },
   },
   {
     id: "lawn-security",
@@ -142,7 +103,6 @@ const previewThreads: PreviewThread[] = [
     checkoutValue: "main",
     access: "Full access",
     composerText: "Audit the auth path and summarize the risky edges.",
-    body: "empty" as const,
   },
   {
     id: "lawn-analyze",
@@ -153,7 +113,6 @@ const previewThreads: PreviewThread[] = [
     checkoutValue: "main",
     access: "Full access",
     composerText: "Build a concise project map from the repo structure.",
-    body: "empty" as const,
   },
   {
     id: "shoo-secure",
@@ -166,11 +125,6 @@ const previewThreads: PreviewThread[] = [
     checkoutValue: "main",
     access: "Full access",
     composerText: "Inspect the app security posture and list the highest-risk fixes first.",
-    body: "messages" as const,
-    messages: {
-      user: "Is this app secure enough to put behind a public beta?",
-      assistant: "I’m checking auth boundaries, storage access, and server-only environment usage before making a recommendation.",
-    },
   },
 ] satisfies PreviewThread[];
 
@@ -202,6 +156,11 @@ const previewProjects = [
 ] as const;
 
 const threadById = new Map(previewThreads.map((thread) => [thread.id, thread]));
+const accessModeByLabel: Record<string, "approval-required" | "auto-accept-edits" | "full-access"> = {
+  Supervised: "approval-required",
+  "Auto-accept edits": "auto-accept-edits",
+  "Full access": "full-access",
+};
 const isToolTurn = (turn: PreviewTurn): turn is Extract<PreviewTurn, { type: "tool" }> => turn.type === "tool";
 
 type PreviewToolCallIcon = "terminal" | "eye" | "pen" | "globe" | "wrench";
@@ -1157,9 +1116,26 @@ const previewTurns: Record<string, PreviewTurn[]> = {
                         <span class="app-preview__composer-separator"></span>
 
                         <button type="button" class="app-preview__composer-control app-preview__composer-control--runtime" data-preview-menu="access">
-                          <svg class="app-preview__composer-icon" data-preview-access-icon data-access-mode="full-access" viewBox="0 0 24 24" aria-hidden="true">
-                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="2"></rect>
-                            <path d="M7 11V7a5 5 0 0 1 9.9-1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path>
+                          <svg class="app-preview__composer-icon" data-preview-access-icon data-access-mode={accessModeByLabel[thread.access] ?? "full-access"} viewBox="0 0 24 24" aria-hidden="true">
+                            {
+                              accessModeByLabel[thread.access] === "auto-accept-edits" ? (
+                                <>
+                                  <path d="M12 20h9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path>
+                                  <path d="m16.5 3.5 4 4L7 21H3v-4L16.5 3.5Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                                </>
+                              ) : (
+                                <>
+                                  <rect width="18" height="11" x="3" y="11" rx="2" ry="2" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="2"></rect>
+                                  <path
+                                    d={accessModeByLabel[thread.access] === "approval-required" ? "M7 11V7a5 5 0 0 1 10 0v4" : "M7 11V7a5 5 0 0 1 9.9-1"}
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-linecap="round"
+                                    stroke-width="2"
+                                  ></path>
+                                </>
+                              )
+                            }
                           </svg>
                           <span data-preview-label="access">{thread.access}</span>
                           <svg class="app-preview__composer-chevron app-preview__composer-chevron--runtime" viewBox="0 0 24 24" aria-hidden="true">
@@ -1521,18 +1497,29 @@ const previewTurns: Record<string, PreviewTurn[]> = {
         });
       }
 
+      const getActiveView = () => {
+        const activeThreadId = previewElement.dataset.activeThread;
+        if (!activeThreadId) {
+          return null;
+        }
+
+        return preview.querySelector<HTMLElement>(`[data-preview-view][data-preview-thread-id="${CSS.escape(activeThreadId)}"]`);
+      };
+
       const updateVisibleLabels = (target: string | undefined, value: string) => {
         if (!target) {
           return;
         }
 
-        for (const label of preview.querySelectorAll<HTMLElement>(`[data-preview-label="${CSS.escape(target)}"]`)) {
+        const scope = getActiveView() ?? preview;
+        for (const label of scope.querySelectorAll<HTMLElement>(`[data-preview-label="${CSS.escape(target)}"]`)) {
           label.textContent = value;
         }
       };
 
       const updateAccessIcon = (mode: string) => {
-        for (const existingIcon of preview.querySelectorAll<SVGElement>("[data-preview-access-icon]")) {
+        const scope = getActiveView() ?? preview;
+        for (const existingIcon of scope.querySelectorAll<SVGElement>("[data-preview-access-icon]")) {
           const wrapper = document.createElement("span");
           wrapper.innerHTML = accessIconMarkup[mode] ?? accessIconMarkup["full-access"];
           const nextIcon = wrapper.firstElementChild;
@@ -1571,7 +1558,8 @@ const previewTurns: Record<string, PreviewTurn[]> = {
           return null;
         }
 
-        return preview.querySelector<HTMLElement>(`[data-preview-label="${CSS.escape(target)}"]`)?.textContent?.trim() ?? null;
+        const scope = getActiveView() ?? preview;
+        return scope.querySelector<HTMLElement>(`[data-preview-label="${CSS.escape(target)}"]`)?.textContent?.trim() ?? null;
       };
 
       const providerIconMarkup: Record<string, string> = {
