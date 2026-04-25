@@ -1591,7 +1591,8 @@ const previewTurns: Record<string, PreviewTurn[]> = {
       const updateComposerProviderIcon = (providerId: string, iconMarkup: string) => {
         previewElement.dataset.selectedModelProvider = providerId;
 
-        for (const existingIcon of preview.querySelectorAll<SVGElement>("[data-preview-provider-icon]")) {
+        const scope = getActiveView() ?? preview;
+        for (const existingIcon of scope.querySelectorAll<SVGElement>("[data-preview-provider-icon]")) {
           const wrapper = document.createElement("span");
           wrapper.innerHTML = iconMarkup;
           const nextIcon = wrapper.firstElementChild;
@@ -2134,6 +2135,10 @@ const previewTurns: Record<string, PreviewTurn[]> = {
         const scrollBottomTrigger = element?.closest<HTMLElement>("[data-preview-scroll-bottom]");
         const projectToggle = element?.closest<HTMLElement>("[data-preview-project-toggle]");
         const sortTrigger = element?.closest<HTMLElement>("[data-preview-sort]");
+        if (popover && !popover.hidden && !menuTrigger && (!element || !popover.contains(element))) {
+          closeTransient();
+        }
+
         if (scrollBottomTrigger && preview.contains(scrollBottomTrigger)) {
           const threadId = scrollBottomTrigger.closest<HTMLElement>("[data-preview-view]")?.dataset.previewThreadId;
           if (threadId) scrollTimelineToBottom(threadId);
