@@ -1925,8 +1925,9 @@ const previewTurns: Record<string, PreviewTurn[]> = {
       };
 
       const openMenu = (menuName: string, trigger: HTMLElement) => {
+        const customMenuNames = new Set(["model", "effort", "access", "worktree", "branch"]);
         const menu = previewMenuOptions[menuName];
-        if (!menu || !popover || !popoverTitle || !popoverItems) {
+        if ((!menu && !customMenuNames.has(menuName)) || !popover || !popoverTitle || !popoverItems) {
           return;
         }
 
@@ -1943,8 +1944,8 @@ const previewTurns: Record<string, PreviewTurn[]> = {
 
         popover.dataset.previewOpenMenu = menuName;
         openMenuTrigger = anchorElement;
-        popoverTitle.textContent = menu.title;
-        const menuWidth = menu.width ?? 238;
+        popoverTitle.textContent = menu?.title ?? "";
+        const menuWidth = menu?.width ?? 238;
         popover.style.width = `${menuWidth}px`;
         if (menuName === "model") {
           popoverTitle.textContent = "";
@@ -1964,7 +1965,7 @@ const previewTurns: Record<string, PreviewTurn[]> = {
           renderBranchMenu();
         } else {
           popoverItems.replaceChildren(
-            ...menu.sections.flatMap((section) => {
+            ...(menu?.sections ?? []).flatMap((section) => {
               const nodes: HTMLElement[] = [];
               if (section.label) {
                 const label = document.createElement("div");
