@@ -182,7 +182,6 @@ import AppPreview from "../components/AppPreview.astro";
     margin: 0 auto;
     width: min(95vw, 1400px);
     opacity: 0;
-    transform: scale(0.98);
     animation: screenshot-in 1s ease-out 0.15s forwards;
   }
 
@@ -194,11 +193,9 @@ import AppPreview from "../components/AppPreview.astro";
   @keyframes screenshot-in {
     from {
       opacity: 0;
-      transform: scale(0.98);
     }
     to {
       opacity: 1;
-      transform: scale(1);
     }
   }
 
