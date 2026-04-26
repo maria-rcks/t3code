@@ -1159,7 +1159,7 @@ const formatPreviewToolCall = (
           const row = document.createElement("button");
           row.type = "button";
           row.className = "app-preview__model-command-row";
-          row.dataset.selected = String(model === selectedModel || (selectedModel === "GPT-5.4" && model === "GPT-5.4"));
+          row.dataset.selected = String(model === selectedModel);
           row.dataset.provider = provider.id;
           row.dataset.searchable = `${model} ${provider.label}`.toLowerCase();
           const providerIcon = providerIconMarkup[provider.icon] ?? providerIconMarkup.openai;
