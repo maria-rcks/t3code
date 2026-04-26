@@ -1656,7 +1656,8 @@ const previewTurns: Record<string, PreviewTurn[]> = {
           const favoriteKey = modelFavoriteKey(provider.id, model);
           const isFavorite = favoriteModelKeys.has(favoriteKey);
           row.dataset.favorite = String(isFavorite);
-          row.innerHTML = `<span class="app-preview__model-favorite" role="button" tabindex="0" aria-label="${isFavorite ? "Unstar" : "Star"} ${model}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.5 2.92 5.92 6.53.95-4.72 4.6 1.11 6.5L12 17.4l-5.84 3.07 1.11-6.5-4.72-4.6 6.53-.95L12 2.5Z" fill="${isFavorite ? "currentColor" : "none"}" stroke="currentColor" stroke-linejoin="round" stroke-width="1.8"></path></svg></span><span class="app-preview__model-row-copy"><strong>${model}</strong><small>${providerIcon}<span>${provider.label}</span></small></span><kbd>⌘${index + 1}</kbd>`;
+          const shortcutMarkup = index < 9 ? `<kbd>⌘${index + 1}</kbd>` : "";
+          row.innerHTML = `<span class="app-preview__model-favorite" role="button" tabindex="0" aria-label="${isFavorite ? "Unstar" : "Star"} ${model}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.5 2.92 5.92 6.53.95-4.72 4.6 1.11 6.5L12 17.4l-5.84 3.07 1.11-6.5-4.72-4.6 6.53-.95L12 2.5Z" fill="${isFavorite ? "currentColor" : "none"}" stroke="currentColor" stroke-linejoin="round" stroke-width="1.8"></path></svg></span><span class="app-preview__model-row-copy"><strong>${model}</strong><small>${providerIcon}<span>${provider.label}</span></small></span>${shortcutMarkup}`;
           const favoriteButton = row.querySelector<HTMLElement>(".app-preview__model-favorite");
           const toggleFavorite = () => {
             if (favoriteModelKeys.has(favoriteKey)) {
@@ -2121,14 +2122,25 @@ const previewTurns: Record<string, PreviewTurn[]> = {
         setActiveThread(threadId);
       });
 
-      document.addEventListener("keydown", (event: KeyboardEvent) => {
-        if (!(event.target instanceof Node) || !preview.contains(event.target)) {
+      document.addEventListener("click", (event: MouseEvent) => {
+        if (!popover || popover.hidden) {
           return;
         }
 
-        if (event.key === "Escape") {
-          closeTransient();
+        const target = event.target instanceof Node ? event.target : null;
+        if (!target || preview.contains(target)) {
+          return;
         }
+
+        closeTransient();
+      });
+
+      document.addEventListener("keydown", (event: KeyboardEvent) => {
+        if (!popover || popover.hidden || event.key !== "Escape") {
+          return;
+        }
+
+        closeTransient();
       });
     }
   };
