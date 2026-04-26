@@ -2009,7 +2009,6 @@ const previewTurns: Record<string, PreviewTurn[]> = {
           );
         }
 
-        const previewRect = preview.getBoundingClientRect();
         const triggerRect = anchorElement.getBoundingClientRect();
         const actualMenuWidth =
           menuName === "model" ? 440
@@ -2020,15 +2019,17 @@ const previewTurns: Record<string, PreviewTurn[]> = {
           : menuName === "push" ? 176
           : menuName === "open" ? 144
           : menuWidth;
-        const maxLeft = Math.max(8, previewRect.width - actualMenuWidth - 8);
+        const maxLeft = Math.max(8, window.innerWidth - actualMenuWidth - 8);
         popover.hidden = false;
         popover.style.visibility = "hidden";
         const popoverHeight = popover.offsetHeight;
-        popover.style.left = `${Math.max(8, Math.min(triggerRect.left - previewRect.left, maxLeft))}px`;
-        popover.style.top =
+        const preferredTop =
           menuName === "model" || menuName === "effort" || menuName === "access" || menuName === "worktree" || menuName === "branch" ?
-            `${Math.max(8, triggerRect.top - previewRect.top - popoverHeight - 8)}px`
-          : `${Math.min(triggerRect.bottom - previewRect.top + 6, previewRect.height - 190)}px`;
+            triggerRect.top - popoverHeight - 8
+          : triggerRect.bottom + 6;
+        const maxTop = Math.max(8, window.innerHeight - popoverHeight - 8);
+        popover.style.left = `${Math.max(8, Math.min(triggerRect.left, maxLeft))}px`;
+        popover.style.top = `${Math.max(8, Math.min(preferredTop, maxTop))}px`;
         popover.style.visibility = "";
       };
 
@@ -3365,7 +3366,7 @@ const previewTurns: Record<string, PreviewTurn[]> = {
   }
 
   .app-preview__popover {
-    position: absolute;
+    position: fixed;
     z-index: 8;
     width: 224px;
     padding: 4px;
