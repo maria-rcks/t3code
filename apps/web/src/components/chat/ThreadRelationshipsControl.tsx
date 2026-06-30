@@ -35,6 +35,7 @@ import {
   THREAD_DETAILS_PANEL_LINK_SPLIT_GROUP_CLASS,
   THREAD_DETAILS_PANEL_LINK_SPLIT_PRIMARY_CLASS,
   THREAD_DETAILS_PANEL_LINK_SPLIT_SECONDARY_CLASS,
+  THREAD_DETAILS_PANEL_MENU_POPUP_CLASS,
   THREAD_DETAILS_PANEL_SPLIT_SEPARATOR_CLASS,
 } from "./threadDetailsPanelStyles";
 
@@ -191,7 +192,7 @@ export function ThreadRelationshipsPanel(props: {
               >
                 <MoreHorizontalIcon className="size-3.5" />
               </MenuTrigger>
-              <MenuPopup align="end">
+              <MenuPopup align="end" className={THREAD_DETAILS_PANEL_MENU_POPUP_CLASS}>
                 <MenuItem onClick={() => void detach()}>
                   <UnplugIcon className="size-3.5" />
                   Disconnect agent session

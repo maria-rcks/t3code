@@ -4,6 +4,7 @@ import { cn } from "../lib/utils";
 import {
   THREAD_DETAILS_PANEL_ICON_CLASS,
   THREAD_DETAILS_PANEL_LOCKED_ROW_CLASS,
+  THREAD_DETAILS_PANEL_ROW_POPUP_CLASS,
   THREAD_DETAILS_PANEL_SELECT_ROW_CLASS,
 } from "./chat/threadDetailsPanelStyles";
 
@@ -137,7 +138,14 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
         </TooltipTrigger>
         {workspacePath ? <TooltipPopup side="left">{workspacePath}</TooltipPopup> : null}
       </Tooltip>
-      <SelectPopup>
+      <SelectPopup
+        {...(displayMode === "panel"
+          ? {
+              alignItemWithTrigger: false,
+              popupClassName: THREAD_DETAILS_PANEL_ROW_POPUP_CLASS,
+            }
+          : {})}
+      >
         <SelectGroup>
           <SelectGroupLabel>Workspace</SelectGroupLabel>
           <SelectItem value="local">
