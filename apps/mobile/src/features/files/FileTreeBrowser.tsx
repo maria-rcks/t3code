@@ -1,5 +1,4 @@
 import type { ProjectEntry } from "@t3tools/contracts";
-import { SymbolView } from "expo-symbols";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -12,6 +11,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/AppText";
+import { SymbolView } from "../../components/AppSymbol";
 import { PierreEntryIcon } from "../../components/PierreEntryIcon";
 import { cn } from "../../lib/cn";
 import { useThemeColor } from "../../lib/useThemeColor";

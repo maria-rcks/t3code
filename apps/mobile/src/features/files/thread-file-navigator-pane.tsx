@@ -1,5 +1,4 @@
 import type { EnvironmentId, ProjectListEntriesResult } from "@t3tools/contracts";
-import { SymbolView } from "expo-symbols";
 import { useCallback, useMemo, useState, type ComponentProps } from "react";
 import { Platform, Pressable, useColorScheme, View, type NativeSyntheticEvent } from "react-native";
 import {
@@ -10,6 +9,7 @@ import {
   SearchBar,
 } from "react-native-screens";
 
+import { SymbolView } from "../../components/AppSymbol";
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
 import { nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
 import { useThemeColor } from "../../lib/useThemeColor";

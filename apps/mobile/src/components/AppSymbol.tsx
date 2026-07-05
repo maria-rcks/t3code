@@ -27,6 +27,7 @@ import {
   IconFileText,
   IconFilter,
   IconFolder,
+  IconFolderOpen,
   IconFolderPlus,
   IconGitBranch,
   IconGitMerge,
@@ -54,6 +55,11 @@ import {
 } from "@tabler/icons-react-native";
 import { Platform } from "react-native";
 import { SymbolView as ExpoSymbolView, type SFSymbol, type SymbolViewProps } from "expo-symbols";
+
+const ANDROID_ICON_BY_ANDROID_NAME: Record<string, Icon> = {
+  folder: IconFolder,
+  folder_open: IconFolderOpen,
+};
 
 const ANDROID_ICON_BY_SF_SYMBOL: Partial<Record<SFSymbol, Icon>> = {
   "arrow.branch": IconGitBranch,
@@ -122,8 +128,11 @@ export function SymbolView(props: SymbolViewProps) {
     return <ExpoSymbolView {...props} />;
   }
 
+  const androidName = typeof props.name === "string" ? undefined : props.name.android;
   const sfSymbol = typeof props.name === "string" ? props.name : props.name.ios;
-  const AndroidIcon = sfSymbol ? ANDROID_ICON_BY_SF_SYMBOL[sfSymbol] : undefined;
+  const AndroidIcon =
+    (androidName ? ANDROID_ICON_BY_ANDROID_NAME[androidName] : undefined) ??
+    (sfSymbol ? ANDROID_ICON_BY_SF_SYMBOL[sfSymbol] : undefined);
 
   if (!AndroidIcon) {
     return props.fallback ?? null;
