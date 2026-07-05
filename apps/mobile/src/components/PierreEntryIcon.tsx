@@ -1,5 +1,6 @@
-import { SymbolView } from "expo-symbols";
 import { Image, type ImageStyle, type StyleProp } from "react-native";
+
+import { SymbolView } from "./AppSymbol";
 
 import { markdownFileIconSource } from "@t3tools/mobile-markdown-text/file-icons";
 import { resolveMarkdownFileIcon } from "@t3tools/mobile-markdown-text/links";
