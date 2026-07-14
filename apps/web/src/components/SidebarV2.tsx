@@ -42,7 +42,14 @@ import { readLocalApi } from "../localApi";
 import { useUiStateStore } from "../uiStateStore";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { useThreadActions } from "../hooks/useThreadActions";
-import { useNewThreadHandler } from "../hooks/useHandleNewThread";
+import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useOpenAddProjectCommandPalette } from "../commandPaletteContext";
+import { onOpenNewThreadPicker } from "../newThreadPickerBus";
+import { Dialog, DialogHeader, DialogPopup, DialogTitle } from "./ui/dialog";
+import {
+  startNewThreadFromContext,
+  startNewThreadInProjectFromContext,
+} from "../lib/chatThreadActions";
 import { useClientSettings } from "../hooks/useSettings";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useProjects, useThreadShells } from "../state/entities";
@@ -82,7 +89,16 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 // Row heights are fixed per variant so the list only changes shape at
 // lifecycle transitions (settle/unsettle), never from streaming updates.
-const RAIL_CLASS_BY_STATUS: Partial<Record<SidebarV2Status, string>> = {
+// Cards are bordered islands (the mock's language): the border carries the
+// state color, faint enough to read as a glow rather than a box.
+const CARD_BORDER_BY_STATUS: Record<SidebarV2Status, string> = {
+  approval: "border-amber-500/45 dark:border-amber-300/35",
+  working: "border-sky-500/40 dark:border-sky-300/30",
+  failed: "border-red-500/45 dark:border-red-400/35",
+  ready: "border-border",
+};
+
+const STATUS_DOT_BY_STATUS: Partial<Record<SidebarV2Status, string>> = {
   approval: "bg-amber-500 dark:bg-amber-300/90",
   working: "bg-sky-500 dark:bg-sky-300/80 animate-pulse",
   failed: "bg-red-500 dark:bg-red-400/90",
@@ -91,7 +107,7 @@ const RAIL_CLASS_BY_STATUS: Partial<Record<SidebarV2Status, string>> = {
 const STATUS_WORD_BY_STATUS: Partial<
   Record<SidebarV2Status, { label: string; className: string }>
 > = {
-  approval: { label: "Approval", className: "text-amber-600 dark:text-amber-300/90" },
+  approval: { label: "Needs approval", className: "text-amber-600 dark:text-amber-300/90" },
   working: { label: "Working", className: "text-sky-600 dark:text-sky-300/80" },
   failed: { label: "Failed", className: "text-red-600 dark:text-red-400/90" },
 };
@@ -122,6 +138,13 @@ function threadTimeLabel(thread: SidebarThreadSummary, status: SidebarV2Status):
 const SidebarV2Row = memo(function SidebarV2Row(props: {
   thread: SidebarThreadSummary;
   variant: "card" | "slim";
+  // Slim rows are either settled (action: un-settle) or merely quiet
+  // (seen Ready threads — action: settle).
+  variantAction: "settle" | "unsettle";
+  // Draws a hairline above the first quiet row after the card block, so the
+  // active island and the history tail read as separate zones (mock's
+  // SETTLED rule) without a labeled section header.
+  showQuietDivider?: boolean;
   isActive: boolean;
   jumpLabel: string | null;
   currentEnvironmentId: string | null;
@@ -142,6 +165,7 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
     onUnsettle,
     thread,
     variant,
+    variantAction,
   } = props;
   const threadRef = useMemo(
     () => scopeThreadRef(thread.environmentId, thread.id),
@@ -253,135 +277,180 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
     return (
       <li
         data-thread-item
-        className="list-none [content-visibility:auto] [contain-intrinsic-size:auto_28px]"
+        className="list-none [content-visibility:auto] [contain-intrinsic-size:auto_34px]"
       >
+        {props.showQuietDivider ? (
+          <div aria-hidden className="mx-2.5 mb-1 mt-2 h-px bg-border/60" />
+        ) : null}
         <div
           role="button"
           tabIndex={0}
           data-testid="sidebar-v2-row-slim"
-          className={cn(rowClassName, "flex h-7 items-center gap-2 px-2")}
+          className={cn(rowClassName, "flex h-[34px] items-center gap-2.5 rounded-lg px-2.5")}
           onClick={handleClick}
           onContextMenu={handleContextMenu}
         >
           {favicon}
-          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-[13px]",
+              isUnread ? "font-medium text-foreground" : "text-muted-foreground",
+            )}
+          >
             {thread.title}
           </span>
           {prBadge}
-          <button
-            type="button"
-            aria-label="Un-settle thread"
-            onClick={handleUnsettleClick}
-            className="hidden shrink-0 items-center gap-1 rounded border border-border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground group-hover/v2-row:inline-flex"
-          >
-            <Undo2Icon className="size-2.5" />
-          </button>
-          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/40 group-hover/v2-row:hidden">
-            {props.jumpLabel ??
-              formatRelativeTimeLabel(thread.latestUserMessageAt ?? thread.updatedAt)}
+          <span className="relative flex h-6 w-14 shrink-0 items-center justify-end">
+            <span className="text-[11px] tabular-nums text-muted-foreground/40 transition-opacity group-hover/v2-row:opacity-0">
+              {props.jumpLabel ??
+                formatRelativeTimeLabel(thread.latestUserMessageAt ?? thread.updatedAt)}
+            </span>
+            {variantAction === "unsettle" ? (
+              <button
+                type="button"
+                aria-label="Un-settle thread"
+                onClick={handleUnsettleClick}
+                className="absolute inset-y-0 right-0 inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover/v2-row:opacity-100"
+              >
+                <Undo2Icon className="size-3" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                aria-label="Settle thread"
+                onClick={handleSettleClick}
+                className="absolute inset-y-0 right-0 inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover/v2-row:opacity-100"
+              >
+                <CheckIcon className="size-3" />
+              </button>
+            )}
           </span>
         </div>
       </li>
     );
   }
 
-  const rail = RAIL_CLASS_BY_STATUS[status];
+  const statusDot = STATUS_DOT_BY_STATUS[status];
   const statusWord = STATUS_WORD_BY_STATUS[status];
   const diff = latestTurnDiff(thread);
+  const workingTimer =
+    status === "working" && thread.latestTurn?.startedAt
+      ? formatElapsedDurationLabel(thread.latestTurn.startedAt)
+      : null;
 
   return (
     <li
       data-thread-item
-      className="list-none [content-visibility:auto] [contain-intrinsic-size:auto_52px]"
+      className="list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_74px]"
     >
       <div
         role="button"
         tabIndex={0}
         data-testid="sidebar-v2-row-card"
-        className={cn(rowClassName, "px-2 py-1.5", rail && "pl-3")}
+        className={cn(
+          "group/v2-row relative w-full cursor-pointer select-none rounded-xl border bg-card/60 px-3 py-2.5 text-left transition-colors",
+          CARD_BORDER_BY_STATUS[status],
+          props.isActive
+            ? "bg-accent/70 dark:bg-accent/40"
+            : isSelected
+              ? "bg-primary/12 dark:bg-primary/18"
+              : "hover:bg-accent/50 dark:hover:bg-accent/30",
+        )}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
-        {rail ? (
-          <span
-            aria-hidden
-            className={cn("absolute bottom-1.5 left-1 top-1.5 w-0.5 rounded-full", rail)}
-          />
-        ) : null}
-        <div className="flex items-center gap-2">
-          {favicon}
+        <div className="flex items-center gap-2.5">
+          {statusDot ? (
+            <span aria-hidden className={cn("size-2 shrink-0 rounded-full", statusDot)} />
+          ) : (
+            favicon
+          )}
           <span
             className={cn(
-              "min-w-0 flex-1 truncate text-xs",
-              isUnread ? "font-semibold text-foreground" : "text-foreground/80",
+              "min-w-0 flex-1 truncate text-[13px]",
+              isUnread ? "font-semibold text-foreground" : "font-medium text-foreground/85",
             )}
           >
             {thread.title}
           </span>
           {diff ? (
-            <span className="shrink-0 font-mono text-[10px]">
+            <span className="shrink-0 font-mono text-[11px]">
               <span className="text-emerald-600 dark:text-emerald-400">+{diff.insertions}</span>{" "}
               <span className="text-red-600 dark:text-red-400">−{diff.deletions}</span>
             </span>
           ) : null}
-          <button
-            type="button"
-            aria-label="Settle thread"
-            onClick={handleSettleClick}
-            className="hidden shrink-0 items-center gap-1 rounded border border-border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground group-hover/v2-row:inline-flex"
-          >
-            <CheckIcon className="size-2.5" />
-            Settle
-          </button>
-          <span
-            className={cn(
-              "shrink-0 text-[10px] tabular-nums group-hover/v2-row:hidden",
-              status === "approval"
-                ? "text-amber-600 dark:text-amber-300/90"
-                : "text-muted-foreground/40",
-            )}
-          >
-            {props.jumpLabel ?? threadTimeLabel(thread, status)}
+          <span className="relative flex h-6 w-16 shrink-0 items-center justify-end">
+            <span
+              className={cn(
+                "font-mono text-[11px] tabular-nums transition-opacity group-hover/v2-row:opacity-0",
+                status === "approval"
+                  ? "text-amber-600 dark:text-amber-300/90"
+                  : "text-muted-foreground/50",
+              )}
+            >
+              {props.jumpLabel ?? workingTimer ?? threadTimeLabel(thread, status)}
+            </span>
+            <button
+              type="button"
+              aria-label="Settle thread"
+              onClick={handleSettleClick}
+              className="absolute inset-y-0 right-0 inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover/v2-row:opacity-100"
+            >
+              <CheckIcon className="size-3" />
+              Settle
+            </button>
           </span>
         </div>
-        <div className="mt-0.5 flex items-center gap-2 pl-6 text-[10px] text-muted-foreground/60">
+        <div className="mt-1.5 flex items-center gap-2 pl-[18px] text-[11px] text-muted-foreground/60">
           {statusWord ? (
-            <span className={cn("font-semibold", statusWord.className)}>{statusWord.label}</span>
+            <span className={cn("shrink-0 font-medium", statusWord.className)}>
+              {statusWord.label}
+            </span>
           ) : null}
           {status === "failed" && thread.session?.lastError ? (
             <span className="min-w-0 truncate text-red-600/80 dark:text-red-400/80">
               {thread.session.lastError}
             </span>
-          ) : null}
-          {thread.branch ? (
-            <span className="min-w-0 truncate font-mono">{thread.branch}</span>
-          ) : null}
-          {prBadge}
-          <span className="inline-flex shrink-0 items-center gap-1 font-mono">
+          ) : (
+            <>
+              {thread.branch ? (
+                <span className="min-w-0 truncate font-mono text-muted-foreground/50">
+                  {thread.branch}
+                </span>
+              ) : null}
+              {prBadge}
+            </>
+          )}
+          <span className="ml-auto inline-flex shrink-0 items-center gap-1.5">
             {driverKind ? (
-              <ProviderInstanceIcon
-                driverKind={driverKind}
-                displayName={thread.session?.providerName ?? modelInstanceId}
-                iconClassName="size-2.5"
-              />
+              <Tooltip>
+                <TooltipTrigger
+                  render={<span className="inline-flex shrink-0 items-center opacity-70" />}
+                >
+                  <ProviderInstanceIcon
+                    driverKind={driverKind}
+                    displayName={thread.session?.providerName ?? modelInstanceId}
+                    iconClassName="size-3"
+                  />
+                </TooltipTrigger>
+                <TooltipPopup side="top">{thread.modelSelection.model}</TooltipPopup>
+              </Tooltip>
             ) : null}
-            {thread.modelSelection.model}
+            {isRemote ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="inline-flex shrink-0 items-center text-muted-foreground/50" />
+                  }
+                >
+                  <CloudIcon className="size-3" />
+                </TooltipTrigger>
+                <TooltipPopup side="top">
+                  Running on {props.environmentLabel ?? "a remote environment"}
+                </TooltipPopup>
+              </Tooltip>
+            ) : null}
           </span>
-          {isRemote ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground/50" />
-                }
-              >
-                <CloudIcon className="size-2.5" />
-                {props.environmentLabel ?? "Remote"}
-              </TooltipTrigger>
-              <TooltipPopup side="top">
-                Running on {props.environmentLabel ?? "a remote environment"}
-              </TooltipPopup>
-            </Tooltip>
-          ) : null}
         </div>
       </div>
     </li>
@@ -406,7 +475,8 @@ export default function SidebarV2() {
   const autoSettleAfterDays = useClientSettings((s) => s.sidebarAutoSettleAfterDays);
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const { settleThread, unsettleThread, archiveThread, deleteThread } = useThreadActions();
-  const handleNewThread = useNewThreadHandler();
+  const newThreadContext = useHandleNewThread();
+  const openAddProjectCommandPalette = useOpenAddProjectCommandPalette();
   const { environments } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
@@ -480,9 +550,29 @@ export default function SidebarV2() {
     [],
   );
 
+  // Project scope: chips above the list. Scoping filters the list AND
+  // becomes the new-thread target — one visible control doing both jobs the
+  // old per-project headers did.
+  const [projectScopeKey, setProjectScopeKey] = useState<string | null>(null);
+  const scopedProject = useMemo(
+    () =>
+      projectScopeKey === null
+        ? null
+        : (projects.find(
+            (project) => `${project.environmentId}:${project.id}` === projectScopeKey,
+          ) ?? null),
+    [projectScopeKey, projects],
+  );
+
   const { activeThreads, settledThreads } = useMemo(() => {
     const now = `${nowMinute}:00.000Z`;
-    const visible = threads.filter((thread) => thread.archivedAt === null);
+    const visible = threads.filter(
+      (thread) =>
+        thread.archivedAt === null &&
+        (scopedProject === null ||
+          (thread.environmentId === scopedProject.environmentId &&
+            thread.projectId === scopedProject.id)),
+    );
     const active: EnvironmentThreadShell[] = [];
     const settled: EnvironmentThreadShell[] = [];
     for (const thread of visible) {
@@ -502,7 +592,7 @@ export default function SidebarV2() {
           Date.parse(left.latestUserMessageAt ?? left.updatedAt),
       ),
     };
-  }, [autoSettleAfterDays, changeRequestStateByKey, nowMinute, threads]);
+  }, [autoSettleAfterDays, changeRequestStateByKey, nowMinute, scopedProject, threads]);
 
   const orderedThreads = useMemo(
     () => [...activeThreads, ...settledThreads],
@@ -884,12 +974,77 @@ export default function SidebarV2() {
     autoAnimate(node, { duration: 150, easing: "ease-out" });
   }, []);
 
+  // New thread defaults to the project you're in (active thread's project,
+  // falling back to the top project) — same resolution the command palette
+  // uses. The chevron menu is the explicit project picker the flat list no
+  // longer gets from per-project headers.
+  const [newThreadPickerOpen, setNewThreadPickerOpen] = useState(false);
+  // chat.new (mod+shift+o / mod+n) is handled by the _chat route layout; in
+  // v2 with multiple projects it opens this picker via the event bus.
+  useEffect(() => onOpenNewThreadPicker(() => setNewThreadPickerOpen(true)), []);
   const handleNewThreadClick = useCallback(() => {
-    const firstProject = projects[0];
-    if (!firstProject) return;
-    if (isMobile) setOpenMobile(false);
-    void handleNewThread(scopeProjectRef(firstProject.environmentId, firstProject.id));
-  }, [handleNewThread, isMobile, projects, setOpenMobile]);
+    // One project: nothing to pick, create immediately.
+    if (projects.length <= 1) {
+      if (isMobile) setOpenMobile(false);
+      void startNewThreadFromContext({
+        activeDraftThread: newThreadContext.activeDraftThread,
+        activeThread: newThreadContext.activeThread ?? undefined,
+        defaultProjectRef: newThreadContext.defaultProjectRef,
+        handleNewThread: newThreadContext.handleNewThread,
+      });
+      return;
+    }
+    setNewThreadPickerOpen(true);
+  }, [isMobile, newThreadContext, projects.length, setOpenMobile]);
+  const createThreadInProject = useCallback(
+    (environmentId: (typeof projects)[number]["environmentId"], projectId: string) => {
+      setNewThreadPickerOpen(false);
+      if (isMobile) setOpenMobile(false);
+      const project = projects.find(
+        (candidate) => candidate.environmentId === environmentId && candidate.id === projectId,
+      );
+      if (!project) return;
+      void startNewThreadInProjectFromContext(
+        {
+          activeDraftThread: newThreadContext.activeDraftThread,
+          activeThread: newThreadContext.activeThread ?? undefined,
+          defaultProjectRef: newThreadContext.defaultProjectRef,
+          handleNewThread: newThreadContext.handleNewThread,
+        },
+        scopeProjectRef(project.environmentId, project.id),
+      );
+    },
+    [isMobile, newThreadContext, projects, setOpenMobile],
+  );
+  const activeProjectRef = (() => {
+    const activeThread = routeThreadKey ? threadByKey.get(routeThreadKey) : null;
+    return activeThread
+      ? scopeProjectRef(activeThread.environmentId, activeThread.projectId)
+      : null;
+  })();
+  const newThreadTargetRef = scopedProject
+    ? scopeProjectRef(scopedProject.environmentId, scopedProject.id)
+    : (activeProjectRef ?? newThreadContext.defaultProjectRef);
+  const newThreadTargetProject = newThreadTargetRef
+    ? (projects.find(
+        (project) =>
+          project.environmentId === newThreadTargetRef.environmentId &&
+          project.id === newThreadTargetRef.projectId,
+      ) ?? null)
+    : null;
+  // Picker order: the contextual default first (preselected), everything else
+  // after — the common case is Enter/click on the top row.
+  const newThreadPickerProjects = useMemo(() => {
+    if (!newThreadTargetProject) return projects;
+    return [
+      newThreadTargetProject,
+      ...projects.filter(
+        (project) =>
+          project.environmentId !== newThreadTargetProject.environmentId ||
+          project.id !== newThreadTargetProject.id,
+      ),
+    ];
+  }, [newThreadTargetProject, projects]);
 
   const commandPaletteShortcutLabel = shortcutLabelForCommand(keybindings, "commandPalette.toggle");
   const newThreadShortcutLabel = shortcutLabelForCommand(keybindings, "chat.new");
@@ -937,16 +1092,97 @@ export default function SidebarV2() {
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
+        {projects.length > 0 ? (
+          <SidebarGroup className="px-2 pb-1 pt-0.5">
+            <div
+              className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              role="tablist"
+              aria-label="Filter threads by project"
+            >
+              {projects.length > 1 ? (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={projectScopeKey === null}
+                  onClick={() => setProjectScopeKey(null)}
+                  className={cn(
+                    "shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                    projectScopeKey === null
+                      ? "border-foreground/25 bg-accent text-foreground"
+                      : "border-border bg-transparent text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                  )}
+                >
+                  All
+                </button>
+              ) : null}
+              {projects.map((project) => {
+                const scopeKey = `${project.environmentId}:${project.id}`;
+                const isScoped = projectScopeKey === scopeKey;
+                return (
+                  <button
+                    key={scopeKey}
+                    type="button"
+                    role="tab"
+                    aria-selected={isScoped}
+                    onClick={() => setProjectScopeKey(isScoped ? null : scopeKey)}
+                    className={cn(
+                      "flex shrink-0 items-center gap-1.5 rounded-full border py-1 pl-1.5 pr-2.5 text-[11px] font-medium transition-colors",
+                      isScoped
+                        ? "border-foreground/25 bg-accent text-foreground"
+                        : "border-border bg-transparent text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                    )}
+                  >
+                    <ProjectFavicon
+                      environmentId={project.environmentId}
+                      cwd={project.workspaceRoot}
+                      className="size-3.5"
+                    />
+                    <span className="max-w-28 truncate">{project.title}</span>
+                  </button>
+                );
+              })}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label="Add project"
+                      onClick={openAddProjectCommandPalette}
+                      className="flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground/60 transition-colors hover:border-solid hover:bg-accent/60 hover:text-foreground"
+                    />
+                  }
+                >
+                  <PlusIcon className="size-3" />
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">Add project</TooltipPopup>
+              </Tooltip>
+            </div>
+          </SidebarGroup>
+        ) : null}
         <SidebarGroup className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
-          <ul ref={attachListAutoAnimateRef} className="flex flex-col gap-0.5">
-            {orderedThreads.map((thread) => {
+          <ul ref={attachListAutoAnimateRef} className="flex flex-col gap-px">
+            {orderedThreads.map((thread, threadIndex) => {
               const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
               const isSettledRow = settledThreadKeys.has(threadKey);
+              // Settled is the ONLY thing that collapses a row: every
+              // not-settled thread is a full card. Density comes from users
+              // (or the auto rules) actually settling work, not from the
+              // sidebar second-guessing what still matters.
+              const isCard = !isSettledRow;
+              const previousThread = threadIndex > 0 ? orderedThreads[threadIndex - 1] : null;
+              const previousWasCard =
+                previousThread != null &&
+                !settledThreadKeys.has(
+                  scopedThreadKey(scopeThreadRef(previousThread.environmentId, previousThread.id)),
+                );
+              const showQuietDivider = !isCard && previousWasCard;
               return (
                 <SidebarV2Row
+                  showQuietDivider={showQuietDivider}
                   key={threadKey}
                   thread={thread}
-                  variant={isSettledRow ? "slim" : "card"}
+                  variant={isCard ? "card" : "slim"}
+                  variantAction={isSettledRow ? "unsettle" : "settle"}
                   isActive={routeThreadKey === threadKey}
                   jumpLabel={showJumpHints ? (jumpLabelByKey.get(threadKey) ?? null) : null}
                   currentEnvironmentId={primaryEnvironmentId}
@@ -965,14 +1201,111 @@ export default function SidebarV2() {
             })}
           </ul>
           {orderedThreads.length === 0 ? (
-            <div className="px-2 py-6 text-center text-xs text-muted-foreground/60">
-              No threads yet
+            <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
+              {projects.length === 0 ? (
+                <>
+                  <span>No projects yet</span>
+                  <button
+                    type="button"
+                    onClick={openAddProjectCommandPalette}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <PlusIcon className="size-3" />
+                    Add project
+                  </button>
+                </>
+              ) : scopedProject ? (
+                `No threads in ${scopedProject.title} yet`
+              ) : (
+                "No threads yet"
+              )}
             </div>
           ) : null}
         </SidebarGroup>
       </SidebarContent>
       <SidebarSeparator />
       <SidebarChromeFooter />
+      <Dialog open={newThreadPickerOpen} onOpenChange={setNewThreadPickerOpen}>
+        <DialogPopup className="max-w-sm p-0">
+          <DialogHeader className="px-4 pb-2 pt-4">
+            <DialogTitle className="text-sm">New thread in…</DialogTitle>
+          </DialogHeader>
+          <div
+            className="flex flex-col gap-0.5 px-2 pb-3"
+            role="listbox"
+            aria-label="Choose a project for the new thread"
+            onKeyDown={(event) => {
+              if (
+                event.key !== "ArrowDown" &&
+                event.key !== "ArrowUp" &&
+                event.key !== "Home" &&
+                event.key !== "End"
+              ) {
+                return;
+              }
+              const container = event.currentTarget;
+              const options = [...container.querySelectorAll<HTMLButtonElement>("button")];
+              if (options.length === 0) return;
+              const currentIndex = options.findIndex((option) => option === document.activeElement);
+              const nextIndex =
+                event.key === "Home"
+                  ? 0
+                  : event.key === "End"
+                    ? options.length - 1
+                    : event.key === "ArrowDown"
+                      ? (currentIndex + 1) % options.length
+                      : (currentIndex - 1 + options.length) % options.length;
+              event.preventDefault();
+              options[nextIndex]?.focus();
+            }}
+          >
+            {newThreadPickerProjects.map((project, index) => {
+              const isDefault = index === 0 && newThreadTargetProject !== null;
+              return (
+                <button
+                  key={`${project.environmentId}:${project.id}`}
+                  type="button"
+                  autoFocus={isDefault}
+                  onClick={() => createThreadInProject(project.environmentId, project.id)}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
+                    "hover:bg-accent focus:bg-accent focus:outline-none",
+                    isDefault && "bg-accent/50",
+                  )}
+                >
+                  <ProjectFavicon
+                    environmentId={project.environmentId}
+                    cwd={project.workspaceRoot}
+                    className="size-4"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-medium text-foreground">
+                      {project.title}
+                    </span>
+                    <span className="block truncate font-mono text-[10px] text-muted-foreground/60">
+                      {project.workspaceRoot}
+                    </span>
+                  </span>
+                  {isDefault ? (
+                    <Kbd className="h-4 shrink-0 rounded-sm px-1.5 text-[10px]">↵</Kbd>
+                  ) : null}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => {
+                setNewThreadPickerOpen(false);
+                openAddProjectCommandPalette();
+              }}
+              className="mt-1 flex items-center gap-2.5 rounded-lg border border-dashed border-border px-2.5 py-2 text-left text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:bg-accent focus:text-foreground focus:outline-none"
+            >
+              <PlusIcon className="size-4" />
+              Add project
+            </button>
+          </div>
+        </DialogPopup>
+      </Dialog>
     </>
   );
 }
