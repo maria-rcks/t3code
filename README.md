@@ -41,7 +41,6 @@ brew install --cask t3-code
 
 ```bash
 yay -S t3code-bin
-# nightly builds
 yay -S t3code-nightly-bin
 ```
 
