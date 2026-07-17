@@ -41,7 +41,11 @@ brew install --cask t3-code
 
 ```bash
 yay -S t3code-bin
+# nightly builds
+yay -S t3code-nightly-bin
 ```
+
+The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).
 
 ## Some notes
 
