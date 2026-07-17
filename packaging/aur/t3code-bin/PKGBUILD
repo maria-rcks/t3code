@@ -70,7 +70,6 @@ package() {
   install -d "$pkgdir/opt/$pkgname"
   cp -a "$srcdir/squashfs-root/." "$pkgdir/opt/$pkgname/"
 
-  # Preserve upstream execute bits while ensuring the payload stays readable.
   chmod -R a+rX "$pkgdir/opt/$pkgname"
 
   install -Dm755 /dev/stdin "$pkgdir/usr/bin/t3code" << 'EOF'
@@ -100,8 +99,6 @@ EOF
 
   ln -s t3code "$pkgdir/usr/bin/t3-code-desktop"
 
-  # Install the channel-specific icons shipped inside the AppImage so the
-  # installed icon always matches the packaged release.
   local icon size_dir installed_icon=false
   for icon in "$srcdir/squashfs-root/usr/share/icons/hicolor"/*/apps/*.png; do
     [[ -e "$icon" ]] || continue

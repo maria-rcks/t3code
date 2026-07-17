@@ -1,18 +1,6 @@
 #!/usr/bin/env bash
-# Builds and publishes one AUR package from a published GitHub release.
-#
-# Usage: release.sh <package-dir> (packaging/aur/t3code-bin or .../t3code-nightly-bin)
-#
-# Environment:
-#   GH_TOKEN             GitHub token for release lookups (required)
-#   RELEASE_TAG          Release tag to publish; empty = newest matching release
-#   PKGREL               Override pkgrel (default 1; bump to republish a version)
-#   AUR_SSH_PRIVATE_KEY  SSH key for the AUR push; unset = dry run (build only)
-#   UPSTREAM_REPO        Release source repo (default: $GITHUB_REPOSITORY)
-#   AUR_COMMIT_NAME / AUR_COMMIT_EMAIL  Committer identity for the AUR push
-#
-# The stable package only matches vX.Y.Z releases and the nightly package only
-# matches vX.Y.Z-nightly.* prereleases; a non-matching RELEASE_TAG is a no-op.
+# Usage: release.sh <package-dir>
+# See packaging/aur/README.md for the environment variables.
 set -euo pipefail
 
 package_dir="${1:?usage: release.sh <package-dir>}"
@@ -38,8 +26,6 @@ case "$pkgname" in
     exit 1
     ;;
 esac
-
-# --- Resolve the release and its AppImage asset ------------------------------
 
 if [[ -n "${RELEASE_TAG:-}" ]]; then
   release_json="$(gh api "repos/$UPSTREAM_REPO/releases/tags/$RELEASE_TAG")"
@@ -75,7 +61,6 @@ fi
 sha256="$(jq -r '.digest // empty' <<<"$asset_json")"
 sha256="${sha256#sha256:}"
 if [[ -z "$sha256" ]]; then
-  # Old releases predate GitHub's asset digests; hash the download instead.
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
   curl -fL --retry 3 "$(jq -r '.browser_download_url' <<<"$asset_json")" -o "$tmp/appimage"
@@ -83,8 +68,6 @@ if [[ -z "$sha256" ]]; then
 fi
 
 echo "Publishing $pkgname $pkgver (release $tag, sha256 $sha256)"
-
-# --- Patch the PKGBUILD and build ---------------------------------------------
 
 cd "$package_dir"
 sed -Ei \
@@ -96,7 +79,6 @@ sed -Ei \
   PKGBUILD
 cp -f "$repo_root/LICENSE" LICENSE
 
-# makepkg refuses to run as root; hand off to the "builder" user in CI.
 run_makepkg() {
   if [[ "$(id -u)" == 0 ]]; then
     chown -R builder:builder "$package_dir"
@@ -108,8 +90,6 @@ run_makepkg() {
 
 run_makepkg makepkg --printsrcinfo > .SRCINFO
 run_makepkg makepkg -f --nodeps --noconfirm
-
-# --- Push PKGBUILD/.SRCINFO/LICENSE to the AUR --------------------------------
 
 if [[ -z "${AUR_SSH_PRIVATE_KEY:-}" ]]; then
   echo "AUR_SSH_PRIVATE_KEY is not set; skipping AUR push (dry run)."

@@ -1,13 +1,6 @@
 name: Publish AUR packages
 
-# Publishes t3code-bin (stable) and t3code-nightly-bin to the AUR whenever a
-# GitHub release is published. All logic lives in packaging/aur/scripts/release.sh:
-# it matches the release tag to the package's channel, patches the PKGBUILD,
-# test-builds with makepkg, and pushes PKGBUILD/.SRCINFO to the AUR over SSH.
-#
-# Publishing requires the AUR_SSH_PRIVATE_KEY secret (an SSH key authorized on
-# the AUR account maintaining the packages). Without it (for example on forks)
-# the job still test-builds the package as a dry run.
+# See packaging/aur/README.md.
 
 on:
   release:
