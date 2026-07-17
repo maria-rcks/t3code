@@ -1,18 +1,25 @@
-import { DownloadIcon, RotateCwIcon, TriangleAlertIcon, XIcon } from "lucide-react";
+import {
+  CircleCheckIcon,
+  DownloadIcon,
+  LoaderIcon,
+  RotateCwIcon,
+  TriangleAlertIcon,
+  XIcon,
+} from "lucide-react";
 import { useCallback, useState } from "react";
 import { isElectron } from "../../env";
+import {
+  useDesktopUpdateDownload,
+  useDesktopUpdateInstall,
+} from "../../hooks/useDesktopUpdateActions";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
-import { stackedThreadToast, toastManager } from "../ui/toast";
 import {
   getArm64IntelBuildWarningDescription,
-  getDesktopUpdateActionError,
   getDesktopUpdateButtonTooltip,
-  getDesktopUpdateInstallConfirmationMessage,
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
   shouldShowArm64IntelBuildWarning,
   shouldShowDesktopUpdateButton,
-  shouldToastDesktopUpdateActionResult,
 } from "../desktopUpdate.logic";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Separator } from "../ui/separator";
@@ -61,82 +68,29 @@ export function SidebarUpdatePill() {
   const state = useDesktopUpdateState();
   const [dismissed, setDismissed] = useState(false);
 
+  const handleDownload = useDesktopUpdateDownload();
+  const handleInstall = useDesktopUpdateInstall();
+
   const visible = isElectron && shouldShowDesktopUpdateButton(state) && !dismissed;
   const tooltip = state ? getDesktopUpdateButtonTooltip(state) : "Update available";
   const disabled = isDesktopUpdateButtonDisabled(state);
   const action = state ? resolveDesktopUpdateButtonAction(state) : "none";
+  const isDownloaded = state?.status === "downloaded";
 
   const showArm64Warning = isElectron && shouldShowArm64IntelBuildWarning(state);
   const arm64Description =
     state && showArm64Warning ? getArm64IntelBuildWarningDescription(state) : null;
 
   const handleAction = useCallback(() => {
-    const bridge = window.desktopBridge;
-    if (!bridge || !state) return;
     if (disabled || action === "none") return;
-
     if (action === "download") {
-      void bridge
-        .downloadUpdate()
-        .then((result) => {
-          if (result.completed) {
-            toastManager.add({
-              type: "success",
-              title: "Update downloaded",
-              description: "Restart the app from the update button to install it.",
-            });
-          }
-          if (!shouldToastDesktopUpdateActionResult(result)) return;
-          const actionError = getDesktopUpdateActionError(result);
-          if (!actionError) return;
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not download update",
-              description: actionError,
-            }),
-          );
-        })
-        .catch((error) => {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not start update download",
-              description: error instanceof Error ? error.message : "An unexpected error occurred.",
-            }),
-          );
-        });
+      handleDownload();
       return;
     }
-
     if (action === "install") {
-      const confirmed = window.confirm(getDesktopUpdateInstallConfirmationMessage(state));
-      if (!confirmed) return;
-      void bridge
-        .installUpdate()
-        .then((result) => {
-          if (!shouldToastDesktopUpdateActionResult(result)) return;
-          const actionError = getDesktopUpdateActionError(result);
-          if (!actionError) return;
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not install update",
-              description: actionError,
-            }),
-          );
-        })
-        .catch((error) => {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not install update",
-              description: error instanceof Error ? error.message : "An unexpected error occurred.",
-            }),
-          );
-        });
+      handleInstall();
     }
-  }, [action, disabled, state]);
+  }, [action, disabled, handleDownload, handleInstall]);
 
   if (!visible && !showArm64Warning) return null;
 
@@ -162,19 +116,19 @@ export function SidebarUpdatePill() {
                 <button
                   type="button"
                   aria-label={tooltip}
-                  aria-disabled={disabled || undefined}
-                  disabled={disabled}
+                  aria-disabled={disabled || isDownloaded || undefined}
+                  disabled={disabled || isDownloaded}
                   className="update-main relative flex h-full flex-1 items-center gap-2 px-2 enabled:cursor-pointer"
                   onClick={handleAction}
                 >
-                  {action === "install" ? (
+                  {isDownloaded ? (
                     <>
-                      <RotateCwIcon className="size-3.5" />
-                      <span>Restart to update</span>
+                      <CircleCheckIcon className="size-3.5" />
+                      <span>Update ready</span>
                     </>
                   ) : state?.status === "downloading" ? (
                     <>
-                      <DownloadIcon className="size-3.5" />
+                      <LoaderIcon className="size-3.5 animate-spin" />
                       <span>
                         Downloading
                         {typeof state.downloadPercent === "number"
@@ -222,6 +176,23 @@ export function SidebarUpdatePill() {
                 }
               />
               <TooltipPopup side="top">Dismiss until next launch</TooltipPopup>
+            </Tooltip>
+          )}
+          {isDownloaded && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label="Restart to update"
+                    className="relative z-[1] mr-1 inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xs transition-colors hover:bg-primary/90"
+                    onClick={handleInstall}
+                  >
+                    <RotateCwIcon className="size-3.5" />
+                  </button>
+                }
+              />
+              <TooltipPopup side="top">Restart to update</TooltipPopup>
             </Tooltip>
           )}
         </div>
