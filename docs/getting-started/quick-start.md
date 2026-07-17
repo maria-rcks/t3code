@@ -2,20 +2,20 @@
 
 ```bash
 # Development (with hot reload)
-bun run dev
+vp run dev
 
 # Desktop development
-bun run dev:desktop
+vp run dev:desktop
 
 # Desktop development on an isolated port set
-T3CODE_DEV_INSTANCE=feature-xyz bun run dev:desktop
+T3CODE_DEV_INSTANCE=feature-xyz vp run dev:desktop
 
 # Production
-bun run build
-bun run start
+vp run build
+vp run start
 
 # Build a shareable macOS .dmg (arm64 by default)
-bun run dist:desktop:dmg
+vp run dist:desktop:dmg
 
 # Or from any project directory after publishing:
 npx t3

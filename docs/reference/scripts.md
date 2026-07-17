@@ -1,7 +1,7 @@
 # Scripts
 
 - `vp run dev` — Starts contracts, server, and web in watch mode.
-- `vp run dev:server` — Starts just the WebSocket server. The server process runs on Bun (`@effect/platform-bun` + `BunPtyAdapter`), but task running uses `vp run`.
+- `vp run dev:server` — Starts just the WebSocket server (Node.js via `node --watch`).
 - `vp run dev:web` — Starts just the Vite dev server for the web app.
 - Dev commands default `T3CODE_HOME` to `~/.t3` — the same shared home the desktop/production app uses. Override with `--home-dir` (see below) to keep dev state separate.
 - Override server CLI-equivalent flags from root dev commands with `--`, for example:

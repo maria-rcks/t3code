@@ -1,23 +1,31 @@
 # Provider architecture
 
-The web app communicates with the server via WebSocket using a simple JSON-RPC-style protocol:
+The clients (web, desktop, mobile) communicate with the server over WebSocket using Effect RPC.
+The RPC surface is defined schema-first in `packages/contracts/src/rpc.ts` (`WS_METHODS` plus the
+orchestration methods from `ORCHESTRATION_WS_METHODS`), so requests, results, errors, and streamed
+events are all schema-validated at the transport boundary.
 
-- **Request/Response**: `{ id, method, params }` → `{ id, result }` or `{ id, error }`
-- **Push events**: typed envelopes with `channel`, `sequence` (monotonic per connection), and channel-specific `data`
+## Built-in providers
 
-Push channels: `server.welcome`, `server.configUpdated`, `terminal.event`, `orchestration.domainEvent`. Payloads are schema-validated at the transport boundary (`wsTransport.ts`). Decode failures produce structured `WsDecodeDiagnostic` with `code`, `reason`, and path info.
+Providers are implemented as `ProviderDriver`s in `apps/server/src/provider/Drivers/` and
+registered in `builtInDrivers.ts`. The built-in drivers are:
 
-Methods mirror the `NativeApi` interface defined in `@t3tools/contracts`:
+- **Codex** — wraps `codex app-server` (JSON-RPC over stdio)
+- **Claude** — wraps the Claude Code CLI
+- **Cursor** — wraps `cursor-agent` via ACP
+- **Grok** — wraps the Grok CLI via ACP (`grok agent stdio`)
+- **OpenCode** — wraps the OpenCode CLI
 
-- `providers.startSession`, `providers.sendTurn`, `providers.interruptTurn`
-- `providers.respondToRequest`, `providers.stopSession`
-- `shell.openInEditor`, `server.getConfig`
-
-Codex is the only implemented provider. `claudeCode` is reserved in contracts/UI.
+Each driver probes its CLI on `PATH`, reports an availability/auth snapshot, and adapts the
+provider's runtime events into the shared orchestration model.
 
 ## Client transport
 
-`wsTransport.ts` manages connection state: `connecting` → `open` → `reconnecting` → `closed` → `disposed`. Outbound requests are queued while disconnected and flushed on reconnect. Inbound pushes are decoded and validated at the boundary, then cached per channel. Subscribers can opt into `replayLatest` to receive the last push on subscribe.
+`packages/client-runtime` owns the client connection stack: `connection/supervisor.ts` manages
+per-environment connection lifecycle (connect, retry with backoff, reconnect on wakeups), and
+`rpc/client.ts` exposes typed RPC access on top of it. Outbound requests fail fast or wait for a
+live session depending on the call site; inbound payloads are decoded against the contracts
+schemas at the boundary.
 
 ## Server-side orchestration layers
 

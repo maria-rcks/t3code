@@ -1,6 +1,6 @@
 # Architecture
 
-T3 Code runs as a **Node.js WebSocket server** that wraps `codex app-server` (JSON-RPC over stdio) and serves a React web app.
+T3 Code runs as a **Node.js WebSocket server** that wraps coding-agent CLIs (Codex, Claude, Cursor, Grok, OpenCode) and serves a React web app. The diagrams below use Codex (`codex app-server`, JSON-RPC over stdio) as the example provider.
 
 ```
 ┌─────────────────────────────────┐
@@ -19,9 +19,11 @@ T3 Code runs as a **Node.js WebSocket server** that wraps `codex app-server` (JS
 │  CheckpointReactor              │
 │  RuntimeReceiptBus              │
 └──────────┬──────────────────────┘
-           │ JSON-RPC over stdio
+           │ stdio (JSON-RPC / ACP)
 ┌──────────▼──────────────────────┐
-│  codex app-server               │
+│  provider CLIs                  │
+│  codex · claude · cursor-agent  │
+│  grok · opencode                │
 └─────────────────────────────────┘
 ```
 
@@ -31,7 +33,7 @@ T3 Code runs as a **Node.js WebSocket server** that wraps `codex app-server` (JS
 
 - **Server**: `apps/server` is the main coordinator. It serves the web app, accepts WebSocket requests, waits for startup readiness before welcoming clients, and sends all outbound pushes through a single ordered push path.
 
-- **Provider runtime**: `codex app-server` does the actual provider/session work. The server talks to it over JSON-RPC on stdio and translates those runtime events into the app's orchestration model.
+- **Provider runtime**: the provider CLIs (for example `codex app-server`) do the actual provider/session work. The server talks to them over stdio (JSON-RPC or ACP) and translates those runtime events into the app's orchestration model. See [providers.md](./providers.md) for the driver list.
 
 - **Background workers**: Long-running async flows such as runtime ingestion, command reaction, and checkpoint processing run as queue-backed workers. This keeps work ordered, reduces timing races, and gives tests a deterministic way to wait for the system to go idle.
 
@@ -92,7 +94,7 @@ sequenceDiagram
 
 1. A user action in the browser becomes a typed request through `WsTransport` and the browser API layer in `nativeApi`.
 2. `wsServer` decodes that request using the shared WebSocket contracts in `ws.ts` and routes it to the right service.
-3. [`ProviderService`][8] starts or resumes a session and talks to `codex app-server` over JSON-RPC on stdio.
+3. [`ProviderService`][8] starts or resumes a session and talks to the provider CLI (for example `codex app-server` over JSON-RPC on stdio).
 4. Provider-native events are pulled back into the server by [`ProviderRuntimeIngestion`][9], which converts them into orchestration events.
 5. [`OrchestrationEngine`][10] persists those events, updates the read model, and exposes them as domain events.
 6. `wsServer` pushes those updates to the browser through `ServerPushBus` on channels defined in [`orchestration.ts`][11].

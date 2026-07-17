@@ -19,25 +19,35 @@ See the full schema for more details: [`packages/contracts/src/keybindings.ts`](
 
 ```json
 [
+  { "key": "mod+b", "command": "sidebar.toggle" },
   { "key": "mod+j", "command": "terminal.toggle" },
+  { "key": "mod+alt+b", "command": "rightPanel.toggle" },
   { "key": "mod+d", "command": "terminal.split", "when": "terminalFocus" },
+  { "key": "mod+shift+d", "command": "terminal.splitVertical", "when": "terminalFocus" },
   { "key": "mod+n", "command": "terminal.new", "when": "terminalFocus" },
   { "key": "mod+w", "command": "terminal.close", "when": "terminalFocus" },
+  { "key": "mod+d", "command": "diff.toggle", "when": "!terminalFocus" },
   { "key": "mod+shift+j", "command": "preview.toggle" },
   { "key": "mod+r", "command": "preview.refresh", "when": "previewFocus" },
   { "key": "mod+l", "command": "preview.focusUrl", "when": "previewFocus" },
   { "key": "mod+=", "command": "preview.zoomIn", "when": "previewFocus" },
+  { "key": "mod++", "command": "preview.zoomIn", "when": "previewFocus" },
   { "key": "mod+-", "command": "preview.zoomOut", "when": "previewFocus" },
   { "key": "mod+0", "command": "preview.resetZoom", "when": "previewFocus" },
   { "key": "mod+k", "command": "commandPalette.toggle", "when": "!terminalFocus" },
   { "key": "mod+n", "command": "chat.new", "when": "!terminalFocus" },
   { "key": "mod+shift+o", "command": "chat.new", "when": "!terminalFocus" },
   { "key": "mod+shift+n", "command": "chat.newLocal", "when": "!terminalFocus" },
-  { "key": "mod+o", "command": "editor.openFavorite" }
+  { "key": "mod+shift+m", "command": "modelPicker.toggle", "when": "!terminalFocus" },
+  { "key": "mod+o", "command": "editor.openFavorite" },
+  { "key": "mod+shift+[", "command": "thread.previous" },
+  { "key": "mod+shift+]", "command": "thread.next" }
 ]
 ```
 
-For most up to date defaults, see [`DEFAULT_KEYBINDINGS` in `apps/server/src/keybindings.ts`](../../apps/server/src/keybindings.ts)
+Plus `mod+1` … `mod+9` bound to `thread.jump.{n}` (and `modelPicker.jump.{n}` while the model picker is open).
+
+For most up to date defaults, see [`DEFAULT_KEYBINDINGS` in `packages/shared/src/keybindings.ts`](../../packages/shared/src/keybindings.ts)
 
 ## Configuration
 
@@ -53,10 +63,14 @@ Invalid rules are ignored. Invalid config files are ignored. Warnings are logged
 
 ### Available Commands
 
+- `sidebar.toggle`: open/close the sidebar
+- `rightPanel.toggle`: open/close the right panel
 - `terminal.toggle`: open/close terminal drawer
 - `terminal.split`: split terminal (in focused terminal context by default)
+- `terminal.splitVertical`: split terminal vertically (in focused terminal context by default)
 - `terminal.new`: create new terminal (in focused terminal context by default)
 - `terminal.close`: close/kill the focused terminal (in focused terminal context by default)
+- `diff.toggle`: open/close the diff view
 - `preview.toggle`: open/close the in-app browser preview panel (desktop app only)
 - `preview.refresh`: reload the active preview tab (in focused preview context by default)
 - `preview.focusUrl`: focus the URL input of the preview panel (in focused preview context by default)
@@ -67,6 +81,10 @@ Invalid rules are ignored. Invalid config files are ignored. Warnings are logged
 - `chat.new`: create a new chat thread preserving the active thread's branch/worktree state
 - `chat.newLocal`: create a new chat thread for the active project in a new environment (local/worktree determined by app settings (default `local`))
 - `editor.openFavorite`: open current project/worktree in the last-used editor
+- `modelPicker.toggle`: open or close the model picker
+- `modelPicker.jump.{n}`: select the nth model picker entry (`n` from 1 to 9)
+- `thread.previous` / `thread.next`: switch to the previous/next thread
+- `thread.jump.{n}`: jump to the nth thread (`n` from 1 to 9)
 - `script.{id}.run`: run a project script by id (for example `script.test.run`)
 
 ### Key Syntax
