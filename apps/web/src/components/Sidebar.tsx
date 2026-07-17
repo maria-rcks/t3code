@@ -202,7 +202,7 @@ import {
   ThreadStatusPill,
 } from "./Sidebar.logic";
 import { sortThreads } from "../lib/threadSort";
-import { SidebarUpdatePill } from "./sidebar/SidebarUpdatePill";
+import { SidebarUpdateAction } from "./sidebar/SidebarUpdateAction";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { CommandDialogTrigger } from "./ui/command";
@@ -2817,17 +2817,17 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   return (
     <SidebarFooter className="p-2">
       <SidebarProviderUpdatePill />
-      <SidebarUpdatePill />
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton
             size="sm"
-            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+            className="gap-2 py-1.5 ps-2 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
             onClick={handleSettingsClick}
           >
             <SettingsIcon className="size-3.5" />
             <span className="text-xs">Settings</span>
           </SidebarMenuButton>
+          <SidebarUpdateAction />
         </SidebarMenuItem>
       </SidebarMenu>
     </SidebarFooter>
