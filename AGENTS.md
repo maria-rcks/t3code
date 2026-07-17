@@ -8,7 +8,7 @@
 
 ## Project Snapshot
 
-T3 Code is a minimal web GUI for using coding agents like Codex and Claude.
+T3 Code is a minimal web GUI for using coding agents like Codex, Claude, Cursor, Grok, and OpenCode.
 
 This repository is a VERY EARLY WIP. Proposing sweeping changes that improve long-term maintainability is encouraged.
 
@@ -26,11 +26,18 @@ Long term maintainability is a core priority. If you add new functionality, firs
 
 ## Package Roles
 
-- `apps/server`: Node.js WebSocket server. Wraps Codex app-server (JSON-RPC over stdio), serves the React web app, and manages provider sessions.
+- `apps/server`: Node.js WebSocket server (`t3`). Wraps provider CLIs (Codex app-server over JSON-RPC, plus Claude, Cursor, Grok, and OpenCode), serves the React web app, and manages provider sessions.
 - `apps/web`: React/Vite UI. Owns session UX, conversation/event rendering, and client-side state. Connects to the server via WebSocket.
+- `apps/desktop`: Electron shell. Spawns a desktop-scoped `t3` backend process and loads the shared web app.
+- `apps/mobile`: Expo/React Native app. Connects to a paired T3 Code server over the network.
+- `apps/marketing`: Astro marketing site (landing, download, and legal pages).
 - `packages/contracts`: Shared effect/Schema schemas and TypeScript contracts for provider events, WebSocket protocol, and model/session types. Keep this package schema-only — no runtime logic.
 - `packages/shared`: Shared runtime utilities consumed by both server and client applications. Uses explicit subpath exports (e.g. `@t3tools/shared/git`) — no barrel index.
 - `packages/client-runtime`: Shared runtime package for sharing client code across web and mobile.
+- `packages/ssh`: SSH launch/tunneling utilities for desktop-managed remote environments.
+- `packages/tailscale`: Tailscale detection and Serve integration for remote access endpoints.
+- `packages/effect-acp`: Effect-based Agent Client Protocol (ACP) client used by ACP providers.
+- `packages/effect-codex-app-server`: Effect-based client for the Codex app-server JSON-RPC protocol.
 
 ## Reference Repos
 
@@ -47,7 +54,7 @@ agents.
 - Prefer examples and patterns from the vendored source code over generated guesses or web search results.
 - Do not edit files under `.repos/` unless explicitly asked.
 - Do not import from `.repos/`; application code must continue importing from normal package dependencies.
-- Manage vendored subtrees with `bun run sync:repos`; use `bun run sync:repos --repo <id>` to sync one
+- Manage vendored subtrees with `vp run sync:repos`; use `vp run sync:repos --repo <id>` to sync one
   configured repository.
 - When updating a dependency with a configured vendored subtree, sync that subtree in the same change so
   `.repos/` matches the installed dependency version.
