@@ -39,11 +39,11 @@ export const SidebarUpdateAction = memo(function SidebarUpdateAction() {
   }, [action, disabled, handleDownload, handleInstall]);
 
   const icon = isDownloading ? (
-    <LoaderIcon className="size-3.5 animate-spin" />
+    <LoaderIcon className="size-3.5 animate-spin !text-primary" />
   ) : action === "install" ? (
-    <RotateCwIcon className="size-3.5" />
+    <RotateCwIcon className="size-3.5 !text-primary" />
   ) : (
-    <DownloadIcon className="size-3.5" />
+    <DownloadIcon className="size-3.5 !text-primary" />
   );
 
   return (
