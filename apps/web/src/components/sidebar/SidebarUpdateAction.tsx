@@ -53,7 +53,7 @@ export const SidebarUpdateAction = memo(function SidebarUpdateAction() {
           <SidebarMenuAction
             aria-label={tooltip}
             disabled={disabled}
-            className="right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xs transition-colors hover:bg-primary/90 hover:text-primary-foreground disabled:opacity-60"
+            className="right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 !text-primary shadow-xs transition-colors hover:bg-primary/22 hover:!text-primary disabled:opacity-60"
             onClick={handleClick}
           >
             {icon}
