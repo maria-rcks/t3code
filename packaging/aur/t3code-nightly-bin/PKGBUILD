@@ -2,12 +2,12 @@
 # Contributor: maria-rcks
 
 pkgname=t3code-nightly-bin
-pkgver=0.0.29_nightly.20260717.835
+pkgver=0.0.29_nightly.20260717.836
 pkgrel=1
 pkgdesc='T3 Code nightly desktop app (official AppImage repackaged for Arch Linux)'
 arch=('x86_64')
-_upstream_tag='v0.0.29-nightly.20260717.835'
-_upstream_version='0.0.29-nightly.20260717.835'
+_upstream_tag='v0.0.29-nightly.20260717.836'
+_upstream_version='0.0.29-nightly.20260717.836'
 _appimage_name="T3-Code-${_upstream_version}-x86_64.AppImage"
 url='https://t3.codes'
 license=('MIT')
@@ -51,7 +51,7 @@ source=(
   'LICENSE'
 )
 sha256sums=(
-  'b36412e5d141de90837e579f3a09f1721282b8f3aedc3a802fb1723bd1c3019b'
+  '72c3923e33ce386fab68fb68c47fa4a41497579bd43901e8d5cba2e87ce920d2'
   '935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43'
 )
 
@@ -102,39 +102,20 @@ EOF
 
   # Install the channel-specific icons shipped inside the AppImage so the
   # installed icon always matches the packaged release.
-  local icon_root="$srcdir/squashfs-root/usr/share/icons/hicolor"
-  local installed_icon=false
-  local icon size_dir
-  if [[ -d "$icon_root" ]]; then
-    for icon in "$icon_root"/*/apps/*.png; do
-      [[ -e "$icon" ]] || continue
-      size_dir="$(basename "$(dirname "$(dirname "$icon")")")"
-      install -Dm644 "$icon" "$pkgdir/usr/share/icons/hicolor/$size_dir/apps/t3code-nightly.png"
-      ln -sf t3code-nightly.png "$pkgdir/usr/share/icons/hicolor/$size_dir/apps/t3-code-nightly-desktop.png"
-      installed_icon=true
-    done
-  fi
-
-  local root_icon
-  for root_icon in "$srcdir/squashfs-root/t3code.png" "$srcdir/squashfs-root/.DirIcon"; do
-    if [[ -f "$root_icon" ]]; then
-      install -Dm644 "$root_icon" "$pkgdir/usr/share/pixmaps/t3code-nightly.png"
-      ln -sf t3code-nightly.png "$pkgdir/usr/share/pixmaps/t3-code-nightly-desktop.png"
-      if [[ "$installed_icon" == false ]]; then
-        install -Dm644 "$root_icon" \
-          "$pkgdir/usr/share/icons/hicolor/1024x1024/apps/t3code-nightly.png"
-        ln -sf t3code-nightly.png \
-          "$pkgdir/usr/share/icons/hicolor/1024x1024/apps/t3-code-nightly-desktop.png"
-        installed_icon=true
-      fi
-      break
-    fi
+  local icon size_dir installed_icon=false
+  for icon in "$srcdir/squashfs-root/usr/share/icons/hicolor"/*/apps/*.png; do
+    [[ -e "$icon" ]] || continue
+    size_dir="$(basename "$(dirname "$(dirname "$icon")")")"
+    install -Dm644 "$icon" "$pkgdir/usr/share/icons/hicolor/$size_dir/apps/t3code-nightly.png"
+    ln -sf t3code-nightly.png "$pkgdir/usr/share/icons/hicolor/$size_dir/apps/t3-code-nightly-desktop.png"
+    installed_icon=true
   done
-
   if [[ "$installed_icon" == false ]]; then
     echo "No icon found inside the AppImage payload." >&2
     return 1
   fi
+  install -Dm644 "$srcdir/squashfs-root/t3code.png" "$pkgdir/usr/share/pixmaps/t3code-nightly.png"
+  ln -sf t3code-nightly.png "$pkgdir/usr/share/pixmaps/t3-code-nightly-desktop.png"
 
   install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/t3code-nightly.desktop" << 'EOF'
 [Desktop Entry]

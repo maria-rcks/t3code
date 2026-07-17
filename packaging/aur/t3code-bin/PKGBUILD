@@ -102,39 +102,20 @@ EOF
 
   # Install the channel-specific icons shipped inside the AppImage so the
   # installed icon always matches the packaged release.
-  local icon_root="$srcdir/squashfs-root/usr/share/icons/hicolor"
-  local installed_icon=false
-  local icon size_dir
-  if [[ -d "$icon_root" ]]; then
-    for icon in "$icon_root"/*/apps/*.png; do
-      [[ -e "$icon" ]] || continue
-      size_dir="$(basename "$(dirname "$(dirname "$icon")")")"
-      install -Dm644 "$icon" "$pkgdir/usr/share/icons/hicolor/$size_dir/apps/t3code.png"
-      ln -sf t3code.png "$pkgdir/usr/share/icons/hicolor/$size_dir/apps/t3-code-desktop.png"
-      installed_icon=true
-    done
-  fi
-
-  local root_icon
-  for root_icon in "$srcdir/squashfs-root/t3code.png" "$srcdir/squashfs-root/.DirIcon"; do
-    if [[ -f "$root_icon" ]]; then
-      install -Dm644 "$root_icon" "$pkgdir/usr/share/pixmaps/t3code.png"
-      ln -sf t3code.png "$pkgdir/usr/share/pixmaps/t3-code-desktop.png"
-      if [[ "$installed_icon" == false ]]; then
-        install -Dm644 "$root_icon" \
-          "$pkgdir/usr/share/icons/hicolor/1024x1024/apps/t3code.png"
-        ln -sf t3code.png \
-          "$pkgdir/usr/share/icons/hicolor/1024x1024/apps/t3-code-desktop.png"
-        installed_icon=true
-      fi
-      break
-    fi
+  local icon size_dir installed_icon=false
+  for icon in "$srcdir/squashfs-root/usr/share/icons/hicolor"/*/apps/*.png; do
+    [[ -e "$icon" ]] || continue
+    size_dir="$(basename "$(dirname "$(dirname "$icon")")")"
+    install -Dm644 "$icon" "$pkgdir/usr/share/icons/hicolor/$size_dir/apps/t3code.png"
+    ln -sf t3code.png "$pkgdir/usr/share/icons/hicolor/$size_dir/apps/t3-code-desktop.png"
+    installed_icon=true
   done
-
   if [[ "$installed_icon" == false ]]; then
     echo "No icon found inside the AppImage payload." >&2
     return 1
   fi
+  install -Dm644 "$srcdir/squashfs-root/t3code.png" "$pkgdir/usr/share/pixmaps/t3code.png"
+  ln -sf t3code.png "$pkgdir/usr/share/pixmaps/t3-code-desktop.png"
 
   install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/t3code.desktop" << 'EOF'
 [Desktop Entry]

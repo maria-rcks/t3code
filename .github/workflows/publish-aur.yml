@@ -1,14 +1,13 @@
 name: Publish AUR packages
 
 # Publishes t3code-bin (stable) and t3code-nightly-bin to the AUR whenever a
-# GitHub release is published. Each matrix job resolves the release matching
-# its channel, patches its PKGBUILD, test-builds the package with makepkg in an
-# Arch container, and pushes PKGBUILD/.SRCINFO to the AUR over SSH.
+# GitHub release is published. All logic lives in packaging/aur/scripts/release.sh:
+# it matches the release tag to the package's channel, patches the PKGBUILD,
+# test-builds with makepkg, and pushes PKGBUILD/.SRCINFO to the AUR over SSH.
 #
 # Publishing requires the AUR_SSH_PRIVATE_KEY secret (an SSH key authorized on
-# the AUR account maintaining the packages). When the secret is absent (for
-# example on forks) the job still test-builds the package and prepares the
-# payload as a dry run.
+# the AUR account maintaining the packages). Without it (for example on forks)
+# the job still test-builds the package as a dry run.
 
 on:
   release:
@@ -16,179 +15,56 @@ on:
       - published
   workflow_dispatch:
     inputs:
-      channel:
-        description: "Which package(s) to publish"
+      release_tag:
+        description: "Release tag to publish (empty = newest matching release)"
         required: false
-        default: all
-        type: choice
-        options:
-          - all
-          - stable
-          - nightly
+        type: string
       pkgrel:
-        description: "Override pkgrel (for republishing the same upstream version)"
+        description: "pkgrel override (bump to republish the same version)"
         required: false
         type: string
 
 permissions:
   contents: read
 
-env:
-  UPSTREAM_REPO: ${{ vars.UPSTREAM_REPO || github.repository }}
-  AUR_COMMIT_NAME: ${{ vars.AUR_COMMIT_NAME || 't3code-ci' }}
-  AUR_COMMIT_EMAIL: ${{ vars.AUR_COMMIT_EMAIL || 't3code-ci@users.noreply.github.com' }}
-
 jobs:
   publish:
-    name: Build and publish (${{ matrix.package.name }})
-    runs-on: ubuntu-latest
+    name: Build and publish (${{ matrix.package }})
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       max-parallel: 1
       matrix:
         package:
-          - name: t3code-bin
-            channel: stable
-            package_dir: packaging/aur/t3code-bin
-            aur_git_url: ssh://aur@aur.archlinux.org/t3code-bin.git
-            release_prerelease: "false"
-            release_tag_regex: '^v[0-9]+\.[0-9]+\.[0-9]+$'
-            release_version_prefix: "v"
-            asset_regex: '^T3-Code-.*-x86_64\.AppImage$'
-          - name: t3code-nightly-bin
-            channel: nightly
-            package_dir: packaging/aur/t3code-nightly-bin
-            aur_git_url: ssh://aur@aur.archlinux.org/t3code-nightly-bin.git
-            release_prerelease: "true"
-            release_tag_regex: '^v[0-9]+\.[0-9]+\.[0-9]+-nightly\.'
-            release_version_prefix: "v"
-            asset_regex: '^T3-Code-.*-x86_64\.AppImage$'
-    defaults:
-      run:
-        shell: bash
+          - t3code-bin
+          - t3code-nightly-bin
     container:
       image: archlinux:base-devel
 
     steps:
-      - name: Skip channels excluded by dispatch input
-        id: channel
-        env:
-          DISPATCH_CHANNEL: ${{ github.event.inputs.channel }}
-          PACKAGE_CHANNEL: ${{ matrix.package.channel }}
-        run: |
-          set -euo pipefail
-          enabled=true
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" \
-            && -n "${DISPATCH_CHANNEL}" \
-            && "${DISPATCH_CHANNEL}" != "all" \
-            && "${DISPATCH_CHANNEL}" != "${PACKAGE_CHANNEL}" ]]; then
-            enabled=false
-          fi
-          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
-          echo "enabled=$enabled"
-
       - name: Install tooling
-        if: steps.channel.outputs.enabled == 'true'
-        run: |
-          set -euo pipefail
-          pacman -Sy --noconfirm --needed git openssh rsync curl github-cli jq
+        run: pacman -Sy --noconfirm --needed git openssh curl github-cli jq
 
       - name: Checkout repository
-        if: steps.channel.outputs.enabled == 'true'
         uses: actions/checkout@v6
 
-      - name: Validate repository layout
-        if: steps.channel.outputs.enabled == 'true'
-        run: |
-          set -euo pipefail
-          test -f "${{ matrix.package.package_dir }}/PKGBUILD"
-          test -f LICENSE
-          test -x packaging/aur/scripts/check_upstream.sh
-          test -x packaging/aur/scripts/stage_shared_assets.sh
-          test -x packaging/aur/scripts/update_pkgbuild.sh
-          test -x packaging/aur/scripts/publish_aur.sh
+      - name: Create non-root build user
+        run: useradd -m builder
 
-      - name: Resolve upstream release
-        if: steps.channel.outputs.enabled == 'true'
-        id: check
+      - name: Build and publish
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_PRERELEASE: ${{ matrix.package.release_prerelease }}
-          RELEASE_TAG_REGEX: ${{ matrix.package.release_tag_regex }}
-          RELEASE_VERSION_PREFIX: ${{ matrix.package.release_version_prefix }}
-          ASSET_REGEX: ${{ matrix.package.asset_regex }}
-        run: |
-          set -euo pipefail
-          packaging/aur/scripts/check_upstream.sh
-
-      - name: Skip when the release does not match this package
-        if: steps.channel.outputs.enabled == 'true' && steps.check.outputs.matched != 'true'
-        run: |
-          echo "Release does not match the ${{ matrix.package.channel }} channel; nothing to do."
-
-      - name: Update PKGBUILD
-        if: steps.channel.outputs.enabled == 'true' && steps.check.outputs.matched == 'true'
-        env:
-          PKGBUILD_PATH: ${{ matrix.package.package_dir }}/PKGBUILD
-          UPSTREAM_TAG: ${{ steps.check.outputs.upstream_tag }}
-          UPSTREAM_VERSION: ${{ steps.check.outputs.upstream_version }}
-          PKGVER_CANDIDATE: ${{ steps.check.outputs.pkgver_candidate }}
-          APPIMAGE_SHA256: ${{ steps.check.outputs.appimage_sha256 }}
-          PKGREL_OVERRIDE: ${{ github.event.inputs.pkgrel }}
-        run: |
-          set -euo pipefail
-          packaging/aur/scripts/update_pkgbuild.sh
-
-      - name: Create non-root build user
-        if: steps.channel.outputs.enabled == 'true' && steps.check.outputs.matched == 'true'
-        run: |
-          set -euo pipefail
-          useradd -m builder
-          chown -R builder:builder "$GITHUB_WORKSPACE"
-
-      - name: Stage shared package assets
-        if: steps.channel.outputs.enabled == 'true' && steps.check.outputs.matched == 'true'
-        env:
-          WORKSPACE_ROOT: ${{ github.workspace }}
-          PACKAGE_DIR: ${{ github.workspace }}/${{ matrix.package.package_dir }}
-        run: |
-          set -euo pipefail
-          packaging/aur/scripts/stage_shared_assets.sh
-
-      - name: Regenerate .SRCINFO
-        if: steps.channel.outputs.enabled == 'true' && steps.check.outputs.matched == 'true'
-        run: |
-          set -euo pipefail
-          su - builder -c "cd '$GITHUB_WORKSPACE/${{ matrix.package.package_dir }}' && makepkg --printsrcinfo > .SRCINFO"
-
-      - name: Build package
-        if: steps.channel.outputs.enabled == 'true' && steps.check.outputs.matched == 'true'
-        run: |
-          set -euo pipefail
-          su - builder -c "cd '$GITHUB_WORKSPACE/${{ matrix.package.package_dir }}' && makepkg -f --nodeps --noconfirm"
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.release_tag }}
+          PKGREL: ${{ github.event.inputs.pkgrel }}
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          AUR_COMMIT_NAME: ${{ vars.AUR_COMMIT_NAME }}
+          AUR_COMMIT_EMAIL: ${{ vars.AUR_COMMIT_EMAIL }}
+        run: packaging/aur/scripts/release.sh "packaging/aur/${{ matrix.package }}"
 
       - name: Upload build artifact
-        if: steps.channel.outputs.enabled == 'true' && steps.check.outputs.matched == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.package.name }}-package
-          if-no-files-found: error
-          path: ${{ matrix.package.package_dir }}/*.pkg.tar.zst
-
-      - name: Publish package files to AUR
-        if: steps.channel.outputs.enabled == 'true' && steps.check.outputs.matched == 'true'
-        env:
-          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          AUR_GIT_URL: ${{ matrix.package.aur_git_url }}
-          AUR_BRANCH: ${{ vars.AUR_BRANCH || 'master' }}
-          AUR_COMMIT_NAME: ${{ env.AUR_COMMIT_NAME }}
-          AUR_COMMIT_EMAIL: ${{ env.AUR_COMMIT_EMAIL }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${AUR_SSH_PRIVATE_KEY:-}" ]]; then
-            echo "AUR_SSH_PRIVATE_KEY is not configured; running publish as a dry run."
-            export DRY_RUN=true
-          fi
-          cd "${{ matrix.package.package_dir }}"
-          "$GITHUB_WORKSPACE/packaging/aur/scripts/publish_aur.sh"
+          name: ${{ matrix.package }}-package
+          if-no-files-found: ignore
+          path: packaging/aur/${{ matrix.package }}/*.pkg.tar.zst
