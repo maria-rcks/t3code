@@ -162,8 +162,8 @@
   /* Stage-channel sidebar art (nightly night sky / dev blueprint). The
      backdrop overflows the header and fades into the sidebar background. */
   .sidebar-stage-backdrop {
-    mask-image: linear-gradient(to bottom, black 0%, black 38%, transparent 100%);
-    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 38%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 0%, black 22%, transparent 88%);
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 22%, transparent 88%);
   }
 
   .stage-blueprint {
@@ -182,10 +182,6 @@
      compositor only produces frames while values actually change. */
   .stage-star {
     animation: stage-star-twinkle 6s infinite;
-  }
-
-  .stage-moon {
-    animation: stage-moon-glow 9s infinite;
   }
 
   .stage-cloud {
@@ -218,22 +214,6 @@
     }
     100% {
       opacity: 0.85;
-    }
-  }
-
-  @keyframes stage-moon-glow {
-    0%,
-    40% {
-      opacity: 1;
-      animation-timing-function: steps(6);
-    }
-    50%,
-    90% {
-      opacity: 0.78;
-      animation-timing-function: steps(6);
-    }
-    100% {
-      opacity: 1;
     }
   }
 
@@ -270,7 +250,6 @@
 
   @media (prefers-reduced-motion: reduce) {
     .stage-star,
-    .stage-moon,
     .stage-cloud,
     .stage-bp-dash,
     .stage-bp-mark {

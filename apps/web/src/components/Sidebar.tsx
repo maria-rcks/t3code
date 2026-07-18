@@ -2756,7 +2756,12 @@ const SidebarChromeHeader = memo(function SidebarChromeHeader({
       )}
     >
       {backdropVariant ? <SidebarStageBackdrop variant={backdropVariant} /> : null}
-      <SidebarTrigger className="relative z-10 md:hidden" />
+      <SidebarTrigger
+        className={cn(
+          "relative z-10 md:hidden",
+          backdropVariant && "hover:bg-white/15 [&_svg]:text-white/85! [&_svg]:hover:text-white!",
+        )}
+      />
       <SidebarBrand onBackdrop={backdropVariant !== null} stageLabel={stageLabel} />
     </SidebarHeader>
   );

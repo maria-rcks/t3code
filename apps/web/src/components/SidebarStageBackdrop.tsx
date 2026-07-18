@@ -1,3 +1,9 @@
+import { useAtomValue } from "@effect/atom-react";
+
+import { APP_STAGE_LABEL } from "../branding";
+import { resolveServerBackedAppStageLabel } from "../branding.logic";
+import { primaryServerConfigAtom } from "../state/server";
+
 export type SidebarStageBackdropVariant = "nightly" | "dev";
 
 export function resolveSidebarStageBackdropVariant(
@@ -9,6 +15,18 @@ export function resolveSidebarStageBackdropVariant(
   return null;
 }
 
+export function useSidebarStageBackdropVariant(): SidebarStageBackdropVariant | null {
+  const primaryServerVersion =
+    useAtomValue(primaryServerConfigAtom)?.environment.serverVersion ?? null;
+
+  return resolveSidebarStageBackdropVariant(
+    resolveServerBackedAppStageLabel({
+      primaryServerVersion,
+      fallbackStageLabel: APP_STAGE_LABEL,
+    }),
+  );
+}
+
 /**
  * Decorative stage-channel art rendered behind the sidebar header: a night sky
  * for nightly builds and blueprint paper for dev builds. Palettes mirror the
@@ -18,30 +36,43 @@ export function SidebarStageBackdrop({ variant }: { variant: SidebarStageBackdro
   return (
     <div
       aria-hidden
-      className="sidebar-stage-backdrop pointer-events-none absolute inset-x-0 top-0 z-0 h-24 select-none overflow-hidden"
+      className="sidebar-stage-backdrop pointer-events-none absolute inset-x-0 top-0 z-0 h-20 select-none overflow-hidden"
     >
       {variant === "nightly" ? <NightlySkyArt /> : <DevBlueprintArt />}
     </div>
   );
 }
 
-const NIGHTLY_STARS: ReadonlyArray<{ cx: number; cy: number; r: number; delay: number }> = [
-  { cx: 18, cy: 14, r: 1.1, delay: 0 },
-  { cx: 44, cy: 34, r: 0.8, delay: 1.4 },
-  { cx: 76, cy: 10, r: 0.9, delay: 2.6 },
-  { cx: 108, cy: 26, r: 1.2, delay: 0.8 },
-  { cx: 140, cy: 8, r: 0.7, delay: 3.2 },
-  { cx: 168, cy: 30, r: 1, delay: 1.9 },
-  { cx: 232, cy: 34, r: 0.8, delay: 2.2 },
-  { cx: 34, cy: 52, r: 0.7, delay: 3.8 },
-  { cx: 130, cy: 46, r: 0.8, delay: 0.4 },
-  { cx: 250, cy: 12, r: 1, delay: 1.1 },
+const NIGHTLY_STARS: ReadonlyArray<{
+  cx: number;
+  cy: number;
+  r: number;
+  opacity: number;
+  delay: number;
+}> = [
+  { cx: 14, cy: 10, r: 0.6, opacity: 0.85, delay: 0 },
+  { cx: 38, cy: 22, r: 0.4, opacity: 0.55, delay: 1.4 },
+  { cx: 58, cy: 8, r: 0.5, opacity: 0.7, delay: 2.6 },
+  { cx: 84, cy: 16, r: 0.4, opacity: 0.5, delay: 3.6 },
+  { cx: 104, cy: 7, r: 0.6, opacity: 0.8, delay: 0.8 },
+  { cx: 126, cy: 20, r: 0.4, opacity: 0.55, delay: 4.4 },
+  { cx: 148, cy: 11, r: 0.5, opacity: 0.7, delay: 3.2 },
+  { cx: 170, cy: 24, r: 0.4, opacity: 0.5, delay: 1.9 },
+  { cx: 192, cy: 9, r: 0.6, opacity: 0.8, delay: 5.1 },
+  { cx: 214, cy: 18, r: 0.4, opacity: 0.55, delay: 2.2 },
+  { cx: 236, cy: 8, r: 0.5, opacity: 0.7, delay: 0.4 },
+  { cx: 258, cy: 20, r: 0.45, opacity: 0.6, delay: 3.9 },
+  { cx: 278, cy: 11, r: 0.55, opacity: 0.75, delay: 1.1 },
+  { cx: 26, cy: 34, r: 0.4, opacity: 0.45, delay: 4.8 },
+  { cx: 118, cy: 34, r: 0.4, opacity: 0.45, delay: 2.9 },
+  { cx: 202, cy: 32, r: 0.4, opacity: 0.5, delay: 5.6 },
+  { cx: 268, cy: 34, r: 0.4, opacity: 0.45, delay: 1.7 },
 ];
 
 const NIGHTLY_SPARKLES: ReadonlyArray<{ x: number; y: number; delay: number }> = [
-  { x: 60, y: 20, delay: 0.6 },
-  { x: 152, y: 38, delay: 2.9 },
-  { x: 244, y: 48, delay: 1.7 },
+  { x: 70, y: 28, delay: 0.6 },
+  { x: 160, y: 36, delay: 2.9 },
+  { x: 246, y: 26, delay: 1.7 },
 ];
 
 function NightlySkyArt() {
@@ -113,30 +144,22 @@ function NightlySkyArt() {
             cx={star.cx}
             cy={star.cy}
             r={star.r}
+            fillOpacity={star.opacity}
             style={{ animationDelay: `${star.delay}s` }}
           />
         ))}
       </g>
-      <g stroke="#C8D7FF" strokeLinecap="round" strokeWidth="0.9">
+      <g stroke="#C8D7FF" strokeLinecap="round" strokeOpacity="0.7" strokeWidth="0.6">
         {NIGHTLY_SPARKLES.map((sparkle) => (
           <g
             key={`${sparkle.x}-${sparkle.y}`}
             className="stage-star"
             style={{ animationDelay: `${sparkle.delay}s` }}
           >
-            <path d={`M${sparkle.x - 2.4} ${sparkle.y}H${sparkle.x + 2.4}`} />
-            <path d={`M${sparkle.x} ${sparkle.y - 2.4}V${sparkle.y + 2.4}`} />
+            <path d={`M${sparkle.x - 1.5} ${sparkle.y}H${sparkle.x + 1.5}`} />
+            <path d={`M${sparkle.x} ${sparkle.y - 1.5}V${sparkle.y + 1.5}`} />
           </g>
         ))}
-      </g>
-
-      <g className="stage-moon">
-        <circle cx="252" cy="26" r="16" fill="#F5E9C8" fillOpacity="0.14" />
-        <path
-          d="M258.5 15.5C253 15.5 248.5 20 248.5 25.5C248.5 31 253 35.5 258.5 35.5C260.4 35.5 262.2 35 263.7 34.1C260 33 257.3 29.6 257.3 25.5C257.3 21.4 260 18 263.7 16.9C262.2 16 260.4 15.5 258.5 15.5Z"
-          fill="#F5E9C8"
-          transform="rotate(24 256 25.5)"
-        />
       </g>
 
       <g className="stage-cloud" filter="url(#stage-night-soft)">
@@ -203,36 +226,37 @@ function DevBlueprintArt() {
       <rect width="288" height="96" fill="url(#stage-bp-grid-minor)" />
       <rect width="288" height="96" fill="url(#stage-bp-grid-major)" />
 
-      <g stroke="#DDF7FF" strokeLinecap="round" strokeOpacity="0.85" strokeWidth="0.8">
-        <path className="stage-bp-dash" d="M20 16H120" strokeDasharray="6 4" />
-        <path d="M20 12.5V19.5M120 12.5V19.5" />
-        <path className="stage-bp-dash" d="M176 84H268" strokeDasharray="6 4" />
-        <path d="M176 80.5V87.5M268 80.5V87.5" />
-        <path className="stage-bp-dash" d="M262 12V52" strokeDasharray="5 4" strokeOpacity="0.6" />
+      {/* Ruler ticks along the top edge, taller on every major grid line. */}
+      <g stroke="#DDF7FF" strokeOpacity="0.5" strokeWidth="0.5">
+        {Array.from({ length: 36 }, (_, i) => {
+          const x = i * 8 + 4;
+          return <path key={x} d={`M${x} 0V${i % 4 === 2 ? 4 : 2.5}`} />;
+        })}
       </g>
 
-      <g stroke="#DDF7FF" strokeLinecap="round" strokeOpacity="0.7" strokeWidth="0.8">
+      <g stroke="#DDF7FF" strokeLinecap="round" strokeOpacity="0.6" strokeWidth="0.7">
+        <path className="stage-bp-dash" d="M180 64H264" strokeDasharray="5 4" />
+        <path d="M180 61V67M264 61V67" />
+        <path className="stage-bp-dash" d="M276 10V44" strokeDasharray="4 4" strokeOpacity="0.5" />
+        <path d="M273 10H279M273 44H279" strokeOpacity="0.5" />
+      </g>
+
+      <g stroke="#DDF7FF" strokeLinecap="round" strokeOpacity="0.55" strokeWidth="0.6">
         <g className="stage-bp-mark">
-          <path d="M40 66L46 72M46 66L40 72" />
+          <path d="M34 60L38 64M38 60L34 64" />
         </g>
         <g className="stage-bp-mark" style={{ animationDelay: "2.1s" }}>
-          <path d="M226 30H236M231 25V35" />
+          <path d="M228 26H234M231 23V29" />
         </g>
         <g className="stage-bp-mark" style={{ animationDelay: "4.3s" }}>
-          <path d="M142 54H150M146 50V58" />
+          <path d="M143 51H149M146 48V54" />
         </g>
       </g>
 
-      <circle
-        className="stage-bp-dash"
-        cx="196"
-        cy="40"
-        r="17"
-        stroke="#DDF7FF"
-        strokeDasharray="4 5"
-        strokeOpacity="0.45"
-        strokeWidth="0.7"
-      />
+      <g stroke="#DDF7FF" strokeOpacity="0.35" strokeWidth="0.6">
+        <circle className="stage-bp-dash" cx="196" cy="38" r="13" strokeDasharray="3.5 4" />
+        <path d="M196 33V43M191 38H201" strokeOpacity="0.6" strokeWidth="0.4" />
+      </g>
     </svg>
   );
 }
