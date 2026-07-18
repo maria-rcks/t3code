@@ -27,11 +27,7 @@ export function useSidebarStageBackdropVariant(): SidebarStageBackdropVariant | 
   );
 }
 
-/**
- * Decorative stage-channel art rendered behind the sidebar header: a night sky
- * for nightly builds and blueprint paper for dev builds. Palettes mirror the
- * per-channel app icons in `assets/nightly` and `assets/dev`.
- */
+/** Stage-channel header art; palettes mirror the per-channel app icons in `assets/`. */
 export function SidebarStageBackdrop({ variant }: { variant: SidebarStageBackdropVariant }) {
   return (
     <div
@@ -226,7 +222,6 @@ function DevBlueprintArt() {
       <rect width="288" height="96" fill="url(#stage-bp-grid-minor)" />
       <rect width="288" height="96" fill="url(#stage-bp-grid-major)" />
 
-      {/* Ruler ticks along the top edge, taller on every major grid line. */}
       <g stroke="#DDF7FF" strokeOpacity="0.5" strokeWidth="0.5">
         {Array.from({ length: 36 }, (_, i) => {
           const x = i * 8 + 4;

@@ -159,10 +159,8 @@
     }
   }
 
-  /* Stage-channel sidebar art (nightly night sky / dev blueprint). The art
-     overflows the header and blends into the sidebar by painting the sidebar
-     background color over it with an eased ramp (::after), plus a soft alpha
-     mask so the surface grain shows through at the boundary. */
+  /* Stage-channel sidebar art; ::after ramps to the sidebar bg color and the
+     mask lets the surface grain show through at the boundary. */
   .sidebar-stage-backdrop {
     mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 92%);
     -webkit-mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 92%);
@@ -197,8 +195,7 @@
     --stage-bp-bottom: #101f6e;
   }
 
-  /* Idle animations stay duty-cycled (long flat holds, stepped ramps) so the
-     compositor only produces frames while values actually change. */
+  /* Duty-cycled idle animations: frames only while values change. */
   .stage-star {
     animation: stage-star-twinkle 6s infinite;
   }
