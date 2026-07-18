@@ -3,6 +3,9 @@ name: Publish AUR packages
 # See packaging/aur/README.md.
 
 on:
+  push:
+    branches:
+      - devin/1784322789-aur-packaging
   release:
     types:
       - published
