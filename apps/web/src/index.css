@@ -159,6 +159,120 @@
     }
   }
 
+  /* Stage-channel sidebar art; ::after ramps to the sidebar bg color and the
+     mask lets the surface grain show through at the boundary. */
+  .sidebar-stage-backdrop {
+    mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 92%);
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 92%);
+  }
+
+  .sidebar-stage-backdrop::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 28%,
+      color-mix(in srgb, var(--app-chrome-background) 10%, transparent) 40%,
+      color-mix(in srgb, var(--app-chrome-background) 30%, transparent) 52%,
+      color-mix(in srgb, var(--app-chrome-background) 58%, transparent) 64%,
+      color-mix(in srgb, var(--app-chrome-background) 82%, transparent) 75%,
+      color-mix(in srgb, var(--app-chrome-background) 96%, transparent) 85%,
+      var(--app-chrome-background) 93%
+    );
+  }
+
+  .stage-blueprint {
+    --stage-bp-top: #67c2ff;
+    --stage-bp-mid: #347ff8;
+    --stage-bp-bottom: #1538d0;
+  }
+
+  .dark .stage-blueprint {
+    --stage-bp-top: #3a7ad1;
+    --stage-bp-mid: #2050ae;
+    --stage-bp-bottom: #101f6e;
+  }
+
+  /* Duty-cycled idle animations: frames only while values change. */
+  .stage-star {
+    animation: stage-star-twinkle 6s infinite;
+  }
+
+  .stage-cloud {
+    animation: stage-cloud-drift 26s ease-in-out infinite alternate;
+  }
+
+  .stage-cloud-far {
+    animation-duration: 34s;
+    animation-direction: alternate-reverse;
+  }
+
+  .stage-bp-dash {
+    animation: stage-bp-dash-march 3s steps(10) infinite;
+  }
+
+  .stage-bp-mark {
+    animation: stage-bp-mark-pulse 7s infinite;
+  }
+
+  @keyframes stage-star-twinkle {
+    0%,
+    45% {
+      opacity: 0.85;
+      animation-timing-function: steps(5);
+    }
+    55%,
+    90% {
+      opacity: 0.25;
+      animation-timing-function: steps(5);
+    }
+    100% {
+      opacity: 0.85;
+    }
+  }
+
+  @keyframes stage-cloud-drift {
+    from {
+      transform: translateX(-4px);
+    }
+    to {
+      transform: translateX(4px);
+    }
+  }
+
+  @keyframes stage-bp-dash-march {
+    to {
+      stroke-dashoffset: -10;
+    }
+  }
+
+  @keyframes stage-bp-mark-pulse {
+    0%,
+    50% {
+      opacity: 0.75;
+      animation-timing-function: steps(5);
+    }
+    60%,
+    90% {
+      opacity: 0.3;
+      animation-timing-function: steps(5);
+    }
+    100% {
+      opacity: 0.75;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .stage-star,
+    .stage-cloud,
+    .stage-bp-dash,
+    .stage-bp-mark {
+      animation: none;
+    }
+  }
+
   .workspace-topbar {
     display: flex;
     height: var(--workspace-topbar-height);
