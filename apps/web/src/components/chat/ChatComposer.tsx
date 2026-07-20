@@ -97,7 +97,6 @@ import {
   BotIcon,
   CheckIcon,
   CircleAlertIcon,
-  ImageUpIcon,
   ListTodoIcon,
   PencilRulerIcon,
   type LucideIcon,
@@ -420,6 +419,8 @@ export interface ChatComposerHandle {
   }) => void;
   /** Insert a terminal context from the terminal drawer. */
   addTerminalContext: (selection: TerminalContextSelection) => void;
+  /** Attach image files (e.g. from a view-level drop zone). */
+  addImages: (files: File[]) => void;
   /** Get the current prompt/effort/model state for use in send. */
   getSendContext: () => {
     prompt: string;
@@ -893,7 +894,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [composerHighlightedSearchKey, setComposerHighlightedSearchKey] = useState<string | null>(
     null,
   );
-  const [isDragOverComposer, setIsDragOverComposer] = useState(false);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
@@ -916,7 +916,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const mobileComposerExpandFrameRef = useRef<number | null>(null);
   const mobileComposerExpandReleaseFrameRef = useRef<number | null>(null);
   const mobileComposerExpandInFlightRef = useRef(false);
-  const dragDepthRef = useRef(0);
 
   // ------------------------------------------------------------------
   // Derived: composer send state
@@ -1317,8 +1316,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setComposerHighlightedItemId(null);
     setComposerCursor(collapseExpandedComposerCursor(promptRef.current, promptRef.current.length));
     setComposerTrigger(detectComposerTrigger(promptRef.current, promptRef.current.length));
-    dragDepthRef.current = 0;
-    setIsDragOverComposer(false);
   }, [draftId, activeThreadId, promptRef]);
 
   // ------------------------------------------------------------------
@@ -1860,40 +1857,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     addComposerImages(imageFiles);
   };
 
-  const onComposerDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return;
-    event.preventDefault();
-    dragDepthRef.current += 1;
-    setIsDragOverComposer(true);
-  };
-
-  const onComposerDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-    setIsDragOverComposer(true);
-  };
-
-  const onComposerDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return;
-    event.preventDefault();
-    const nextTarget = event.relatedTarget;
-    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
-    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
-    if (dragDepthRef.current === 0) {
-      setIsDragOverComposer(false);
-    }
-  };
-
-  const onComposerDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return;
-    event.preventDefault();
-    dragDepthRef.current = 0;
-    setIsDragOverComposer(false);
-    const files = Array.from(event.dataTransfer.files);
-    addComposerImages(files);
-    focusComposer();
-  };
   const handleInterruptPrimaryAction = useCallback(() => {
     void onInterrupt();
   }, [onInterrupt]);
@@ -2005,6 +1968,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             : null,
         );
       },
+      addImages: (files: File[]) => {
+        addComposerImages(files);
+        focusComposer();
+      },
       addTerminalContext: (selection: TerminalContextSelection) => {
         if (!activeThread) return;
         const snapshot = composerEditorRef.current?.readSnapshot() ?? {
@@ -2099,17 +2066,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           "group rounded-[22px] p-px transition-colors duration-200",
           composerProviderState.composerFrameClassName,
         )}
-        onDragEnter={onComposerDragEnter}
-        onDragOver={onComposerDragOver}
-        onDragLeave={onComposerDragLeave}
-        onDrop={onComposerDrop}
       >
         <div
           ref={composerSurfaceRef}
           data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
           className={cn(
-            "chat-composer-glass relative rounded-[20px] border transition-[background-color] duration-200 has-focus-visible:border-ring/45",
-            isDragOverComposer ? "border-primary/70 bg-accent/45" : "border-border",
+            "chat-composer-glass relative rounded-[20px] border border-border transition-[background-color] duration-200 has-focus-visible:border-ring/45",
             environmentUnavailable || projectSelectionRequired ? "opacity-75" : null,
             composerProviderState.composerSurfaceClassName,
           )}
@@ -2132,14 +2094,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             scheduleComposerCollapseCheck();
           }}
         >
-          {isDragOverComposer ? (
-            <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-[20px] border-2 border-dashed border-primary/60 bg-background/85 backdrop-blur-sm">
-              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                <ImageUpIcon className="size-4 text-primary" />
-                Drop images to attach
-              </div>
-            </div>
-          ) : null}
           {!isComposerCollapsedMobile &&
             (activePendingApproval ? (
               <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
