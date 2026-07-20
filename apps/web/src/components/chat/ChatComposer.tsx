@@ -2018,8 +2018,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         );
       },
       addImages: (files: File[]) => {
+        if (environmentUnavailable !== null || projectSelectionRequired) return;
         addComposerImages(files);
-        focusComposer();
+        if (isComposerCollapsedMobile) {
+          expandMobileComposer();
+        } else {
+          focusComposer();
+        }
       },
       addTerminalContext: (selection: TerminalContextSelection) => {
         if (!activeThread) return;
@@ -2090,6 +2095,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       environmentUnavailable,
       activePendingProgress,
       applyPromptReplacement,
+      isComposerCollapsedMobile,
+      expandMobileComposer,
       isComposerModelPickerOpen,
       readComposerSnapshot,
       selectedModel,

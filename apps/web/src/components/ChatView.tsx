@@ -1197,7 +1197,19 @@ function ChatViewContent(props: ChatViewProps) {
   const composerRef = useComposerHandleContext() ?? localComposerRef;
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [isDraggingFilesOverView, setIsDraggingFilesOverView] = useState(false);
-  const viewDragDepthRef = useRef(0);
+
+  // A cancelled drag (Escape) can end without a dragleave on the hovered
+  // target, which would leave the drop overlay stuck. dragend always fires
+  // on the in-page drag source and bubbles to window, so it is the reset of
+  // last resort while the overlay is up.
+  useEffect(() => {
+    if (!isDraggingFilesOverView) return;
+    const onWindowDragEnd = () => {
+      setIsDraggingFilesOverView(false);
+    };
+    window.addEventListener("dragend", onWindowDragEnd);
+    return () => window.removeEventListener("dragend", onWindowDragEnd);
+  }, [isDraggingFilesOverView]);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
   const optimisticUserMessagesRef = useRef(optimisticUserMessages);
@@ -5189,15 +5201,17 @@ function ChatViewContent(props: ChatViewProps) {
     ) : null
   ) : null;
 
+  const canDropImagesOnView =
+    activeEnvironmentUnavailableState === null && !(isLocalDraftThread && activeProject === null);
+
   const onViewDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return;
+    if (!canDropImagesOnView || !event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
-    viewDragDepthRef.current += 1;
     setIsDraggingFilesOverView(true);
   };
 
   const onViewDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return;
+    if (!canDropImagesOnView || !event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
     setIsDraggingFilesOverView(true);
@@ -5208,17 +5222,14 @@ function ChatViewContent(props: ChatViewProps) {
     event.preventDefault();
     const nextTarget = event.relatedTarget;
     if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
-    viewDragDepthRef.current = Math.max(0, viewDragDepthRef.current - 1);
-    if (viewDragDepthRef.current === 0) {
-      setIsDraggingFilesOverView(false);
-    }
+    setIsDraggingFilesOverView(false);
   };
 
   const onViewDrop = (event: React.DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
-    viewDragDepthRef.current = 0;
     setIsDraggingFilesOverView(false);
+    if (!canDropImagesOnView) return;
     composerRef.current?.addImages(Array.from(event.dataTransfer.files));
   };
 
