@@ -5100,6 +5100,17 @@ function ChatViewContent(props: ChatViewProps) {
     void onRevertToTurnCountRef.current(targetTurnCount);
   }, []);
 
+  const canDropImagesOnView =
+    activeEnvironmentUnavailableState === null && !(isLocalDraftThread && activeProject === null);
+
+  // If attaching becomes unavailable mid-drag, retract the overlay so it
+  // does not keep inviting a drop that would be discarded.
+  useEffect(() => {
+    if (!canDropImagesOnView) {
+      resetViewDragState();
+    }
+  }, [canDropImagesOnView, resetViewDragState]);
+
   // Empty state: no active thread
   if (!activeThread) {
     return <NoActiveThreadState />;
@@ -5202,17 +5213,6 @@ function ChatViewContent(props: ChatViewProps) {
       </Suspense>
     ) : null
   ) : null;
-
-  const canDropImagesOnView =
-    activeEnvironmentUnavailableState === null && !(isLocalDraftThread && activeProject === null);
-
-  // If attaching becomes unavailable mid-drag, retract the overlay so it
-  // does not keep inviting a drop that would be discarded.
-  useEffect(() => {
-    if (!canDropImagesOnView) {
-      resetViewDragState();
-    }
-  }, [canDropImagesOnView, resetViewDragState]);
 
   const onViewDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
     if (!canDropImagesOnView || !event.dataTransfer.types.includes("Files")) return;
