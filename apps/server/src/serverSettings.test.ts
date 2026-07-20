@@ -324,7 +324,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
-  it.effect("exposes null Git writer selection when its provider instance is disabled", () =>
+  it.effect("preserves the Git writer selection when its provider instance is disabled", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
       const serverConfig = yield* ServerConfig.ServerConfig;
@@ -356,16 +356,33 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         },
       });
 
-      assert.isNull(next.gitWriterModelSelection);
+      assert.deepEqual(next.gitWriterModelSelection, gitWriterModelSelection);
       assert.deepEqual(
+        ServerSettingsModule.resolveGitWriterModelSelection(next),
         next.textGenerationModelSelection,
-        DEFAULT_SERVER_SETTINGS.textGenerationModelSelection,
       );
-      assert.isNull((yield* serverSettings.getSettings).gitWriterModelSelection);
+      assert.deepEqual(
+        (yield* serverSettings.getSettings).gitWriterModelSelection,
+        gitWriterModelSelection,
+      );
 
       const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
       // @effect-diagnostics-next-line preferSchemaOverJson:off
       assert.deepEqual(JSON.parse(raw).gitWriterModelSelection, gitWriterModelSelection);
+
+      const restored = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("codex"),
+            enabled: true,
+            config: {},
+          },
+        },
+      });
+      assert.deepEqual(
+        ServerSettingsModule.resolveGitWriterModelSelection(restored),
+        gitWriterModelSelection,
+      );
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 

@@ -515,7 +515,7 @@ export function SourceControlSettingsPanel() {
         />
       )}
 
-      <TextGenerationSettingsSection />
+      {environmentId !== null ? <TextGenerationSettingsSection /> : null}
     </SettingsPageContainer>
   );
 }

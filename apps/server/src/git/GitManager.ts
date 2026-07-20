@@ -563,16 +563,18 @@ export const make = Effect.gen(function* () {
         case "conventional_commits":
           return conventionalCommitsTextGenerationPolicy;
         case "custom":
-          return style.customInstructions
-            ? customTextGenerationPolicy({
-                commitInstructions: style.customInstructions,
-                changeRequestInstructions: style.customInstructions,
-              })
-            : undefined;
+          return customTextGenerationPolicy(
+            style.customInstructions
+              ? {
+                  commitInstructions: style.customInstructions,
+                  changeRequestInstructions: style.customInstructions,
+                }
+              : {},
+          );
         case "repo_conventions": {
           const subjects = yield* readRecentCommitSubjects(cwd);
           if (subjects.length === 0) {
-            return undefined;
+            return repositoryConventionsTextGenerationPolicy;
           }
           const examples = ["Recent commit subjects from this repository:", ...subjects].join("\n");
           return {
@@ -1408,12 +1410,7 @@ export const make = Effect.gen(function* () {
     const policy = yield* resolveStylePolicy(cwd, settings.style);
     const prTemplate =
       settings.style.followPrTemplates && provider.kind === "github"
-        ? Option.getOrUndefined(
-            yield* detectPrTemplate(cwd).pipe(
-              Effect.provideService(FileSystem.FileSystem, fileSystem),
-              Effect.provideService(Path.Path, path),
-            ),
-          )
+        ? Option.getOrUndefined(yield* detectPrTemplate(cwd, baseRangeRef, gitCore.execute))
         : undefined;
 
     const generated = yield* textGeneration.generatePrContent({
@@ -1804,8 +1801,7 @@ export const make = Effect.gen(function* () {
 
         const textGenerationSettings = yield* serverSettingsService.getSettings.pipe(
           Effect.map((settings) => ({
-            modelSelection:
-              settings.gitWriterModelSelection ?? settings.textGenerationModelSelection,
+            modelSelection: ServerSettings.resolveGitWriterModelSelection(settings),
             style: settings.textGenerationStyle,
           })),
           Effect.mapError(

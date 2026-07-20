@@ -1,7 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
+import { useRef } from "react";
 import type { TextGenerationStyleMode } from "@t3tools/contracts";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 import { createModelSelection } from "@t3tools/shared/model";
+import { isModelSelectionProviderEnabled } from "@t3tools/shared/serverSettings";
 
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
 import {
@@ -42,6 +44,7 @@ export function TextGenerationSettingsSection() {
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
   const serverProviders = useAtomValue(primaryServerProvidersAtom);
+  const customInstructionsRef = useRef<HTMLTextAreaElement>(null);
   const style = settings.textGenerationStyle;
   const defaults = DEFAULT_UNIFIED_SETTINGS.textGenerationStyle;
   const isGitWritingStyleDirty =
@@ -50,7 +53,10 @@ export function TextGenerationSettingsSection() {
   const defaultModelSelection = resolveAppModelSelectionState(settings, serverProviders);
   const gitWriterSelection = settings.gitWriterModelSelection;
   const usesDedicatedModel = gitWriterSelection !== null;
-  const activeSelection = gitWriterSelection ?? defaultModelSelection;
+  const activeSelection =
+    gitWriterSelection && isModelSelectionProviderEnabled(settings, gitWriterSelection)
+      ? gitWriterSelection
+      : defaultModelSelection;
   const instanceEntries = sortProviderInstanceEntries(
     applyProviderInstanceSettings(deriveProviderInstanceEntries(serverProviders), settings),
   );
@@ -84,11 +90,15 @@ export function TextGenerationSettingsSection() {
         control={
           <Select
             value={style.mode}
-            onValueChange={(value) =>
+            onValueChange={(value) => {
+              const customInstructions = customInstructionsRef.current?.value.trim();
               updateSettings({
-                textGenerationStyle: { mode: value as TextGenerationStyleMode },
-              })
-            }
+                textGenerationStyle: {
+                  mode: value as TextGenerationStyleMode,
+                  ...(customInstructions !== undefined ? { customInstructions } : {}),
+                },
+              });
+            }}
           >
             <SelectTrigger className="w-full sm:w-56" aria-label="Git writing style">
               <SelectValue>{MODE_OPTIONS[style.mode].label}</SelectValue>
@@ -107,6 +117,7 @@ export function TextGenerationSettingsSection() {
           <div className="mt-3 max-w-2xl pb-3.5">
             <Textarea
               key={style.customInstructions}
+              ref={customInstructionsRef}
               defaultValue={style.customInstructions}
               onBlur={(event) => {
                 const customInstructions = event.target.value.trim();

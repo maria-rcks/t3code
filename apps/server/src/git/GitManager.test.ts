@@ -1355,6 +1355,78 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     }),
   );
 
+  it.effect("preserves custom style when instructions are empty", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      yield* initRepo(repoDir);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "hello\nworld\n");
+      let generatedPolicy: TextGeneration.CommitMessageGenerationInput["policy"] = undefined;
+
+      const { manager } = yield* makeManager({
+        serverSettings: {
+          textGenerationStyle: {
+            mode: "custom" as const,
+            customInstructions: "",
+          },
+        },
+        textGeneration: {
+          generateCommitMessage: (input) => {
+            generatedPolicy = input.policy;
+            return Effect.succeed({ subject: "Preserve custom style", body: "" });
+          },
+        },
+      });
+      yield* runStackedAction(manager, {
+        cwd: repoDir,
+        action: "commit",
+      });
+
+      expect(generatedPolicy).toEqual({
+        kind: "custom",
+        inferRepositoryConventions: false,
+      });
+    }),
+  );
+
+  it.effect("preserves repository conventions style when recent history is empty", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      yield* runGit(repoDir, ["init", "--initial-branch=main"]);
+      yield* runGit(repoDir, ["config", "user.email", "test@example.com"]);
+      yield* runGit(repoDir, ["config", "user.name", "Test User"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "hello\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      let generatedPolicy: TextGeneration.CommitMessageGenerationInput["policy"] = undefined;
+
+      const { manager } = yield* makeManager({
+        serverSettings: {
+          textGenerationStyle: {
+            mode: "repo_conventions" as const,
+          },
+        },
+        textGeneration: {
+          generateCommitMessage: (input) => {
+            generatedPolicy = input.policy;
+            return Effect.succeed({ subject: "Create initial commit", body: "" });
+          },
+        },
+      });
+      yield* runStackedAction(manager, {
+        cwd: repoDir,
+        action: "commit",
+      });
+
+      expect(generatedPolicy).toEqual({
+        kind: "repo_conventions",
+        commitInstructions:
+          "Follow the repository's established commit message style when examples are available.",
+        changeRequestInstructions:
+          "Follow the repository's established change request title and body style when examples are available.",
+        inferRepositoryConventions: true,
+      });
+    }),
+  );
+
   it.effect("uses custom commit message when provided", () =>
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("t3code-git-manager-");
@@ -2175,6 +2247,13 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("t3code-git-manager-");
       yield* initRepo(repoDir);
+      NodeFS.mkdirSync(NodePath.join(repoDir, ".github"));
+      NodeFS.writeFileSync(
+        NodePath.join(repoDir, ".github", "pull_request_template.md"),
+        "## What changed?\n\n## Verification",
+      );
+      yield* runGit(repoDir, ["add", ".github/pull_request_template.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "Add pull request template"]);
       yield* runGit(repoDir, ["checkout", "-b", "feature-create-pr"]);
       const remoteDir = yield* createBareRemote();
       yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
@@ -2183,11 +2262,6 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       yield* runGit(repoDir, ["commit", "-m", "Feature commit"]);
       yield* runGit(repoDir, ["push", "-u", "origin", "feature-create-pr"]);
       yield* runGit(repoDir, ["config", "branch.feature-create-pr.gh-merge-base", "main"]);
-      NodeFS.mkdirSync(NodePath.join(repoDir, ".github"));
-      NodeFS.writeFileSync(
-        NodePath.join(repoDir, ".github", "pull_request_template.md"),
-        "## What changed?\n\n## Verification",
-      );
       let generatedPolicy: TextGeneration.PrContentGenerationInput["policy"] = undefined;
       let generatedPrTemplate: string | undefined;
 

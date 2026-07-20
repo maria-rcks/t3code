@@ -15,7 +15,6 @@ import {
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_SERVER_SETTINGS,
-  isProviderDriverKind,
   type ModelSelection,
   type ProviderInstanceConfig,
   type ProviderInstanceEnvironmentVariable,
@@ -47,8 +46,13 @@ import { writeFileStringAtomically } from "./atomicWrite.ts";
 import * as ServerConfig from "./config.ts";
 import { type DeepPartial, deepMerge } from "@t3tools/shared/Struct";
 import { fromJsonStringPretty, fromLenientJson } from "@t3tools/shared/schemaJson";
-import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
+import {
+  applyServerSettingsPatch,
+  isModelSelectionProviderEnabled,
+} from "@t3tools/shared/serverSettings";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
+
+export { resolveGitWriterModelSelection } from "@t3tools/shared/serverSettings";
 
 const encodeServerSettings = Schema.encodeEffect(ServerSettings);
 const encodeServerSettingsJson = Schema.encodeUnknownEffect(fromJsonStringPretty(ServerSettings));
@@ -166,38 +170,10 @@ export const layerTest = (overrides: DeepPartial<ServerSettings> = {}) =>
 const ServerSettingsJson = fromLenientJson(ServerSettings);
 const decodeServerSettingsJsonExit = Schema.decodeUnknownExit(ServerSettingsJson);
 
-type LegacyProviderSettings = ServerSettings["providers"][keyof ServerSettings["providers"]];
-
-const getLegacyProviderSettings = (
-  settings: ServerSettings,
-  provider: ProviderDriverKind,
-): LegacyProviderSettings | undefined =>
-  (settings.providers as Record<string, LegacyProviderSettings | undefined>)[provider];
-
-function isModelSelectionProviderEnabled(
-  settings: ServerSettings,
-  selection: ModelSelection,
-): boolean {
-  const instanceConfig = settings.providerInstances[selection.instanceId];
-  if (instanceConfig !== undefined) {
-    return instanceConfig.enabled ?? true;
-  }
-
-  return (
-    isProviderDriverKind(selection.instanceId) &&
-    getLegacyProviderSettings(settings, selection.instanceId)?.enabled === true
-  );
-}
-
 function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings {
-  const resolved = isModelSelectionProviderEnabled(settings, settings.textGenerationModelSelection)
+  return isModelSelectionProviderEnabled(settings, settings.textGenerationModelSelection)
     ? settings
     : fallbackTextGenerationProvider(settings);
-  const gitWriterSelection = resolved.gitWriterModelSelection;
-
-  return gitWriterSelection && !isModelSelectionProviderEnabled(resolved, gitWriterSelection)
-    ? { ...resolved, gitWriterModelSelection: null }
-    : resolved;
 }
 
 function fallbackTextGenerationProvider(settings: ServerSettings): ServerSettings {

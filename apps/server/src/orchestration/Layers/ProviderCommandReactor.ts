@@ -38,7 +38,7 @@ import {
   ProviderCommandReactor,
   type ProviderCommandReactorShape,
 } from "../Services/ProviderCommandReactor.ts";
-import { ServerSettingsService } from "../../serverSettings.ts";
+import { resolveGitWriterModelSelection, ServerSettingsService } from "../../serverSettings.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
@@ -665,8 +665,7 @@ const make = Effect.gen(function* () {
     const attachments = input.attachments ?? [];
     yield* Effect.gen(function* () {
       const settings = yield* serverSettingsService.getSettings;
-      const modelSelection =
-        settings.gitWriterModelSelection ?? settings.textGenerationModelSelection;
+      const modelSelection = resolveGitWriterModelSelection(settings);
 
       const generated = yield* textGeneration.generateBranchName({
         cwd,
