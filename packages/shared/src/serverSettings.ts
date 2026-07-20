@@ -66,11 +66,6 @@ function mergeModelSelectionOptionsById(input: {
   return [...merged.entries()].map(([id, value]) => ({ id, value }));
 }
 
-/**
- * Applies a server settings patch while treating textGenerationModelSelection as
- * replace-on-provider/model updates. This prevents stale nested options from
- * surviving a reset patch that intentionally omits options.
- */
 export function applyServerSettingsPatch(
   current: ServerSettings,
   patch: ServerSettingsPatch,
@@ -82,6 +77,9 @@ export function applyServerSettingsPatch(
     ...next,
     ...(patch.providerInstances !== undefined
       ? { providerInstances: patch.providerInstances }
+      : {}),
+    ...(patch.gitWriterModelSelection !== undefined
+      ? { gitWriterModelSelection: patch.gitWriterModelSelection }
       : {}),
     ...(automaticGitFetchInterval !== undefined ? { automaticGitFetchInterval } : {}),
   };

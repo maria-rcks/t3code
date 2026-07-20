@@ -324,6 +324,51 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
+  it.effect("exposes null Git writer selection when its provider instance is disabled", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const instanceId = ProviderInstanceId.make("codex_writer");
+      const gitWriterModelSelection = {
+        instanceId,
+        model: "gpt-5.4-mini",
+      };
+
+      yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("codex"),
+            enabled: true,
+            config: {},
+          },
+        },
+        gitWriterModelSelection,
+      });
+
+      const next = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("codex"),
+            enabled: false,
+            config: {},
+          },
+        },
+      });
+
+      assert.isNull(next.gitWriterModelSelection);
+      assert.deepEqual(
+        next.textGenerationModelSelection,
+        DEFAULT_SERVER_SETTINGS.textGenerationModelSelection,
+      );
+      assert.isNull((yield* serverSettings.getSettings).gitWriterModelSelection);
+
+      const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      assert.deepEqual(JSON.parse(raw).gitWriterModelSelection, gitWriterModelSelection);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect("drops stale text generation options when resetting model selection", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;

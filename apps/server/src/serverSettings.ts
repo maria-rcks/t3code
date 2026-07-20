@@ -148,12 +148,13 @@ const makeTest = (overrides: DeepPartial<ServerSettings> = {}) =>
     return {
       start: Effect.void,
       ready: Effect.void,
-      getSettings: Ref.get(currentSettingsRef),
+      getSettings: Ref.get(currentSettingsRef).pipe(Effect.map(resolveTextGenerationProvider)),
       updateSettings: (patch) =>
         Ref.get(currentSettingsRef).pipe(
           Effect.map((currentSettings) => applyServerSettingsPatch(currentSettings, patch)),
           Effect.flatMap(normalizeServerSettings),
           Effect.tap((nextSettings) => Ref.set(currentSettingsRef, nextSettings)),
+          Effect.map(resolveTextGenerationProvider),
         ),
       streamChanges: Stream.empty,
     } satisfies ServerSettingsService["Service"];
@@ -173,27 +174,30 @@ const getLegacyProviderSettings = (
 ): LegacyProviderSettings | undefined =>
   (settings.providers as Record<string, LegacyProviderSettings | undefined>)[provider];
 
-/**
- * Ensure the `textGenerationModelSelection` points to an enabled provider.
- * If the selected provider is disabled, fall back to the first enabled
- * provider with its default model.  This is applied at read-time so the
- * persisted preference is preserved for when a provider is re-enabled.
- */
-function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings {
-  const selection = settings.textGenerationModelSelection;
+function isModelSelectionProviderEnabled(
+  settings: ServerSettings,
+  selection: ModelSelection,
+): boolean {
   const instanceConfig = settings.providerInstances[selection.instanceId];
   if (instanceConfig !== undefined) {
-    return (instanceConfig.enabled ?? true) ? settings : fallbackTextGenerationProvider(settings);
+    return instanceConfig.enabled ?? true;
   }
 
-  if (
+  return (
     isProviderDriverKind(selection.instanceId) &&
-    getLegacyProviderSettings(settings, selection.instanceId)?.enabled
-  ) {
-    return settings;
-  }
+    getLegacyProviderSettings(settings, selection.instanceId)?.enabled === true
+  );
+}
 
-  return fallbackTextGenerationProvider(settings);
+function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings {
+  const resolved = isModelSelectionProviderEnabled(settings, settings.textGenerationModelSelection)
+    ? settings
+    : fallbackTextGenerationProvider(settings);
+  const gitWriterSelection = resolved.gitWriterModelSelection;
+
+  return gitWriterSelection && !isModelSelectionProviderEnabled(resolved, gitWriterSelection)
+    ? { ...resolved, gitWriterModelSelection: null }
+    : resolved;
 }
 
 function fallbackTextGenerationProvider(settings: ServerSettings): ServerSettings {
@@ -218,6 +222,7 @@ function fallbackTextGenerationProvider(settings: ServerSettings): ServerSetting
 // Values under these keys are compared as a whole — never stripped field-by-field.
 const ATOMIC_SETTINGS_KEYS: ReadonlySet<string> = new Set([
   "automaticGitFetchInterval",
+  "gitWriterModelSelection",
   "textGenerationModelSelection",
 ]);
 

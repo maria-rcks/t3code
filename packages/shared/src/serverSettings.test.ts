@@ -161,6 +161,45 @@ describe("serverSettings helpers", () => {
     });
   });
 
+  it("replaces Git writer selection without retaining stale options", () => {
+    const current = {
+      ...DEFAULT_SERVER_SETTINGS,
+      gitWriterModelSelection: createModelSelection(
+        ProviderInstanceId.make("codex"),
+        "gpt-5.4-mini",
+        [{ id: "reasoningEffort", value: "high" }],
+      ),
+    };
+
+    expect(
+      applyServerSettingsPatch(current, {
+        gitWriterModelSelection: {
+          instanceId: ProviderInstanceId.make("opencode"),
+          model: "openai/gpt-5",
+        },
+      }).gitWriterModelSelection,
+    ).toEqual({
+      instanceId: "opencode",
+      model: "openai/gpt-5",
+    });
+  });
+
+  it("clears Git writer selection with null", () => {
+    const current = {
+      ...DEFAULT_SERVER_SETTINGS,
+      gitWriterModelSelection: createModelSelection(
+        ProviderInstanceId.make("codex"),
+        "gpt-5.4-mini",
+      ),
+    };
+
+    expect(
+      applyServerSettingsPatch(current, {
+        gitWriterModelSelection: null,
+      }).gitWriterModelSelection,
+    ).toBeNull();
+  });
+
   it("replaces providerInstances maps so omitted instance fields are cleared", () => {
     const codexId = ProviderInstanceId.make("codex");
     const current = {

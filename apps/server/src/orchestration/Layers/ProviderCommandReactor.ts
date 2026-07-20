@@ -664,8 +664,9 @@ const make = Effect.gen(function* () {
     const cwd = input.worktreePath;
     const attachments = input.attachments ?? [];
     yield* Effect.gen(function* () {
-      const { textGenerationModelSelection: modelSelection } =
-        yield* serverSettingsService.getSettings;
+      const settings = yield* serverSettingsService.getSettings;
+      const modelSelection =
+        settings.gitWriterModelSelection ?? settings.textGenerationModelSelection;
 
       const generated = yield* textGeneration.generateBranchName({
         cwd,
