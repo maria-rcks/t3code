@@ -97,12 +97,14 @@ import {
   BotIcon,
   CheckIcon,
   CircleAlertIcon,
+  ImageUpIcon,
   ListTodoIcon,
   PencilRulerIcon,
   type LucideIcon,
   LockIcon,
   LockOpenIcon,
   PenLineIcon,
+  PlusIcon,
   XIcon,
 } from "lucide-react";
 import { proposedPlanTitle } from "../../proposedPlan";
@@ -1832,6 +1834,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     removeComposerImageFromDraft(imageId);
   };
 
+  const attachFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const openAttachFilePicker = () => {
+    attachFileInputRef.current?.click();
+  };
+
+  const onAttachFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (files.length === 0) return;
+    addComposerImages(files);
+    focusComposer();
+  };
+
   // ------------------------------------------------------------------
   // Callbacks: paste / drag
   // ------------------------------------------------------------------
@@ -2092,7 +2108,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           ref={composerSurfaceRef}
           data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
           className={cn(
-            "chat-composer-glass rounded-[20px] border transition-[background-color] duration-200 has-focus-visible:border-ring/45",
+            "chat-composer-glass relative rounded-[20px] border transition-[background-color] duration-200 has-focus-visible:border-ring/45",
             isDragOverComposer ? "border-primary/70 bg-accent/45" : "border-border",
             environmentUnavailable || projectSelectionRequired ? "opacity-75" : null,
             composerProviderState.composerSurfaceClassName,
@@ -2116,6 +2132,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             scheduleComposerCollapseCheck();
           }}
         >
+          {isDragOverComposer ? (
+            <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-[20px] border-2 border-dashed border-primary/60 bg-background/85 backdrop-blur-sm">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <ImageUpIcon className="size-4 text-primary" />
+                Drop images to attach
+              </div>
+            </div>
+          ) : null}
           {!isComposerCollapsedMobile &&
             (activePendingApproval ? (
               <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
@@ -2508,6 +2532,32 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               )}
             >
               <div className="-m-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <input
+                  ref={attachFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={onAttachFileInputChange}
+                />
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        type="button"
+                        className="shrink-0 text-muted-foreground/70 hover:text-foreground/80"
+                        disabled={environmentUnavailable !== null || projectSelectionRequired}
+                        onClick={openAttachFilePicker}
+                        aria-label="Attach images"
+                      />
+                    }
+                  >
+                    <PlusIcon />
+                  </TooltipTrigger>
+                  <TooltipPopup side="top">Attach images</TooltipPopup>
+                </Tooltip>
                 <ProviderModelPicker
                   compact={isComposerFooterCompact}
                   activeInstanceId={selectedInstanceId}
