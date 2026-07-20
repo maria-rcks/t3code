@@ -1197,6 +1197,11 @@ function ChatViewContent(props: ChatViewProps) {
   const composerRef = useComposerHandleContext() ?? localComposerRef;
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [isDraggingFilesOverView, setIsDraggingFilesOverView] = useState(false);
+  const viewDragDepthRef = useRef(0);
+  const resetViewDragState = useCallback(() => {
+    viewDragDepthRef.current = 0;
+    setIsDraggingFilesOverView(false);
+  }, []);
 
   // A cancelled drag (Escape) can end without a dragleave on the hovered
   // target, which would leave the drop overlay stuck. dragend always fires
@@ -1204,12 +1209,9 @@ function ChatViewContent(props: ChatViewProps) {
   // last resort while the overlay is up.
   useEffect(() => {
     if (!isDraggingFilesOverView) return;
-    const onWindowDragEnd = () => {
-      setIsDraggingFilesOverView(false);
-    };
-    window.addEventListener("dragend", onWindowDragEnd);
-    return () => window.removeEventListener("dragend", onWindowDragEnd);
-  }, [isDraggingFilesOverView]);
+    window.addEventListener("dragend", resetViewDragState);
+    return () => window.removeEventListener("dragend", resetViewDragState);
+  }, [isDraggingFilesOverView, resetViewDragState]);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
   const optimisticUserMessagesRef = useRef(optimisticUserMessages);
@@ -5204,9 +5206,18 @@ function ChatViewContent(props: ChatViewProps) {
   const canDropImagesOnView =
     activeEnvironmentUnavailableState === null && !(isLocalDraftThread && activeProject === null);
 
+  // If attaching becomes unavailable mid-drag, retract the overlay so it
+  // does not keep inviting a drop that would be discarded.
+  useEffect(() => {
+    if (!canDropImagesOnView) {
+      resetViewDragState();
+    }
+  }, [canDropImagesOnView, resetViewDragState]);
+
   const onViewDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
     if (!canDropImagesOnView || !event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
+    viewDragDepthRef.current += 1;
     setIsDraggingFilesOverView(true);
   };
 
@@ -5217,18 +5228,23 @@ function ChatViewContent(props: ChatViewProps) {
     setIsDraggingFilesOverView(true);
   };
 
+  // dragenter/dragleave bubble in balanced pairs from descendants, so a
+  // plain depth counter tracks whether the pointer is still inside the
+  // view without inspecting relatedTarget (which nested targets and some
+  // browsers report as null).
   const onViewDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
-    const nextTarget = event.relatedTarget;
-    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
-    setIsDraggingFilesOverView(false);
+    viewDragDepthRef.current = Math.max(0, viewDragDepthRef.current - 1);
+    if (viewDragDepthRef.current === 0) {
+      setIsDraggingFilesOverView(false);
+    }
   };
 
   const onViewDrop = (event: React.DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
-    setIsDraggingFilesOverView(false);
+    resetViewDragState();
     if (!canDropImagesOnView) return;
     composerRef.current?.addImages(Array.from(event.dataTransfer.files));
   };
