@@ -916,6 +916,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const mobileComposerExpandFrameRef = useRef<number | null>(null);
   const mobileComposerExpandReleaseFrameRef = useRef<number | null>(null);
   const mobileComposerExpandInFlightRef = useRef(false);
+  const attachFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // ------------------------------------------------------------------
   // Derived: composer send state
@@ -1831,8 +1832,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     removeComposerImageFromDraft(imageId);
   };
 
-  const attachFileInputRef = useRef<HTMLInputElement | null>(null);
-
   const openAttachFilePicker = () => {
     attachFileInputRef.current?.click();
   };
@@ -1846,7 +1845,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   };
 
   // ------------------------------------------------------------------
-  // Callbacks: paste / drag
+  // Callbacks: paste
   // ------------------------------------------------------------------
   const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {
     const files = Array.from(event.clipboardData.files);
@@ -2071,7 +2070,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           ref={composerSurfaceRef}
           data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
           className={cn(
-            "chat-composer-glass relative rounded-[20px] border border-border transition-[background-color] duration-200 has-focus-visible:border-ring/45",
+            "chat-composer-glass rounded-[20px] border border-border transition-[background-color] duration-200 has-focus-visible:border-ring/45",
             environmentUnavailable || projectSelectionRequired ? "opacity-75" : null,
             composerProviderState.composerSurfaceClassName,
           )}
