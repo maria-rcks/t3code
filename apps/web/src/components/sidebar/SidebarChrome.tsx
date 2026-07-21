@@ -7,10 +7,7 @@ import { APP_STAGE_LABEL } from "../../branding";
 import { cn } from "../../lib/utils";
 import { primaryServerConfigAtom } from "../../state/server";
 import { resolveSidebarStageBadgeLabel } from "../Sidebar.logic";
-import {
-  SidebarStageBackdrop,
-  resolveSidebarStageBackdropVariant,
-} from "../SidebarStageBackdrop";
+import { SidebarStageBackdrop, resolveSidebarStageBackdropVariant } from "../SidebarStageBackdrop";
 import {
   SidebarFooter,
   SidebarHeader,
