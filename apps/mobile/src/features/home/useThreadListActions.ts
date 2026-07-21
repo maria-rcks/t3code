@@ -48,10 +48,8 @@ function useThreadActionExecutor(
   const archiveMutation = useAtomCommand(threadEnvironment.archive, { reportFailure: false });
   const unarchiveMutation = useAtomCommand(threadEnvironment.unarchive, { reportFailure: false });
   const deleteMutation = useAtomCommand(threadEnvironment.delete, { reportFailure: false });
-  // Client-only settled model: settle/unsettle ride the archive lifecycle so
-  // no server upgrade is required. See client-runtime threadSettled.ts.
-  const settleMutation = archiveMutation;
-  const unsettleMutation = unarchiveMutation;
+  const settleMutation = useAtomCommand(threadEnvironment.settle, { reportFailure: false });
+  const unsettleMutation = useAtomCommand(threadEnvironment.unsettle, { reportFailure: false });
   const inFlightThreadKeys = useRef(new Set<string>());
 
   const executeAction = useCallback(
@@ -87,35 +85,35 @@ function useThreadActionExecutor(
           );
           return false;
         }
-        // Auto-settled rows (inactivity / merged PR) are not archived;
-        // unarchiving them would be rejected. Nothing to undo — no-op.
-        if (action === "unsettle" && thread.archivedAt === null) {
-          return false;
-        }
-        const mutation =
-          action === "settle"
-            ? settleMutation
-            : action === "unsettle"
-              ? unsettleMutation
-              : action === "archive"
-                ? archiveMutation
-                : action === "unarchive"
-                  ? unarchiveMutation
-                  : deleteMutation;
-        const result = await mutation({
-          environmentId: thread.environmentId,
-          input: { threadId: thread.id },
-        });
+        const result =
+          action === "unsettle"
+            ? // reason "user" pins the thread active: auto-settle stays
+              // suppressed until real activity clears the pin server-side.
+              await unsettleMutation({
+                environmentId: thread.environmentId,
+                input: { threadId: thread.id, reason: "user" },
+              })
+            : await (
+                action === "settle"
+                  ? settleMutation
+                  : action === "archive"
+                    ? archiveMutation
+                    : action === "unarchive"
+                      ? unarchiveMutation
+                      : deleteMutation
+              )({
+                environmentId: thread.environmentId,
+                input: { threadId: thread.id },
+              });
         if (result._tag === "Failure") {
           Alert.alert(actionFailureTitle(action), actionFailureMessage(action, result.cause));
           return false;
         }
-        // Archived threads leave the live shell stream, and the v2 list
-        // renders them from the archived snapshot — keep it fresh for every
-        // action that changes what that snapshot should contain (delete
-        // included, or a deleted settled row lingers until some later
-        // refresh).
-        refreshArchivedThreadsForEnvironment(thread.environmentId);
+        // Settled threads stay in the live shell stream; only the archive
+        // lifecycle still feeds the archived-snapshot surface.
+        if (action === "archive" || action === "unarchive" || action === "delete") {
+          refreshArchivedThreadsForEnvironment(thread.environmentId);
+        }
         onCompleted?.(action, thread);
         return true;
       } finally {

@@ -51,12 +51,10 @@ export function useThreadActions() {
   const deleteThreadMutation = useAtomCommand(threadEnvironment.delete, {
     reportFailure: false,
   });
-  // Client-only settled model: settle/unsettle ride the pre-existing archive
-  // lifecycle so no server upgrade is required. See threadSettled.ts.
-  const settleThreadMutation = useAtomCommand(threadEnvironment.archive, {
+  const settleThreadMutation = useAtomCommand(threadEnvironment.settle, {
     reportFailure: false,
   });
-  const unsettleThreadMutation = useAtomCommand(threadEnvironment.unarchive, {
+  const unsettleThreadMutation = useAtomCommand(threadEnvironment.unsettle, {
     reportFailure: false,
   });
   const stopThreadSession = useAtomCommand(threadEnvironment.stopSession);
@@ -359,7 +357,7 @@ export function useThreadActions() {
       const resolved = resolveThreadTarget(target);
       // Settle may only target what effectiveSettled could classify as
       // settled: not starting/running sessions, not threads waiting on
-      // approvals or user input. Anything else would archive live work.
+      // approvals or user input. Anything else would hide live work.
       if (resolved && !canSettle(resolved.thread)) {
         return AsyncResult.failure(
           Cause.fail(
@@ -371,9 +369,7 @@ export function useThreadActions() {
         );
       }
       // Settle is a high-frequency lifecycle action and stays silent — no
-      // toast. (The old "Thread settled" toast offering worktree removal was
-      // noise; disk cleanup belongs in an explicit surface, not a
-      // notification.)
+      // toast.
       return settleThreadMutation({
         environmentId: target.environmentId,
         input: { threadId: target.threadId },
@@ -384,19 +380,14 @@ export function useThreadActions() {
 
   const unsettleThread = useCallback(
     async (target: ScopedThreadRef) => {
-      // Auto-settled rows (inactivity / merged PR) are not archived; sending
-      // unarchive for them would be rejected by the server. There is nothing
-      // to undo client-side, so succeed as a no-op.
-      const resolved = resolveThreadTarget(target);
-      if (resolved && resolved.thread.archivedAt === null) {
-        return AsyncResult.success(undefined);
-      }
+      // reason "user" pins the thread active: auto-settle (PR merged /
+      // inactivity) stays suppressed until real activity clears the pin.
       return unsettleThreadMutation({
         environmentId: target.environmentId,
-        input: { threadId: target.threadId },
+        input: { threadId: target.threadId, reason: "user" },
       });
     },
-    [resolveThreadTarget, unsettleThreadMutation],
+    [unsettleThreadMutation],
   );
 
   const confirmAndDeleteThread = useCallback(

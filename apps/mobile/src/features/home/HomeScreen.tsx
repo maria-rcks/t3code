@@ -24,8 +24,7 @@ import { AppText as Text } from "../../components/AppText";
 import { EmptyState } from "../../components/EmptyState";
 import type { WorkspaceState } from "../../state/workspaceModel";
 import type { SavedRemoteConnection } from "../../lib/connection";
-import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
-import { useArchivedThreadSnapshots } from "../archive/useArchivedThreadSnapshots";
+import { scopedProjectKey } from "../../lib/scopedEntities";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
@@ -291,15 +290,9 @@ export function HomeScreen(props: HomeScreenProps) {
 
   // Thread List v2 (beta): one flat list in creation order, no grouping.
   // Settled threads collapse into a recency tail below the card block.
-  // Settle = archive in the client-only model, and the live shell stream
-  // drops archived threads — merge them back from the archived snapshot so
-  // they render as the settled tail. Live shells win on overlap.
-  const archivedEnvironmentIds = useMemo(
-    () =>
-      threadListV2Enabled ? props.environments.map((environment) => environment.environmentId) : [],
-    [props.environments, threadListV2Enabled],
-  );
-  const { snapshots: archivedSnapshots } = useArchivedThreadSnapshots(archivedEnvironmentIds);
+  // Settled threads stay in the live shell stream (settled ≠ archived), so
+  // the partition works directly off live shells — no snapshot merging or
+  // optimistic holds.
   // PR states stream in per-row (rows own the VCS subscriptions); a merged or
   // closed PR auto-settles its thread on the next partition (mirrors web).
   const [changeRequestStateByKey, setChangeRequestStateByKey] = useState<
@@ -320,84 +313,14 @@ export function HomeScreen(props: HomeScreenProps) {
     },
     [],
   );
-  // Bridge the gap between the live stream dropping a just-settled thread
-  // and the archived snapshot returning it: hold the shell we settled,
-  // marked archived, until the snapshot carries it. Held explicitly at
-  // settle time so deleted threads are never resurrected.
-  const [settledHolds, setSettledHolds] = useState<ReadonlyMap<string, EnvironmentThreadShell>>(
-    () => new Map(),
-  );
   const handleSettleThread = useCallback(
     (thread: EnvironmentThreadShell) => {
-      const threadKey = scopedThreadKey(thread.environmentId, thread.id);
-      // An existing hold means a settle for this thread is already in flight
-      // (or done and awaiting its snapshot). Re-triggering would fail the
-      // executor's in-flight check and the rollback below would strip the
-      // first settle's hold, flickering the row out of the settled tail.
-      if (settledHolds.has(threadKey)) {
-        return;
-      }
-      setSettledHolds((current) =>
-        new Map(current).set(threadKey, {
-          ...thread,
-          archivedAt: thread.archivedAt ?? new Date().toISOString(),
-        }),
-      );
-      void (async () => {
-        // Roll the optimistic hold back if the settle was blocked or failed —
-        // otherwise a never-archived thread would render settled forever.
-        const succeeded = await props.onSettleThread(thread);
-        if (!succeeded) {
-          setSettledHolds((current) => {
-            const next = new Map(current);
-            next.delete(threadKey);
-            return next;
-          });
-        }
-      })();
+      void props.onSettleThread(thread);
     },
-    [props.onSettleThread, settledHolds],
+    [props.onSettleThread],
   );
-  // Delete and un-settle both invalidate any hold for the thread.
-  const dropSettledHold = useCallback((thread: EnvironmentThreadShell) => {
-    setSettledHolds((current) => {
-      const threadKey = scopedThreadKey(thread.environmentId, thread.id);
-      if (!current.has(threadKey)) return current;
-      const next = new Map(current);
-      next.delete(threadKey);
-      return next;
-    });
-  }, []);
-  const handleDeleteThread = useCallback(
-    (thread: EnvironmentThreadShell) => {
-      dropSettledHold(thread);
-      props.onDeleteThread(thread);
-    },
-    [dropSettledHold, props.onDeleteThread],
-  );
-  const handleUnsettleThread = useCallback(
-    (thread: EnvironmentThreadShell) => {
-      dropSettledHold(thread);
-      props.onUnsettleThread(thread);
-    },
-    [dropSettledHold, props.onUnsettleThread],
-  );
-  useEffect(() => {
-    if (settledHolds.size === 0) return;
-    const covered = new Set<string>();
-    for (const { environmentId, snapshot } of archivedSnapshots) {
-      for (const thread of snapshot.threads) {
-        covered.add(scopedThreadKey(environmentId, thread.id));
-      }
-    }
-    if ([...settledHolds.keys()].some((threadKey) => covered.has(threadKey))) {
-      setSettledHolds((current) => {
-        const next = new Map(current);
-        for (const threadKey of covered) next.delete(threadKey);
-        return next;
-      });
-    }
-  }, [archivedSnapshots, settledHolds]);
+  const handleDeleteThread = props.onDeleteThread;
+  const handleUnsettleThread = props.onUnsettleThread;
   // The settled tail renders in pages; expansion resets when the filter
   // context changes so environment/search flips never inherit a deep page.
   const [settledVisibleCount, setSettledVisibleCount] = useState(
@@ -424,21 +347,10 @@ export function HomeScreen(props: HomeScreenProps) {
   }, [threadListV2Enabled]);
   const threadListV2Layout = useMemo(() => {
     if (!threadListV2Enabled) return { items: [], hiddenSettledCount: 0 };
-    const merged = new Map<string, EnvironmentThreadShell>();
-    for (const { environmentId, snapshot } of archivedSnapshots) {
-      for (const thread of snapshot.threads) {
-        merged.set(scopedThreadKey(environmentId, thread.id), { ...thread, environmentId });
-      }
-    }
-    for (const thread of props.threads) {
-      merged.set(scopedThreadKey(thread.environmentId, thread.id), thread);
-    }
-    for (const [threadKey, shell] of settledHolds) {
-      if (merged.has(threadKey)) continue;
-      merged.set(threadKey, shell);
-    }
+    // Settled threads are live shells; archived threads keep their original
+    // "hidden from lists" meaning.
     return buildThreadListV2Items({
-      threads: [...merged.values()],
+      threads: props.threads.filter((thread) => thread.archivedAt === null),
       environmentId: props.selectedEnvironmentId,
       searchQuery: props.searchQuery,
       changeRequestStateByKey,
@@ -448,9 +360,7 @@ export function HomeScreen(props: HomeScreenProps) {
   }, [
     changeRequestStateByKey,
     nowMinute,
-    settledHolds,
     settledVisibleCount,
-    archivedSnapshots,
     props.searchQuery,
     props.selectedEnvironmentId,
     props.threads,
@@ -591,17 +501,12 @@ export function HomeScreen(props: HomeScreenProps) {
   const keyExtractor = useCallback((item: HomeListItem) => item.key, []);
 
   /* Empty states */
-  // v2 shows archived threads as its settled tail, so an archived-only
-  // workspace still has a list to render there. The signal must ignore the
-  // search/environment filters: an active query that matches nothing needs
-  // the in-list "No results" state, not the full-page "No threads yet".
+  // The signal must ignore the search/environment filters: an active query
+  // that matches nothing needs the in-list "No results" state, not the
+  // full-page "No threads yet". Settled threads are unarchived live shells,
+  // so the v1 check already covers v2.
   const hasAnyThreads =
-    props.threads.some((thread) => thread.archivedAt === null) ||
-    props.pendingTasks.length > 0 ||
-    (threadListV2Enabled &&
-      (props.threads.length > 0 ||
-        settledHolds.size > 0 ||
-        archivedSnapshots.some(({ snapshot }) => snapshot.threads.length > 0)));
+    props.threads.some((thread) => thread.archivedAt === null) || props.pendingTasks.length > 0;
   const hasResults = projectGroups.length > 0;
   const selectedEnvironmentLabel =
     props.selectedEnvironmentId === null

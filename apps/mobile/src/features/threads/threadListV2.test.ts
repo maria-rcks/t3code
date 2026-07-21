@@ -77,19 +77,21 @@ describe("sortThreadsForListV2", () => {
 });
 
 describe("buildThreadListV2Items", () => {
-  it("partitions archived (settled) threads into a slim tail with one divider", () => {
+  it("partitions settled threads into a slim tail with one divider", () => {
     const { items } = buildThreadListV2Items({
       threads: [
         makeThread({ id: ThreadId.make("active"), title: "Active" }),
         makeThread({
           id: ThreadId.make("settled"),
           title: "Settled",
-          archivedAt: NOW,
+          settledOverride: "settled",
+          settledAt: NOW,
         }),
         makeThread({
           id: ThreadId.make("settled-2"),
           title: "Settled 2",
-          archivedAt: NOW,
+          settledOverride: "settled",
+          settledAt: NOW,
         }),
       ],
       environmentId: null,
@@ -129,15 +131,16 @@ describe("buildThreadListV2Items", () => {
     expect(items.map((item) => item.thread.id)).toEqual(["newer-created", "older-created"]);
   });
 
-  it("keeps archived threads in the tail and filters by search query", () => {
+  it("keeps settled threads in the tail and filters by search query", () => {
     const { items } = buildThreadListV2Items({
       threads: [
         makeThread({ id: ThreadId.make("match"), title: "Fix login bug" }),
         makeThread({ id: ThreadId.make("miss"), title: "Greeting" }),
         makeThread({
-          id: ThreadId.make("archived"),
+          id: ThreadId.make("settled"),
           title: "Fix login again",
-          archivedAt: NOW,
+          settledOverride: "settled",
+          settledAt: NOW,
         }),
       ],
       environmentId: null,
@@ -147,7 +150,7 @@ describe("buildThreadListV2Items", () => {
 
     expect(items.map((item) => [item.thread.id, item.variant])).toEqual([
       ["match", "card"],
-      ["archived", "slim"],
+      ["settled", "slim"],
     ]);
   });
 });
@@ -160,7 +163,8 @@ describe("buildThreadListV2Items settled paging", () => {
         makeThread({
           id: ThreadId.make(`settled-${index}`),
           title: `Settled ${index}`,
-          archivedAt: NOW,
+          settledOverride: "settled",
+          settledAt: NOW,
           latestUserMessageAt: `2026-06-01T0${index}:00:00.000Z`,
         }),
       ),

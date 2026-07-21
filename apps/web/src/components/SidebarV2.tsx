@@ -43,10 +43,6 @@ import { readLocalApi } from "../localApi";
 import { useUiStateStore } from "../uiStateStore";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { useThreadActions } from "../hooks/useThreadActions";
-import {
-  refreshArchivedThreadsForEnvironment,
-  useArchivedThreadSnapshots,
-} from "../lib/archivedThreadsState";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useOpenAddProjectCommandPalette } from "../commandPaletteContext";
 import { onOpenNewThreadPicker } from "../newThreadPickerBus";
@@ -610,7 +606,7 @@ export default function SidebarV2() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const autoSettleAfterDays = useClientSettings((s) => s.sidebarAutoSettleAfterDays);
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
-  const { settleThread, unsettleThread, archiveThread, deleteThread } = useThreadActions();
+  const { settleThread, unsettleThread, deleteThread } = useThreadActions();
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -716,70 +712,18 @@ export default function SidebarV2() {
     }
   }, [projectScopeKey, projects]);
 
-  // Archived threads ARE the settled tail in the client-only settled model,
-  // but the live shell stream drops a thread the moment it is archived
-  // (thread.archived → thread-removed). Merge them back in from the archived
-  // snapshot query; live shells win on the (brief) overlap.
-  const archivedEnvironmentIds = useMemo(
-    () => environments.map((environment) => environment.environmentId),
-    [environments],
-  );
-  const { snapshots: archivedSnapshots } = useArchivedThreadSnapshots(archivedEnvironmentIds);
-  // Bridge the gap between the live stream dropping a just-settled thread
-  // (thread.archived → thread-removed) and the archived snapshot returning
-  // it: hold the shell we settled, marked archived, until either source
-  // carries the thread again. Held explicitly at settle time — not inferred
-  // from disappearance — so deleted threads are never resurrected.
-  const [settledHolds, setSettledHolds] = useState<ReadonlyMap<string, EnvironmentThreadShell>>(
-    () => new Map(),
-  );
-  const allThreads = useMemo(() => {
-    const merged = new Map<string, EnvironmentThreadShell>();
-    for (const { environmentId, snapshot } of archivedSnapshots) {
-      for (const thread of snapshot.threads) {
-        merged.set(scopedThreadKey(scopeThreadRef(environmentId, thread.id)), {
-          ...thread,
-          environmentId,
-        });
-      }
-    }
-    // Live shells win over snapshot copies.
-    for (const thread of threads) {
-      merged.set(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)), thread);
-    }
-    for (const [threadKey, shell] of settledHolds) {
-      if (merged.has(threadKey)) continue;
-      merged.set(threadKey, shell);
-    }
-    return [...merged.values()];
-  }, [archivedSnapshots, settledHolds, threads]);
-  // Drop a hold once the archived snapshot carries the thread — the steady
-  // state. (Not the live stream: the thread is still live when the hold is
-  // created, and holds are inert while a real source has the thread anyway.)
-  useEffect(() => {
-    if (settledHolds.size === 0) return;
-    const covered = new Set<string>();
-    for (const { environmentId, snapshot } of archivedSnapshots) {
-      for (const thread of snapshot.threads) {
-        covered.add(scopedThreadKey(scopeThreadRef(environmentId, thread.id)));
-      }
-    }
-    if ([...settledHolds.keys()].some((threadKey) => covered.has(threadKey))) {
-      setSettledHolds((current) => {
-        const next = new Map(current);
-        for (const threadKey of covered) next.delete(threadKey);
-        return next;
-      });
-    }
-  }, [archivedSnapshots, settledHolds]);
-
+  // Settled threads stay in the live shell stream (settled ≠ archived), so
+  // the partition works directly off live shells: no archived-snapshot
+  // merging, no optimistic holds. Archived threads remain hidden here —
+  // archive keeps its original "remove from sidebar" meaning.
   const { activeThreads, settledThreads } = useMemo(() => {
     const now = `${nowMinute}:00.000Z`;
-    const visible = allThreads.filter(
+    const visible = threads.filter(
       (thread) =>
-        scopedProject === null ||
-        (thread.environmentId === scopedProject.environmentId &&
-          thread.projectId === scopedProject.id),
+        thread.archivedAt === null &&
+        (scopedProject === null ||
+          (thread.environmentId === scopedProject.environmentId &&
+            thread.projectId === scopedProject.id)),
     );
     const active: EnvironmentThreadShell[] = [];
     const settled: EnvironmentThreadShell[] = [];
@@ -800,7 +744,7 @@ export default function SidebarV2() {
           firstValidTimestampMs(left.latestUserMessageAt, left.updatedAt),
       ),
     };
-  }, [allThreads, autoSettleAfterDays, changeRequestStateByKey, nowMinute, scopedProject]);
+  }, [autoSettleAfterDays, changeRequestStateByKey, nowMinute, scopedProject, threads]);
 
   // The settled tail renders in pages: history shouldn't dominate the
   // sidebar, and the common lookups are recent. Expansion resets when the
@@ -883,6 +827,9 @@ export default function SidebarV2() {
   }, [keybindings, orderedThreadKeys]);
   const [showJumpHints, setShowJumpHints] = useState(false);
 
+  // Settled threads are live shells, so opening one is plain navigation:
+  // history stays readable without un-settling, and sending a message or
+  // starting a session un-settles server-side.
   const navigateToThread = useCallback(
     (threadRef: ScopedThreadRef) => {
       if (useThreadSelectionStore.getState().selectedThreadKeys.size > 0) {
@@ -892,44 +839,12 @@ export default function SidebarV2() {
       if (isMobile) {
         setOpenMobile(false);
       }
-      void (async () => {
-        // Archived (= manually settled) threads are invisible to the live
-        // thread detail path — navigating first would bounce to "/". Opening
-        // one is real activity, and activity un-settles: unarchive, then
-        // navigate. Auto-settled rows (archivedAt null) are still live and
-        // navigate directly.
-        const threadKey = scopedThreadKey(threadRef);
-        const shell = threadByKeyRef.current.get(threadKey);
-        if (shell && shell.archivedAt !== null) {
-          const result = await unsettleThread(threadRef);
-          if (result._tag === "Failure") {
-            if (!isAtomCommandInterrupted(result)) {
-              const error = squashAtomCommandFailure(result);
-              toastManager.add(
-                stackedThreadToast({
-                  type: "error",
-                  title: "Failed to open settled thread",
-                  description: error instanceof Error ? error.message : "An error occurred.",
-                }),
-              );
-            }
-            return;
-          }
-          setSettledHolds((current) => {
-            if (!current.has(threadKey)) return current;
-            const next = new Map(current);
-            next.delete(threadKey);
-            return next;
-          });
-          refreshArchivedThreadsForEnvironment(threadRef.environmentId);
-        }
-        void router.navigate({
-          to: "/$environmentId/$threadId",
-          params: buildThreadRouteParams(threadRef),
-        });
-      })();
+      void router.navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(threadRef),
+      });
     },
-    [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor, unsettleThread],
+    [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
   );
 
   const [renamingThreadKey, setRenamingThreadKey] = useState<string | null>(null);
@@ -992,7 +907,7 @@ export default function SidebarV2() {
   );
 
   // A settle per thread at a time: double clicks and repeated menu picks
-  // must not dispatch a second archive that fails and toasts a false error.
+  // must not dispatch a second settle that fails and toasts a false error.
   const settlingThreadKeysRef = useRef(new Set<string>());
   const attemptSettle = useCallback(
     (threadRef: ScopedThreadRef, opts: { coSettlingKeys?: ReadonlySet<string> } = {}) => {
@@ -1001,23 +916,12 @@ export default function SidebarV2() {
         if (settlingThreadKeysRef.current.has(threadKey)) return;
         settlingThreadKeysRef.current.add(threadKey);
         try {
-          // Hold the shell before dispatching: the live stream drops the
-          // thread on archive, and the settled tail must not flicker while
-          // the archived snapshot refresh is in flight.
-          const shell = threadByKeyRef.current.get(threadKey);
-          if (shell) {
-            setSettledHolds((current) =>
-              new Map(current).set(threadKey, {
-                ...shell,
-                archivedAt: shell.archivedAt ?? new Date().toISOString(),
-              }),
-            );
-          }
           // Settling the thread you're looking at moves you forward: the next
           // remaining card (never a settled row, never one settling in the
-          // same batch), or the new-thread screen when this was the last
-          // active one. Snapshot the target before the settle mutates the
-          // partition. Background settles never navigate.
+          // same batch), or a fresh draft in this project when it was the
+          // last active one. Snapshot the target before the settle mutates
+          // the partition. Background settles never navigate.
+          const shell = threadByKeyRef.current.get(threadKey);
           let navigateAfterSettle: (() => void) | null = null;
           if (routeThreadKey === threadKey) {
             const orderedKeys = orderedThreadKeysRef.current;
@@ -1033,9 +937,7 @@ export default function SidebarV2() {
             const nextThread = nextCardKey ? threadByKeyRef.current.get(nextCardKey) : null;
             navigateAfterSettle = nextThread
               ? () => navigateToThread(scopeThreadRef(nextThread.environmentId, nextThread.id))
-              : // Settling the last active card matches archive: a fresh draft
-                // in the same project, not the bare no-thread screen.
-                shell
+              : shell
                 ? () =>
                     void handleNewThreadRef.current(
                       scopeProjectRef(shell.environmentId, shell.projectId),
@@ -1044,14 +946,7 @@ export default function SidebarV2() {
           }
           const result = await settleThread(threadRef);
           if (result._tag === "Failure") {
-            // The archive did not happen (failed or interrupted): drop the
-            // optimistic hold — no archived snapshot will ever cover it — and
-            // never navigate away from a thread that is still active.
-            setSettledHolds((current) => {
-              const next = new Map(current);
-              next.delete(threadKey);
-              return next;
-            });
+            // Never navigate away from a thread that did not settle.
             if (!isAtomCommandInterrupted(result)) {
               const error = squashAtomCommandFailure(result);
               toastManager.add(
@@ -1064,9 +959,6 @@ export default function SidebarV2() {
             }
             return;
           }
-          // Settle = archive: the shell stream drops the thread, so pull the
-          // archived snapshot immediately to keep it visible as a settled row.
-          refreshArchivedThreadsForEnvironment(threadRef.environmentId);
           navigateAfterSettle?.();
         } finally {
           settlingThreadKeysRef.current.delete(threadKey);
@@ -1088,17 +980,7 @@ export default function SidebarV2() {
               description: error instanceof Error ? error.message : "An error occurred.",
             }),
           );
-          return;
         }
-        // Un-settling invalidates any optimistic settled hold for the thread.
-        setSettledHolds((current) => {
-          const threadKey = scopedThreadKey(threadRef);
-          if (!current.has(threadKey)) return current;
-          const next = new Map(current);
-          next.delete(threadKey);
-          return next;
-        });
-        refreshArchivedThreadsForEnvironment(threadRef.environmentId);
       })();
     },
     [unsettleThread],
@@ -1126,12 +1008,12 @@ export default function SidebarV2() {
       if (clicked.value === "settle") {
         // Post-settle navigation must skip threads settling in this same
         // batch — they are all leaving the card block together. Rows that
-        // are already settled (archived) are skipped: re-settling them
-        // would dispatch a failing archive on a valid mixed selection.
+        // are already explicitly settled are skipped: nothing to do on a
+        // valid mixed selection.
         const coSettlingKeys = new Set(threadKeys);
         for (const threadKey of threadKeys) {
           const thread = threadByKeyRef.current.get(threadKey);
-          if (!thread || thread.archivedAt !== null) continue;
+          if (!thread || thread.settledOverride === "settled") continue;
           attemptSettle(scopeThreadRef(thread.environmentId, thread.id), { coSettlingKeys });
         }
         clearSelection();
@@ -1177,15 +1059,6 @@ export default function SidebarV2() {
           }
           return;
         }
-        // Deleted threads must not survive as settled holds or stale
-        // archived-snapshot rows.
-        setSettledHolds((current) => {
-          if (!current.has(threadKey)) return current;
-          const next = new Map(current);
-          next.delete(threadKey);
-          return next;
-        });
-        refreshArchivedThreadsForEnvironment(thread.environmentId);
       }
       removeFromSelection(threadKeys);
     },
@@ -1212,12 +1085,10 @@ export default function SidebarV2() {
         }
         const thread = threadByKeyRef.current.get(threadKey);
         if (!thread) return;
-        // Un-settle appears only when there is an archive to undo; an
-        // auto-settled (unarchived) slim row gets Settle, which archives it.
-        const isSettled = settledThreadKeysRef.current.has(threadKey) && thread.archivedAt !== null;
-        // No separate Archive item: settle IS archive in the client-only
-        // model, and offering both invites a failing double-archive on rows
-        // that are already settled.
+        // Un-settle works on every settled row: for explicit settles it
+        // clears the override, for auto-settled rows it pins the thread
+        // active until real activity clears the pin.
+        const isSettled = settledThreadKeysRef.current.has(threadKey);
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
             [
@@ -1269,15 +1140,6 @@ export default function SidebarV2() {
               );
               return;
             }
-            // A deleted thread must not survive as a settled hold or a stale
-            // archived-snapshot row.
-            setSettledHolds((current) => {
-              if (!current.has(threadKey)) return current;
-              const next = new Map(current);
-              next.delete(threadKey);
-              return next;
-            });
-            refreshArchivedThreadsForEnvironment(threadRef.environmentId);
             return;
           }
           default:
@@ -1286,7 +1148,6 @@ export default function SidebarV2() {
       })();
     },
     [
-      archiveThread,
       attemptSettle,
       attemptUnsettle,
       confirmThreadDelete,
@@ -1576,11 +1437,9 @@ export default function SidebarV2() {
                   key={threadKey}
                   thread={thread}
                   variant={isCard ? "card" : "slim"}
-                  // Un-settle only when there is an archive to undo. An
-                  // auto-settled row (inactivity / merged PR, archivedAt
-                  // null) offers Settle: archiving is the explicit "keep it
-                  // settled" the row can actually deliver.
-                  variantAction={isSettledRow && thread.archivedAt !== null ? "unsettle" : "settle"}
+                  // Every settled row can un-settle: explicit settles clear
+                  // the override, auto-settled rows get pinned active.
+                  variantAction={isSettledRow ? "unsettle" : "settle"}
                   isActive={routeThreadKey === threadKey}
                   jumpLabel={showJumpHints ? (jumpLabelByKey.get(threadKey) ?? null) : null}
                   currentEnvironmentId={primaryEnvironmentId}

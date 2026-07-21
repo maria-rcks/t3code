@@ -187,11 +187,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     [handleDelete, handleSettle, handleUnsettle],
   );
 
-  // Swipe: the v2 primary action is the lifecycle transition. Un-settle only
-  // exists when there is an archive to undo; an auto-settled slim row
-  // (inactivity / merged PR, archivedAt null) offers Settle, which archives
-  // it — the explicit "keep it settled" the row can actually deliver.
-  const canUnsettle = variant === "slim" && thread.archivedAt !== null;
+  // Swipe: the v2 primary action is the lifecycle transition. Every settled
+  // row can un-settle — explicit settles clear the override, auto-settled
+  // rows get pinned active until real activity clears the pin.
+  const canUnsettle = variant === "slim";
   const primaryAction = useMemo(
     () =>
       canUnsettle

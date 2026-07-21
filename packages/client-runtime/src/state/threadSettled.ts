@@ -27,11 +27,11 @@ export function threadLastActivityAt(shell: OrchestrationThreadShell): string | 
 }
 
 /**
- * A thread may be settled (= archived) only when none of effectiveSettled's
- * activity blockers hold. This is deliberately the same list: anything the
- * partition refuses to CLASSIFY as settled must also be refused as a settle
- * TARGET, or settling would archive live work (stopping its provider
- * session) that would immediately render as active anyway.
+ * A thread may be settled only when none of effectiveSettled's activity
+ * blockers hold. This is deliberately the same list: anything the partition
+ * refuses to CLASSIFY as settled must also be refused as a settle TARGET.
+ * The server enforces its own invariants; this client-side twin exists so
+ * the UI can disable/reject before a round trip.
  */
 export function canSettle(
   shell: Pick<OrchestrationThreadShell, "hasPendingApprovals" | "hasPendingUserInput" | "session">,
@@ -42,15 +42,12 @@ export function canSettle(
 }
 
 /**
- * Client-only settled resolution, backed by the pre-existing archive
- * lifecycle instead of dedicated settle commands — no server, protocol, or
- * database changes required. "Settled" here means: the user archived the
- * thread, its PR merged/closed, or it has been inactive past the auto-settle
- * window.
- *
- * Trade-offs vs the event-sourced settled model (kept on the main feature
- * branch): activity does not auto-un-settle an archived thread, and there is
- * no distinct "keep active" override — un-settling is just unarchiving.
+ * Settled resolution over the server-backed settled lifecycle. The explicit
+ * user override (thread.settle / thread.unsettle commands, projected into
+ * settledOverride + settledAt) wins in both directions; without one, a
+ * thread auto-settles on a merged/closed PR or inactivity past the window.
+ * The server un-settles on real activity (user message, session start,
+ * approval/user-input request), so an override never goes stale silently.
  */
 export function effectiveSettled(
   shell: OrchestrationThreadShell,
@@ -62,7 +59,10 @@ export function effectiveSettled(
 ): boolean {
   // Blocked work must remain visible even when a user explicitly settled it.
   if (!canSettle(shell)) return false;
-  if (shell.archivedAt !== null) return true;
+  if (shell.settledOverride === "settled") return true;
+  // "active" is the explicit keep-active pin: it suppresses auto-settle
+  // until real activity clears it server-side.
+  if (shell.settledOverride === "active") return false;
   if (options.changeRequestState === "merged" || options.changeRequestState === "closed") {
     return true;
   }
