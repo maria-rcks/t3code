@@ -600,6 +600,7 @@ export function HomeScreen(props: HomeScreenProps) {
     props.pendingTasks.length > 0 ||
     (threadListV2Enabled &&
       (props.threads.length > 0 ||
+        settledHolds.size > 0 ||
         archivedSnapshots.some(({ snapshot }) => snapshot.threads.length > 0)));
   const hasResults = projectGroups.length > 0;
   const selectedEnvironmentLabel =

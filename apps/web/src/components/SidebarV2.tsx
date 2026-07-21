@@ -1125,11 +1125,13 @@ export default function SidebarV2() {
       if (clicked._tag === "Failure") return;
       if (clicked.value === "settle") {
         // Post-settle navigation must skip threads settling in this same
-        // batch — they are all leaving the card block together.
+        // batch — they are all leaving the card block together. Rows that
+        // are already settled (archived) are skipped: re-settling them
+        // would dispatch a failing archive on a valid mixed selection.
         const coSettlingKeys = new Set(threadKeys);
         for (const threadKey of threadKeys) {
           const thread = threadByKeyRef.current.get(threadKey);
-          if (!thread) continue;
+          if (!thread || thread.archivedAt !== null) continue;
           attemptSettle(scopeThreadRef(thread.environmentId, thread.id), { coSettlingKeys });
         }
         clearSelection();
