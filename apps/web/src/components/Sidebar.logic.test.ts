@@ -651,15 +651,13 @@ describe("resolveSidebarV2Status", () => {
   const idle = { hasPendingApprovals: false, hasPendingUserInput: false };
 
   it("prioritizes approval over a running session", () => {
-    expect(
-      resolveSidebarV2Status({ ...idle, hasPendingApprovals: true, session }),
-    ).toBe("approval");
+    expect(resolveSidebarV2Status({ ...idle, hasPendingApprovals: true, session })).toBe(
+      "approval",
+    );
   });
 
   it("prioritizes awaiting input over a running session, below approval", () => {
-    expect(
-      resolveSidebarV2Status({ ...idle, hasPendingUserInput: true, session }),
-    ).toBe("input");
+    expect(resolveSidebarV2Status({ ...idle, hasPendingUserInput: true, session })).toBe("input");
     expect(
       resolveSidebarV2Status({
         ...idle,
