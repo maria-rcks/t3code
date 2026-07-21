@@ -4,6 +4,7 @@ import {
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import { canSettle } from "@t3tools/client-runtime/state/thread-settled";
 import { EnvironmentId, type ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
@@ -356,13 +357,10 @@ export function useThreadActions() {
   const settleThread = useCallback(
     async (target: ScopedThreadRef) => {
       const resolved = resolveThreadTarget(target);
-      // Settle rides archive, so it inherits archive's guard: never
-      // interrupt a thread mid-turn.
-      if (
-        resolved &&
-        resolved.thread.session?.status === "running" &&
-        resolved.thread.session.activeTurnId != null
-      ) {
+      // Settle may only target what effectiveSettled could classify as
+      // settled: not starting/running sessions, not threads waiting on
+      // approvals or user input. Anything else would archive live work.
+      if (resolved && !canSettle(resolved.thread)) {
         return AsyncResult.failure(
           Cause.fail(
             new ThreadArchiveBlockedError({

@@ -648,15 +648,33 @@ describe("resolveSidebarV2Status", () => {
     updatedAt: "2026-03-09T10:00:00.000Z",
   };
 
+  const idle = { hasPendingApprovals: false, hasPendingUserInput: false };
+
   it("prioritizes approval over a running session", () => {
-    expect(resolveSidebarV2Status({ hasPendingApprovals: true, session })).toBe("approval");
+    expect(
+      resolveSidebarV2Status({ ...idle, hasPendingApprovals: true, session }),
+    ).toBe("approval");
+  });
+
+  it("prioritizes awaiting input over a running session, below approval", () => {
+    expect(
+      resolveSidebarV2Status({ ...idle, hasPendingUserInput: true, session }),
+    ).toBe("input");
+    expect(
+      resolveSidebarV2Status({
+        ...idle,
+        hasPendingApprovals: true,
+        hasPendingUserInput: true,
+        session,
+      }),
+    ).toBe("approval");
   });
 
   it("reports working for running and starting sessions", () => {
-    expect(resolveSidebarV2Status({ hasPendingApprovals: false, session })).toBe("working");
+    expect(resolveSidebarV2Status({ ...idle, session })).toBe("working");
     expect(
       resolveSidebarV2Status({
-        hasPendingApprovals: false,
+        ...idle,
         session: { ...session, status: "starting" as const },
       }),
     ).toBe("working");
@@ -665,26 +683,26 @@ describe("resolveSidebarV2Status", () => {
   it("reports failed only while the session status is error", () => {
     expect(
       resolveSidebarV2Status({
-        hasPendingApprovals: false,
+        ...idle,
         session: { ...session, status: "error" as const, lastError: "boom" },
       }),
     ).toBe("failed");
     expect(
       resolveSidebarV2Status({
-        hasPendingApprovals: false,
+        ...idle,
         session: { ...session, status: "stopped" as const, lastError: "persisted" },
       }),
     ).toBe("ready");
     expect(
       resolveSidebarV2Status({
-        hasPendingApprovals: false,
+        ...idle,
         session: { ...session, status: "ready" as const, lastError: "persisted" },
       }),
     ).toBe("ready");
   });
 
   it("defaults to ready with no session", () => {
-    expect(resolveSidebarV2Status({ hasPendingApprovals: false, session: null })).toBe("ready");
+    expect(resolveSidebarV2Status({ ...idle, session: null })).toBe("ready");
   });
 });
 

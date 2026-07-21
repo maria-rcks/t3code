@@ -37,6 +37,7 @@ const MONO_FONT = Platform.select({
 
 const EDGE_CLASS_BY_STATUS: Partial<Record<ThreadListV2Status, string>> = {
   approval: "bg-amber-500 dark:bg-amber-400",
+  input: "bg-amber-500 dark:bg-amber-400",
   working: "bg-sky-500 dark:bg-sky-400",
   failed: "bg-red-500",
 };
@@ -45,26 +46,27 @@ const STATUS_WORD_BY_STATUS: Partial<
   Record<ThreadListV2Status, { label: string; className: string }>
 > = {
   approval: { label: "NEEDS APPROVAL", className: "text-amber-600 dark:text-amber-400" },
+  input: { label: "AWAITING INPUT", className: "text-amber-600 dark:text-amber-400" },
   working: { label: "WORKING", className: "text-sky-600 dark:text-sky-400" },
   failed: { label: "FAILED", className: "text-red-600 dark:text-red-400" },
 };
 
 function threadTimeLabel(thread: EnvironmentThreadShell, status: ThreadListV2Status): string {
-  if (status === "approval") {
+  if (status === "approval" || status === "input") {
     return `waiting ${relativeTime(thread.updatedAt)}`;
   }
   return relativeTime(thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt);
 }
 
+// No separate Archive item: settle IS archive in the client-only model,
+// and offering both invites a failing double-archive on settled rows.
 const CARD_MENU_ACTIONS: MenuAction[] = [
   { id: "settle", title: "Settle", image: "checkmark" },
-  { id: "archive", title: "Archive", image: "archivebox" },
   { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
 ];
 
 const SLIM_MENU_ACTIONS: MenuAction[] = [
   { id: "unsettle", title: "Un-settle", image: "arrow.uturn.backward" },
-  { id: "archive", title: "Archive", image: "archivebox" },
   { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
 ];
 
@@ -131,7 +133,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly showSettledDivider: boolean;
   readonly project: EnvironmentProject | null;
   readonly onSelectThread: (thread: EnvironmentThreadShell) => void;
-  readonly onArchiveThread: (thread: EnvironmentThreadShell) => void;
   readonly onDeleteThread: (thread: EnvironmentThreadShell) => void;
   readonly onSettleThread: (thread: EnvironmentThreadShell) => void;
   readonly onUnsettleThread: (thread: EnvironmentThreadShell) => void;
@@ -153,7 +154,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     thread,
     variant,
     onSelectThread,
-    onArchiveThread,
     onDeleteThread,
     onSettleThread,
     onUnsettleThread,
@@ -175,7 +175,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const statusWord = STATUS_WORD_BY_STATUS[status];
   const timeLabel = threadTimeLabel(thread, status);
 
-  const handleArchive = useCallback(() => onArchiveThread(thread), [onArchiveThread, thread]);
   const handleDelete = useCallback(() => onDeleteThread(thread), [onDeleteThread, thread]);
   const handleSettle = useCallback(() => onSettleThread(thread), [onSettleThread, thread]);
   const handleUnsettle = useCallback(() => onUnsettleThread(thread), [onUnsettleThread, thread]);
@@ -183,10 +182,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {
       if (nativeEvent.event === "settle") handleSettle();
       if (nativeEvent.event === "unsettle") handleUnsettle();
-      if (nativeEvent.event === "archive") handleArchive();
       if (nativeEvent.event === "delete") handleDelete();
     },
-    [handleArchive, handleDelete, handleSettle, handleUnsettle],
+    [handleDelete, handleSettle, handleUnsettle],
   );
 
   // Swipe: the v2 primary action is the lifecycle transition. Un-settle only

@@ -1,4 +1,5 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { canSettle } from "@t3tools/client-runtime/state/thread-settled";
 import * as Cause from "effect/Cause";
 import * as Haptics from "expo-haptics";
 import { useCallback, useRef } from "react";
@@ -63,10 +64,20 @@ function useThreadActionExecutor(
       inFlightThreadKeys.current.add(key);
       selectionHaptic();
       try {
-        // Settle rides archive, so it inherits archive's guard: never
-        // interrupt a thread mid-turn.
+        // Settle may only target what effectiveSettled could classify as
+        // settled: not starting/running sessions, not threads waiting on
+        // approvals or user input. Anything else would archive live work.
+        if (action === "settle" && !canSettle(thread)) {
+          Alert.alert(
+            actionFailureTitle(action),
+            "This thread still needs attention. Resolve or interrupt it first, then try again.",
+          );
+          return false;
+        }
+        // Archive keeps its original, narrower guard: never interrupt a
+        // thread mid-turn.
         if (
-          (action === "settle" || action === "archive") &&
+          action === "archive" &&
           thread.session?.status === "running" &&
           thread.session.activeTurnId != null
         ) {
@@ -162,7 +173,7 @@ export function useThreadListActions(): {
   readonly archiveThread: (thread: EnvironmentThreadShell) => void;
   readonly confirmDeleteThread: (thread: EnvironmentThreadShell) => void;
   readonly settleThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
-  readonly unsettleThread: (thread: EnvironmentThreadShell) => void;
+  readonly unsettleThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
 } {
   const executeAction = useThreadActionExecutor();
 
@@ -177,9 +188,7 @@ export function useThreadListActions(): {
     [executeAction],
   );
   const unsettleThread = useCallback(
-    (thread: EnvironmentThreadShell) => {
-      void executeAction("unsettle", thread);
-    },
+    async (thread: EnvironmentThreadShell) => (await executeAction("unsettle", thread)) === true,
     [executeAction],
   );
 

@@ -69,6 +69,7 @@ import { formatElapsedDurationLabel, formatRelativeTimeLabel } from "../timestam
 import type { SidebarThreadSummary } from "../types";
 import { cn } from "~/lib/utils";
 import {
+  hasUnseenCompletion,
   isTrailingDoubleClick,
   parseTimestampMs,
   resolveAdjacentThreadId,
@@ -102,6 +103,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 // carries the state color; the border stays neutral and high-contrast.
 const CARD_EDGE_BY_STATUS: Partial<Record<SidebarV2Status, string>> = {
   approval: "bg-amber-500 dark:bg-amber-400",
+  input: "bg-amber-500 dark:bg-amber-400",
   working: "bg-sky-500 animate-status-pulse dark:bg-sky-400",
   failed: "bg-red-500",
 };
@@ -115,6 +117,7 @@ const STATUS_WORD_BY_STATUS: Partial<
   Record<SidebarV2Status, { label: string; className: string }>
 > = {
   approval: { label: "Needs approval", className: "text-amber-600 dark:text-amber-400" },
+  input: { label: "Awaiting input", className: "text-amber-600 dark:text-amber-400" },
   working: { label: "Working", className: "text-sky-600 dark:text-sky-400" },
   failed: { label: "Failed", className: "text-red-600 dark:text-red-400" },
 };
@@ -134,10 +137,10 @@ function threadTimeLabel(thread: SidebarThreadSummary, status: SidebarV2Status):
   if (status === "working" && thread.latestTurn?.startedAt) {
     return formatElapsedDurationLabel(thread.latestTurn.startedAt);
   }
-  if (status === "approval") {
-    // Approval activities bump shell.updatedAt in the projection pipeline.
-    // The shell has no dedicated request timestamp, so this is the closest
-    // accurate wait-start signal shared by the label and approval ordering.
+  if (status === "approval" || status === "input") {
+    // Approval/input activities bump shell.updatedAt in the projection
+    // pipeline. The shell has no dedicated request timestamp, so this is the
+    // closest accurate wait-start signal shared by the label and ordering.
     return `waiting ${formatElapsedDurationLabel(thread.updatedAt)}`;
   }
   const timestamp = thread.latestUserMessageAt ?? thread.updatedAt;
@@ -201,7 +204,9 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
   const openPrLink = useOpenPrLink();
 
   const status = resolveSidebarV2Status(thread);
-  useTickWhile(variant === "card" && (status === "working" || status === "approval"));
+  useTickWhile(
+    variant === "card" && (status === "working" || status === "approval" || status === "input"),
+  );
 
   const gitCwd = thread.worktreePath ?? props.projectCwd;
   const gitStatus = useEnvironmentQuery(
@@ -224,10 +229,9 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
   const modelInstanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
   const driverKind = props.providerEntryByInstanceId.get(modelInstanceId)?.driverKind ?? null;
 
-  const isUnread =
-    thread.latestTurn?.completedAt != null &&
-    (lastVisitedAt == null ||
-      parseTimestampMs(thread.latestTurn.completedAt) > parseTimestampMs(lastVisitedAt));
+  // Same semantics as v1 (never-visited counts as read): flipping the beta
+  // flag must not light up every historical thread as unread.
+  const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
 
   const isRemote =
     props.currentEnvironmentId !== null && thread.environmentId !== props.currentEnvironmentId;
@@ -499,7 +503,7 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
             <span
               className={cn(
                 "font-mono text-[10px] tabular-nums transition-opacity group-hover/v2-row:opacity-0",
-                status === "approval"
+                status === "approval" || status === "input"
                   ? "text-amber-600 dark:text-amber-400"
                   : "text-muted-foreground/50",
               )}
@@ -888,12 +892,44 @@ export default function SidebarV2() {
       if (isMobile) {
         setOpenMobile(false);
       }
-      void router.navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
-      });
+      void (async () => {
+        // Archived (= manually settled) threads are invisible to the live
+        // thread detail path — navigating first would bounce to "/". Opening
+        // one is real activity, and activity un-settles: unarchive, then
+        // navigate. Auto-settled rows (archivedAt null) are still live and
+        // navigate directly.
+        const threadKey = scopedThreadKey(threadRef);
+        const shell = threadByKeyRef.current.get(threadKey);
+        if (shell && shell.archivedAt !== null) {
+          const result = await unsettleThread(threadRef);
+          if (result._tag === "Failure") {
+            if (!isAtomCommandInterrupted(result)) {
+              const error = squashAtomCommandFailure(result);
+              toastManager.add(
+                stackedThreadToast({
+                  type: "error",
+                  title: "Failed to open settled thread",
+                  description: error instanceof Error ? error.message : "An error occurred.",
+                }),
+              );
+            }
+            return;
+          }
+          setSettledHolds((current) => {
+            if (!current.has(threadKey)) return current;
+            const next = new Map(current);
+            next.delete(threadKey);
+            return next;
+          });
+          refreshArchivedThreadsForEnvironment(threadRef.environmentId);
+        }
+        void router.navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(threadRef),
+        });
+      })();
     },
-    [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
+    [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor, unsettleThread],
   );
 
   const [renamingThreadKey, setRenamingThreadKey] = useState<string | null>(null);
@@ -955,77 +991,86 @@ export default function SidebarV2() {
     [navigateToThread, rangeSelectTo, toggleThreadSelection],
   );
 
+  // A settle per thread at a time: double clicks and repeated menu picks
+  // must not dispatch a second archive that fails and toasts a false error.
+  const settlingThreadKeysRef = useRef(new Set<string>());
   const attemptSettle = useCallback(
     (threadRef: ScopedThreadRef, opts: { coSettlingKeys?: ReadonlySet<string> } = {}) => {
       void (async () => {
-        // Hold the shell before dispatching: the live stream drops the
-        // thread on archive, and the settled tail must not flicker while
-        // the archived snapshot refresh is in flight.
         const threadKey = scopedThreadKey(threadRef);
-        const shell = threadByKeyRef.current.get(threadKey);
-        if (shell) {
-          setSettledHolds((current) =>
-            new Map(current).set(threadKey, {
-              ...shell,
-              archivedAt: shell.archivedAt ?? new Date().toISOString(),
-            }),
-          );
-        }
-        // Settling the thread you're looking at moves you forward: the next
-        // remaining card (never a settled row, never one settling in the
-        // same batch), or the new-thread screen when this was the last
-        // active one. Snapshot the target before the settle mutates the
-        // partition. Background settles never navigate.
-        let navigateAfterSettle: (() => void) | null = null;
-        if (routeThreadKey === threadKey) {
-          const orderedKeys = orderedThreadKeysRef.current;
-          const settledKeys = settledThreadKeysRef.current;
-          const currentIndex = orderedKeys.indexOf(threadKey);
-          const nextCardKey =
-            currentIndex === -1
-              ? null
-              : ([
-                  ...orderedKeys.slice(currentIndex + 1),
-                  ...orderedKeys.slice(0, currentIndex),
-                ].find((key) => !settledKeys.has(key) && !opts.coSettlingKeys?.has(key)) ?? null);
-          const nextThread = nextCardKey ? threadByKeyRef.current.get(nextCardKey) : null;
-          navigateAfterSettle = nextThread
-            ? () => navigateToThread(scopeThreadRef(nextThread.environmentId, nextThread.id))
-            : // Settling the last active card matches archive: a fresh draft
-              // in the same project, not the bare no-thread screen.
-              shell
-              ? () =>
-                  void handleNewThreadRef.current(
-                    scopeProjectRef(shell.environmentId, shell.projectId),
-                  )
-              : () => void router.navigate({ to: "/" });
-        }
-        const result = await settleThread(threadRef);
-        if (result._tag === "Failure") {
-          // The archive did not happen (failed or interrupted): drop the
-          // optimistic hold — no archived snapshot will ever cover it — and
-          // never navigate away from a thread that is still active.
-          setSettledHolds((current) => {
-            const next = new Map(current);
-            next.delete(threadKey);
-            return next;
-          });
-          if (!isAtomCommandInterrupted(result)) {
-            const error = squashAtomCommandFailure(result);
-            toastManager.add(
-              stackedThreadToast({
-                type: "error",
-                title: "Failed to settle thread",
-                description: error instanceof Error ? error.message : "An error occurred.",
+        if (settlingThreadKeysRef.current.has(threadKey)) return;
+        settlingThreadKeysRef.current.add(threadKey);
+        try {
+          // Hold the shell before dispatching: the live stream drops the
+          // thread on archive, and the settled tail must not flicker while
+          // the archived snapshot refresh is in flight.
+          const shell = threadByKeyRef.current.get(threadKey);
+          if (shell) {
+            setSettledHolds((current) =>
+              new Map(current).set(threadKey, {
+                ...shell,
+                archivedAt: shell.archivedAt ?? new Date().toISOString(),
               }),
             );
           }
-          return;
+          // Settling the thread you're looking at moves you forward: the next
+          // remaining card (never a settled row, never one settling in the
+          // same batch), or the new-thread screen when this was the last
+          // active one. Snapshot the target before the settle mutates the
+          // partition. Background settles never navigate.
+          let navigateAfterSettle: (() => void) | null = null;
+          if (routeThreadKey === threadKey) {
+            const orderedKeys = orderedThreadKeysRef.current;
+            const settledKeys = settledThreadKeysRef.current;
+            const currentIndex = orderedKeys.indexOf(threadKey);
+            const nextCardKey =
+              currentIndex === -1
+                ? null
+                : ([
+                    ...orderedKeys.slice(currentIndex + 1),
+                    ...orderedKeys.slice(0, currentIndex),
+                  ].find((key) => !settledKeys.has(key) && !opts.coSettlingKeys?.has(key)) ?? null);
+            const nextThread = nextCardKey ? threadByKeyRef.current.get(nextCardKey) : null;
+            navigateAfterSettle = nextThread
+              ? () => navigateToThread(scopeThreadRef(nextThread.environmentId, nextThread.id))
+              : // Settling the last active card matches archive: a fresh draft
+                // in the same project, not the bare no-thread screen.
+                shell
+                ? () =>
+                    void handleNewThreadRef.current(
+                      scopeProjectRef(shell.environmentId, shell.projectId),
+                    )
+                : () => void router.navigate({ to: "/" });
+          }
+          const result = await settleThread(threadRef);
+          if (result._tag === "Failure") {
+            // The archive did not happen (failed or interrupted): drop the
+            // optimistic hold — no archived snapshot will ever cover it — and
+            // never navigate away from a thread that is still active.
+            setSettledHolds((current) => {
+              const next = new Map(current);
+              next.delete(threadKey);
+              return next;
+            });
+            if (!isAtomCommandInterrupted(result)) {
+              const error = squashAtomCommandFailure(result);
+              toastManager.add(
+                stackedThreadToast({
+                  type: "error",
+                  title: "Failed to settle thread",
+                  description: error instanceof Error ? error.message : "An error occurred.",
+                }),
+              );
+            }
+            return;
+          }
+          // Settle = archive: the shell stream drops the thread, so pull the
+          // archived snapshot immediately to keep it visible as a settled row.
+          refreshArchivedThreadsForEnvironment(threadRef.environmentId);
+          navigateAfterSettle?.();
+        } finally {
+          settlingThreadKeysRef.current.delete(threadKey);
         }
-        // Settle = archive: the shell stream drops the thread, so pull the
-        // archived snapshot immediately to keep it visible as a settled row.
-        refreshArchivedThreadsForEnvironment(threadRef.environmentId);
-        navigateAfterSettle?.();
       })();
     },
     [navigateToThread, routeThreadKey, router, settleThread],
@@ -1168,6 +1213,9 @@ export default function SidebarV2() {
         // Un-settle appears only when there is an archive to undo; an
         // auto-settled (unarchived) slim row gets Settle, which archives it.
         const isSettled = settledThreadKeysRef.current.has(threadKey) && thread.archivedAt !== null;
+        // No separate Archive item: settle IS archive in the client-only
+        // model, and offering both invites a failing double-archive on rows
+        // that are already settled.
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
             [
@@ -1176,7 +1224,6 @@ export default function SidebarV2() {
                 : { id: "settle", label: "Settle thread" },
               { id: "rename", label: "Rename thread" },
               { id: "mark-unread", label: "Mark unread" },
-              { id: "archive", label: "Archive" },
               { id: "delete", label: "Delete", destructive: true, icon: "trash" },
             ],
             position,
@@ -1196,20 +1243,6 @@ export default function SidebarV2() {
           case "mark-unread":
             markThreadUnread(threadKey, thread.latestTurn?.completedAt);
             return;
-          case "archive": {
-            const result = await archiveThread(threadRef);
-            if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-              const error = squashAtomCommandFailure(result);
-              toastManager.add(
-                stackedThreadToast({
-                  type: "error",
-                  title: "Failed to archive thread",
-                  description: error instanceof Error ? error.message : "An error occurred.",
-                }),
-              );
-            }
-            return;
-          }
           case "delete": {
             if (confirmThreadDelete) {
               const confirmed = await settlePromise(() =>

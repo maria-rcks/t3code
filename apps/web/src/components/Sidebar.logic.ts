@@ -422,13 +422,19 @@ export function resolveThreadRowClassName(input: {
 // (approval), "in motion" (working), and "broken" (failed). Ready is the
 // unlabeled resting state — the agent stopped and is waiting on the user,
 // whether it finished, asked a question, or proposed a plan.
-export type SidebarV2Status = "approval" | "working" | "failed" | "ready";
+export type SidebarV2Status = "approval" | "input" | "working" | "failed" | "ready";
 
-type SidebarV2StatusInput = Pick<SidebarThreadSummary, "hasPendingApprovals" | "session">;
+type SidebarV2StatusInput = Pick<
+  SidebarThreadSummary,
+  "hasPendingApprovals" | "hasPendingUserInput" | "session"
+>;
 
 export function resolveSidebarV2Status(thread: SidebarV2StatusInput): SidebarV2Status {
   if (thread.hasPendingApprovals) {
     return "approval";
+  }
+  if (thread.hasPendingUserInput) {
+    return "input";
   }
   if (thread.session?.status === "running" || thread.session?.status === "starting") {
     return "working";

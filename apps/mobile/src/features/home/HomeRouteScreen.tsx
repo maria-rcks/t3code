@@ -123,10 +123,21 @@ export function HomeRouteScreen() {
           onProjectSortOrderChange={setProjectSortOrder}
           onSearchQueryChange={setSearchQuery}
           onSelectThread={(thread) => {
-            navigation.navigate("Thread", {
-              environmentId: thread.environmentId,
-              threadId: thread.id,
-            });
+            // Archived (= manually settled) rows are invisible to the live
+            // thread queries — opening the screen without unarchiving leaves
+            // it unresolvable and can drop outbox sends. Opening is
+            // activity, and activity un-settles: unarchive first, then
+            // navigate. Auto-settled rows (archivedAt null) are still live.
+            void (async () => {
+              if (thread.archivedAt !== null) {
+                const unsettled = await unsettleThread(thread);
+                if (!unsettled) return;
+              }
+              navigation.navigate("Thread", {
+                environmentId: thread.environmentId,
+                threadId: thread.id,
+              });
+            })();
           }}
           onSelectPendingTask={openPendingTask}
           onDeletePendingTask={confirmDeletePendingTask}

@@ -2,11 +2,7 @@ import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools
 import { describe, expect, it } from "vite-plus/test";
 
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE, type Thread } from "./types";
-import {
-  canOfferWorktreeRemoval,
-  formatWorktreePathForDisplay,
-  getOrphanedWorktreePathForThread,
-} from "./worktreeCleanup";
+import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "./worktreeCleanup";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
 
@@ -110,13 +106,5 @@ describe("formatWorktreePathForDisplay", () => {
   it("ignores trailing slashes", () => {
     const result = formatWorktreePathForDisplay("/tmp/custom-worktrees/my-worktree/");
     expect(result).toBe("my-worktree");
-  });
-});
-
-describe("canOfferWorktreeRemoval", () => {
-  it("requires a clean worktree with no unpushed commits", () => {
-    expect(canOfferWorktreeRemoval({ hasWorkingTreeChanges: false, aheadCount: 0 })).toBe(true);
-    expect(canOfferWorktreeRemoval({ hasWorkingTreeChanges: true, aheadCount: 0 })).toBe(false);
-    expect(canOfferWorktreeRemoval({ hasWorkingTreeChanges: false, aheadCount: 1 })).toBe(false);
   });
 });

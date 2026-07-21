@@ -8,6 +8,7 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  canSettle,
   effectiveSettled,
   threadLastActivityAt,
   type ChangeRequestStateLike,
@@ -179,5 +180,34 @@ describe("effectiveSettled", () => {
 
     expect(effectiveSettled(boundary, { now: NOW, autoSettleAfterDays: 3 })).toBe(false);
     expect(effectiveSettled(stale, { now: NOW, autoSettleAfterDays: null })).toBe(false);
+  });
+});
+
+describe("canSettle", () => {
+  it("blocks every state effectiveSettled refuses to classify as settled", () => {
+    expect(canSettle(makeShell({ archivedAt: null, activityAt: FRESH }))).toBe(true);
+    expect(
+      canSettle(makeShell({ archivedAt: null, activityAt: FRESH, sessionStatus: "starting" })),
+    ).toBe(false);
+    expect(
+      canSettle(makeShell({ archivedAt: null, activityAt: FRESH, sessionStatus: "running" })),
+    ).toBe(false);
+    expect(canSettle(makeShell({ archivedAt: null, activityAt: FRESH, pending: "approval" }))).toBe(
+      false,
+    );
+    expect(
+      canSettle(makeShell({ archivedAt: null, activityAt: FRESH, pending: "user-input" })),
+    ).toBe(false);
+  });
+
+  it("agrees with effectiveSettled's blockers for archived shells", () => {
+    // Anything canSettle rejects must render as active even when archived.
+    const blocked = makeShell({
+      archivedAt: FRESH,
+      activityAt: FRESH,
+      pending: "user-input",
+    });
+    expect(canSettle(blocked)).toBe(false);
+    expect(effectiveSettled(blocked, { now: NOW, autoSettleAfterDays: 3 })).toBe(false);
   });
 });

@@ -413,6 +413,15 @@ export function HomeScreen(props: HomeScreenProps) {
     () => setSettledVisibleCount((count) => count + THREAD_LIST_V2_SETTLED_PAGE_COUNT),
     [],
   );
+  // now is quantized to the minute and ticks so the inactivity auto-settle
+  // boundary is actually crossed while the app stays open (mirrors web);
+  // without a clock dependency the partition memoizes a frozen "now".
+  const [nowMinute, setNowMinute] = useState(() => new Date().toISOString().slice(0, 16));
+  useEffect(() => {
+    if (!threadListV2Enabled) return;
+    const id = setInterval(() => setNowMinute(new Date().toISOString().slice(0, 16)), 60_000);
+    return () => clearInterval(id);
+  }, [threadListV2Enabled]);
   const threadListV2Layout = useMemo(() => {
     if (!threadListV2Enabled) return { items: [], hiddenSettledCount: 0 };
     const merged = new Map<string, EnvironmentThreadShell>();
@@ -434,9 +443,11 @@ export function HomeScreen(props: HomeScreenProps) {
       searchQuery: props.searchQuery,
       changeRequestStateByKey,
       settledLimit: settledVisibleCount,
+      now: `${nowMinute}:00.000Z`,
     });
   }, [
     changeRequestStateByKey,
+    nowMinute,
     settledHolds,
     settledVisibleCount,
     archivedSnapshots,
@@ -458,7 +469,6 @@ export function HomeScreen(props: HomeScreenProps) {
           null
         }
         onSelectThread={props.onSelectThread}
-        onArchiveThread={props.onArchiveThread}
         onDeleteThread={handleDeleteThread}
         onSettleThread={handleSettleThread}
         onUnsettleThread={handleUnsettleThread}
@@ -480,7 +490,6 @@ export function HomeScreen(props: HomeScreenProps) {
       handleUnsettleThread,
       projectByKey,
       projectCwdByKey,
-      props.onArchiveThread,
       props.onSelectThread,
     ],
   );
@@ -664,11 +673,19 @@ export function HomeScreen(props: HomeScreenProps) {
 
   // v2 renders queued offline tasks above the thread cards — they are not
   // thread shells, so the v2 item builder never sees them, but they must
-  // stay visible and deletable while their environment is offline.
+  // stay visible and deletable while their environment is offline. They
+  // respect the same environment scope and search filter as the list.
+  const v2SearchQuery = props.searchQuery.trim().toLocaleLowerCase();
+  const v2PendingTasks = props.pendingTasks.filter(
+    (pendingTask) =>
+      (props.selectedEnvironmentId === null ||
+        pendingTask.message.environmentId === props.selectedEnvironmentId) &&
+      (v2SearchQuery.length === 0 || pendingTask.title.toLocaleLowerCase().includes(v2SearchQuery)),
+  );
   const v2ListHeader = (
     <>
       {listHeader}
-      {props.pendingTasks.map((pendingTask, index) => (
+      {v2PendingTasks.map((pendingTask, index) => (
         <PendingTaskListRow
           key={pendingTask.message.messageId}
           variant="compact"
@@ -676,7 +693,7 @@ export function HomeScreen(props: HomeScreenProps) {
           environmentLabel={
             props.savedConnectionsById[pendingTask.message.environmentId]?.environmentLabel ?? null
           }
-          isLast={index === props.pendingTasks.length - 1}
+          isLast={index === v2PendingTasks.length - 1}
           onSelectPendingTask={props.onSelectPendingTask}
           onDeletePendingTask={props.onDeletePendingTask}
         />

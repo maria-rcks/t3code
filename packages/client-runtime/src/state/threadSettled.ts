@@ -27,6 +27,21 @@ export function threadLastActivityAt(shell: OrchestrationThreadShell): string | 
 }
 
 /**
+ * A thread may be settled (= archived) only when none of effectiveSettled's
+ * activity blockers hold. This is deliberately the same list: anything the
+ * partition refuses to CLASSIFY as settled must also be refused as a settle
+ * TARGET, or settling would archive live work (stopping its provider
+ * session) that would immediately render as active anyway.
+ */
+export function canSettle(
+  shell: Pick<OrchestrationThreadShell, "hasPendingApprovals" | "hasPendingUserInput" | "session">,
+): boolean {
+  if (shell.hasPendingApprovals || shell.hasPendingUserInput) return false;
+  if (shell.session?.status === "starting" || shell.session?.status === "running") return false;
+  return true;
+}
+
+/**
  * Client-only settled resolution, backed by the pre-existing archive
  * lifecycle instead of dedicated settle commands — no server, protocol, or
  * database changes required. "Settled" here means: the user archived the
@@ -46,8 +61,7 @@ export function effectiveSettled(
   },
 ): boolean {
   // Blocked work must remain visible even when a user explicitly settled it.
-  if (shell.hasPendingApprovals || shell.hasPendingUserInput) return false;
-  if (shell.session?.status === "starting" || shell.session?.status === "running") return false;
+  if (!canSettle(shell)) return false;
   if (shell.archivedAt !== null) return true;
   if (options.changeRequestState === "merged" || options.changeRequestState === "closed") {
     return true;
