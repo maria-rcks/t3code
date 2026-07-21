@@ -333,6 +333,21 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
+      // Server-side twin of the client's canSettle session check: a stale
+      // or raced client must not settle a thread whose session is coming
+      // alive or working. (Pending approval/user-input blocking stays
+      // client-side — deriving it here would replay activity streams — but
+      // it is defense-in-depth twice over: effectiveSettled renders blocked
+      // threads as active regardless of the override, and a new
+      // approval/user-input request auto-un-settles via the activity gate.)
+      if (thread.session?.status === "starting" || thread.session?.status === "running") {
+        return yield* Effect.fail(
+          new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: `thread ${command.threadId} has an active session and cannot be settled`,
+          }),
+        );
+      }
       const occurredAt = yield* nowIso;
       // Settling an already-settled thread re-emits with the original
       // settledAt: the engine rejects zero-event commands, and bulk-settle /
@@ -352,7 +367,10 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         payload: {
           threadId: command.threadId,
           settledAt,
-          updatedAt: settledAt,
+          // Always the command time: a re-settle keeps the original
+          // settledAt but must not rewind updatedAt (sorting and relative-
+          // time labels key on it).
+          updatedAt: occurredAt,
         },
       };
     }
@@ -534,7 +552,10 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           createdAt: command.createdAt,
         },
       };
-      if (targetThread.settledOverride !== "settled") {
+      // Real activity resets ANY override: it wakes an explicitly settled
+      // thread, and it clears a keep-active pin back to neutral so the
+      // thread can auto-settle again after this burst of work goes stale.
+      if (targetThread.settledOverride === null) {
         return [userMessageEvent, turnStartRequestedEvent];
       }
       const unsettledEvent: Omit<OrchestrationEvent, "sequence"> = {
@@ -696,7 +717,8 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       // must not fight a user's explicit settle.
       const isSessionActivity =
         command.session.status === "starting" || command.session.status === "running";
-      if (thread.settledOverride !== "settled" || !isSessionActivity) {
+      // Real activity resets ANY override (settled wakes, active unpins).
+      if (thread.settledOverride === null || !isSessionActivity) {
         return sessionSetEvent;
       }
       const unsettledEvent: Omit<OrchestrationEvent, "sequence"> = {
@@ -872,7 +894,8 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       const wakesSettledThread =
         command.activity.kind === "approval.requested" ||
         command.activity.kind === "user-input.requested";
-      if (thread.settledOverride !== "settled" || !wakesSettledThread) {
+      // Real activity resets ANY override (settled wakes, active unpins).
+      if (thread.settledOverride === null || !wakesSettledThread) {
         return activityAppendedEvent;
       }
       const unsettledEvent: Omit<OrchestrationEvent, "sequence"> = {

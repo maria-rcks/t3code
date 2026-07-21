@@ -105,8 +105,8 @@ export function buildThreadListV2Items(input: {
   const active: EnvironmentThreadShell[] = [];
   const settled: EnvironmentThreadShell[] = [];
   for (const thread of input.threads) {
-    // Archived threads stay in the list: in the client-only settled model,
-    // archive IS settle, so they render as the settled tail.
+    // Callers pass live (unarchived) shells; settled threads are among them
+    // and partition into the tail via effectiveSettled.
     if (input.environmentId !== null && thread.environmentId !== input.environmentId) continue;
     if (query.length > 0 && !thread.title.toLocaleLowerCase().includes(query)) continue;
     const changeRequestState =

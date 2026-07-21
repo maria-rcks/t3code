@@ -58,8 +58,8 @@ function threadTimeLabel(thread: EnvironmentThreadShell, status: ThreadListV2Sta
   return relativeTime(thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt);
 }
 
-// No separate Archive item: settle IS archive in the client-only model,
-// and offering both invites a failing double-archive on settled rows.
+// Menus stay lifecycle-focused: settle/un-settle plus delete. Archive keeps
+// its own surface (thread screen / settings) rather than crowding the row.
 const CARD_MENU_ACTIONS: MenuAction[] = [
   { id: "settle", title: "Settle", image: "checkmark" },
   { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },

@@ -576,7 +576,10 @@ const ThreadUnsettleCommand = Schema.Struct({
   type: Schema.Literal("thread.unsettle"),
   commandId: CommandId,
   threadId: ThreadId,
-  reason: Schema.Literals(["user", "activity"]),
+  // Commands only carry "user": activity un-settles are decided server-side
+  // (the decider emits thread.unsettled(reason: "activity") events directly,
+  // never through this command), so a client cannot forge the neutral reset.
+  reason: Schema.Literal("user"),
 });
 
 const ThreadMetaUpdateCommand = Schema.Struct({

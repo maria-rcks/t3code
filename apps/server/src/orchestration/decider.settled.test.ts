@@ -21,6 +21,7 @@ const SETTLED_AT = "2025-12-30T00:00:00.000Z";
 function makeReadModel(
   settledOverride: OrchestrationThread["settledOverride"],
   archivedAt: string | null = null,
+  session: OrchestrationSession | null = null,
 ): OrchestrationReadModel {
   return {
     snapshotSequence: 0,
@@ -46,7 +47,7 @@ function makeReadModel(
         proposedPlans: [],
         activities: [],
         checkpoints: [],
-        session: null,
+        session,
       },
     ],
     updatedAt: NOW,
@@ -98,8 +99,37 @@ it.layer(NodeServices.layer)("settled thread decider", (it) => {
       expect(reEmitEvents[0]?.type).toBe("thread.settled");
       if (reEmitEvents[0]?.type === "thread.settled") {
         expect(reEmitEvents[0].payload.settledAt).toBe(SETTLED_AT);
-        expect(reEmitEvents[0].payload.updatedAt).toBe(SETTLED_AT);
+        // updatedAt must NOT rewind to the historical settledAt: sorting and
+        // relative-time labels key on it.
+        expect(reEmitEvents[0].payload.updatedAt).not.toBe(SETTLED_AT);
       }
+    }),
+  );
+
+  it.effect("rejects settling a thread with a live session", () =>
+    Effect.gen(function* () {
+      for (const status of ["starting", "running"] as const) {
+        const error = yield* decideOrchestrationCommand({
+          command: {
+            type: "thread.settle",
+            commandId: CommandId.make(`cmd-settle-live-${status}`),
+            threadId: ThreadId.make("thread-1"),
+          },
+          readModel: makeReadModel(null, null, makeSession(status)),
+        }).pipe(Effect.flip);
+        expect(error._tag).toBe("OrchestrationCommandInvariantError");
+      }
+      // Stopped/error sessions are settleable — only live work is protected.
+      const settled = yield* decideOrchestrationCommand({
+        command: {
+          type: "thread.settle",
+          commandId: CommandId.make("cmd-settle-stopped"),
+          threadId: ThreadId.make("thread-1"),
+        },
+        readModel: makeReadModel(null, null, makeSession("stopped")),
+      });
+      const settledEvents = Array.isArray(settled) ? settled : [settled];
+      expect(settledEvents[0]?.type).toBe("thread.settled");
     }),
   );
 
@@ -197,14 +227,19 @@ it.layer(NodeServices.layer)("settled thread decider", (it) => {
           session: makeSession("running"),
           createdAt: NOW,
         },
+        // A keep-active pin is also an override: real activity clears it
+        // back to neutral so auto-settle can apply again later.
         readModel: makeReadModel("active"),
       });
       const sessionEvents = Array.isArray(sessionResult) ? sessionResult : [sessionResult];
-      expect(sessionEvents.map((event) => event.type)).toEqual(["thread.session-set"]);
+      expect(sessionEvents.map((event) => event.type)).toEqual([
+        "thread.unsettled",
+        "thread.session-set",
+      ]);
     }),
   );
 
-  it.effect("preserves an explicit active override during activity", () =>
+  it.effect("clears a keep-active pin on real activity", () =>
     Effect.gen(function* () {
       const turnResult = yield* decideOrchestrationCommand({
         command: {
@@ -224,7 +259,10 @@ it.layer(NodeServices.layer)("settled thread decider", (it) => {
         readModel: makeReadModel("active"),
       });
       const turnEvents = Array.isArray(turnResult) ? turnResult : [turnResult];
+      // The pin exists to suppress AUTO-settle, not to survive real work:
+      // activity resets it to neutral, restoring the default lifecycle.
       expect(turnEvents.map((event) => event.type)).toEqual([
+        "thread.unsettled",
         "thread.message-sent",
         "thread.turn-start-requested",
       ]);
@@ -248,7 +286,10 @@ it.layer(NodeServices.layer)("settled thread decider", (it) => {
         readModel: makeReadModel("active"),
       });
       const activityEvents = Array.isArray(activityResult) ? activityResult : [activityResult];
-      expect(activityEvents.map((event) => event.type)).toEqual(["thread.activity-appended"]);
+      expect(activityEvents.map((event) => event.type)).toEqual([
+        "thread.unsettled",
+        "thread.activity-appended",
+      ]);
     }),
   );
 

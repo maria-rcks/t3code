@@ -8,8 +8,19 @@ import { Alert } from "react-native";
 import { showConfirmDialog } from "../../components/ConfirmDialogHost";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { refreshArchivedThreadsForEnvironment } from "../archive/useArchivedThreadSnapshots";
+import { appAtomRegistry } from "../../state/atom-registry";
+import { environmentServerConfigsAtom } from "../../state/server";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
+
+/** Version skew: never send settle/unsettle to a server that predates them
+    (capability defaults false on decode for older servers). */
+function environmentSupportsSettlement(environmentId: EnvironmentThreadShell["environmentId"]) {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadSettlement === true
+  );
+}
 
 type ThreadListAction = "archive" | "unarchive" | "delete" | "settle" | "unsettle";
 
@@ -62,6 +73,16 @@ function useThreadActionExecutor(
       inFlightThreadKeys.current.add(key);
       selectionHaptic();
       try {
+        if (
+          (action === "settle" || action === "unsettle") &&
+          !environmentSupportsSettlement(thread.environmentId)
+        ) {
+          Alert.alert(
+            actionFailureTitle(action),
+            "This environment's server does not support settling yet. Update the server to use Settle.",
+          );
+          return false;
+        }
         // Settle may only target what effectiveSettled could classify as
         // settled: not starting/running sessions, not threads waiting on
         // approvals or user input. Anything else would archive live work.

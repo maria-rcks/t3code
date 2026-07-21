@@ -20,7 +20,12 @@ import { vcsEnvironment } from "../state/vcs";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { refreshArchivedThreadsForEnvironment } from "../lib/archivedThreadsState";
 import { readLocalApi } from "../localApi";
-import { readEnvironmentThreadRefs, readProject, readThreadShell } from "../state/entities";
+import {
+  readEnvironmentSupportsSettlement,
+  readEnvironmentThreadRefs,
+  readProject,
+  readThreadShell,
+} from "../state/entities";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
@@ -37,6 +42,18 @@ export class ThreadArchiveBlockedError extends Schema.TaggedErrorClass<ThreadArc
 ) {
   override get message(): string {
     return "Cannot archive a running thread.";
+  }
+}
+
+export class ThreadSettlementUnsupportedError extends Schema.TaggedErrorClass<ThreadSettlementUnsupportedError>()(
+  "ThreadSettlementUnsupportedError",
+  {
+    environmentId: EnvironmentId,
+    threadId: ThreadId,
+  },
+) {
+  override get message(): string {
+    return "This environment's server does not support settling yet. Update the server to use Settle.";
   }
 }
 
@@ -354,6 +371,18 @@ export function useThreadActions() {
 
   const settleThread = useCallback(
     async (target: ScopedThreadRef) => {
+      // Version skew: never send the command to a server that predates it —
+      // the raw protocol rejection would read as a random failure.
+      if (!readEnvironmentSupportsSettlement(target.environmentId)) {
+        return AsyncResult.failure(
+          Cause.fail(
+            new ThreadSettlementUnsupportedError({
+              environmentId: target.environmentId,
+              threadId: target.threadId,
+            }),
+          ),
+        );
+      }
       const resolved = resolveThreadTarget(target);
       // Settle may only target what effectiveSettled could classify as
       // settled: not starting/running sessions, not threads waiting on
@@ -380,6 +409,16 @@ export function useThreadActions() {
 
   const unsettleThread = useCallback(
     async (target: ScopedThreadRef) => {
+      if (!readEnvironmentSupportsSettlement(target.environmentId)) {
+        return AsyncResult.failure(
+          Cause.fail(
+            new ThreadSettlementUnsupportedError({
+              environmentId: target.environmentId,
+              threadId: target.threadId,
+            }),
+          ),
+        );
+      }
       // reason "user" pins the thread active: auto-settle (PR merged /
       // inactivity) stays suppressed until real activity clears the pin.
       return unsettleThreadMutation({
