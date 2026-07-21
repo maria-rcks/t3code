@@ -37,6 +37,17 @@ function parseTimestampMs(isoDate: string): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+/** First VALID timestamp wins: a present-yet-malformed string falls through
+    to the next candidate rather than sinking the row to the epoch. */
+function firstValidTimestampMs(...candidates: ReadonlyArray<string | null | undefined>): number {
+  for (const candidate of candidates) {
+    if (candidate == null) continue;
+    const parsed = Date.parse(candidate);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return 0;
+}
+
 /**
  * v2 sort: static creation order, newest thread on top. Activity NEVER
  * reorders the list — a row holds its position from open until settled, so
@@ -110,8 +121,8 @@ export function buildThreadListV2Items(input: {
   const orderedActive = sortThreadsForListV2(active);
   const orderedSettled = [...settled].sort(
     (left, right) =>
-      parseTimestampMs(right.latestUserMessageAt ?? right.updatedAt) -
-      parseTimestampMs(left.latestUserMessageAt ?? left.updatedAt),
+      firstValidTimestampMs(right.latestUserMessageAt, right.updatedAt) -
+      firstValidTimestampMs(left.latestUserMessageAt, left.updatedAt),
   );
   const settledLimit = input.settledLimit ?? Number.POSITIVE_INFINITY;
   const visibleSettled =

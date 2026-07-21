@@ -592,11 +592,15 @@ export function HomeScreen(props: HomeScreenProps) {
 
   /* Empty states */
   // v2 shows archived threads as its settled tail, so an archived-only
-  // workspace still has a list to render there.
+  // workspace still has a list to render there. The signal must ignore the
+  // search/environment filters: an active query that matches nothing needs
+  // the in-list "No results" state, not the full-page "No threads yet".
   const hasAnyThreads =
     props.threads.some((thread) => thread.archivedAt === null) ||
     props.pendingTasks.length > 0 ||
-    (threadListV2Enabled && threadListV2Items.length > 0);
+    (threadListV2Enabled &&
+      (props.threads.length > 0 ||
+        archivedSnapshots.some(({ snapshot }) => snapshot.threads.length > 0)));
   const hasResults = projectGroups.length > 0;
   const selectedEnvironmentLabel =
     props.selectedEnvironmentId === null

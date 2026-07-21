@@ -69,9 +69,9 @@ import { formatElapsedDurationLabel, formatRelativeTimeLabel } from "../timestam
 import type { SidebarThreadSummary } from "../types";
 import { cn } from "~/lib/utils";
 import {
+  firstValidTimestampMs,
   hasUnseenCompletion,
   isTrailingDoubleClick,
-  parseTimestampMs,
   resolveAdjacentThreadId,
   resolveSidebarV2Status,
   sortThreadsForSidebarV2,
@@ -796,8 +796,8 @@ export default function SidebarV2() {
       activeThreads: sortThreadsForSidebarV2(active),
       settledThreads: settled.toSorted(
         (left, right) =>
-          parseTimestampMs(right.latestUserMessageAt ?? right.updatedAt) -
-          parseTimestampMs(left.latestUserMessageAt ?? left.updatedAt),
+          firstValidTimestampMs(right.latestUserMessageAt, right.updatedAt) -
+          firstValidTimestampMs(left.latestUserMessageAt, left.updatedAt),
       ),
     };
   }, [allThreads, autoSettleAfterDays, changeRequestStateByKey, nowMinute, scopedProject]);
