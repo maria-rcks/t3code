@@ -92,6 +92,10 @@ export function buildThreadListV2Items(input: {
   readonly searchQuery: string;
   /** Per-row PR state reported up by visible rows ("env:threadId" keys). */
   readonly changeRequestStateByKey?: ReadonlyMap<string, "open" | "closed" | "merged">;
+  /** Environments whose server supports thread.settle/unsettle. Threads on
+      other environments never classify as settled — the user could neither
+      un-settle nor pin them. Absent = no gating (tests). */
+  readonly settlementEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly autoSettleAfterDays?: number;
   /** Max settled rows to render; the rest are counted, not built. */
   readonly settledLimit?: number;
@@ -109,9 +113,13 @@ export function buildThreadListV2Items(input: {
     // and partition into the tail via effectiveSettled.
     if (input.environmentId !== null && thread.environmentId !== input.environmentId) continue;
     if (query.length > 0 && !thread.title.toLocaleLowerCase().includes(query)) continue;
+    const supportsSettlement = input.settlementEnvironmentIds?.has(thread.environmentId) ?? true;
     const changeRequestState =
       input.changeRequestStateByKey?.get(`${thread.environmentId}:${thread.id}`) ?? null;
-    if (effectiveSettled(thread, { now, autoSettleAfterDays, changeRequestState })) {
+    if (
+      supportsSettlement &&
+      effectiveSettled(thread, { now, autoSettleAfterDays, changeRequestState })
+    ) {
       settled.push(thread);
     } else {
       active.push(thread);

@@ -85,7 +85,7 @@ function useThreadActionExecutor(
         }
         // Settle may only target what effectiveSettled could classify as
         // settled: not starting/running sessions, not threads waiting on
-        // approvals or user input. Anything else would archive live work.
+        // approvals or user input. Anything else would hide live work.
         if (action === "settle" && !canSettle(thread)) {
           Alert.alert(
             actionFailureTitle(action),

@@ -1,5 +1,5 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -166,6 +166,16 @@ describe("buildThreadListV2Items settled paging", () => {
           settledOverride: "settled",
           settledAt: NOW,
           latestUserMessageAt: `2026-06-01T0${index}:00:00.000Z`,
+          // A turn adopted the message (same requestedAt): without it the
+          // thread reads as a queued turn start, which never settles.
+          latestTurn: {
+            turnId: TurnId.make(`turn-${index}`),
+            state: "completed",
+            requestedAt: `2026-06-01T0${index}:00:00.000Z`,
+            startedAt: `2026-06-01T0${index}:00:00.000Z`,
+            completedAt: `2026-06-01T0${index}:10:00.000Z`,
+            assistantMessageId: null,
+          },
         }),
       ),
     ];

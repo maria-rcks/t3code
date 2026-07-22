@@ -348,14 +348,49 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           }),
         );
       }
+      // A queued turn start — a user message no turn has picked up yet — is
+      // work in flight even though session is still null (turn.start emits
+      // message-sent + turn-start-requested; the session arrives later).
+      // Settling in that window would hide just-requested work. Detection
+      // mirrors the client's hasQueuedTurnStart: the newest user message is
+      // strictly newer than every latestTurn timestamp (adoption stamps the
+      // new turn's requestedAt with the message time, clearing this). A
+      // failed session start (status "error") clears the block so the
+      // thread does not become permanently unsettleable.
+      const latestUserMessageAtMs = thread.messages.reduce(
+        (latest, message) =>
+          message.role === "user" ? Math.max(latest, Date.parse(message.createdAt)) : latest,
+        Number.NEGATIVE_INFINITY,
+      );
+      const latestTurnAtMs =
+        thread.latestTurn === null
+          ? Number.NEGATIVE_INFINITY
+          : Math.max(
+              ...[
+                thread.latestTurn.requestedAt,
+                thread.latestTurn.startedAt,
+                thread.latestTurn.completedAt,
+              ].map((candidate) =>
+                candidate == null ? Number.NEGATIVE_INFINITY : Date.parse(candidate),
+              ),
+            );
+      const hasQueuedTurnStart =
+        thread.session?.status !== "error" &&
+        Number.isFinite(latestUserMessageAtMs) &&
+        latestUserMessageAtMs > latestTurnAtMs;
+      if (hasQueuedTurnStart) {
+        return yield* Effect.fail(
+          new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: `thread ${command.threadId} has a queued turn start and cannot be settled`,
+          }),
+        );
+      }
       const occurredAt = yield* nowIso;
       // Settling an already-settled thread re-emits with the original
       // settledAt: the engine rejects zero-event commands, and bulk-settle /
       // double-click must stay silent no-ops rather than surface errors.
-      const settledAt =
-        thread.settledOverride === "settled" && thread.settledAt !== null
-          ? thread.settledAt
-          : occurredAt;
+      const alreadySettled = thread.settledOverride === "settled" && thread.settledAt !== null;
       return {
         ...(yield* withEventBase({
           aggregateKind: "thread",
@@ -366,23 +401,25 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         type: "thread.settled",
         payload: {
           threadId: command.threadId,
-          settledAt,
-          // Always the command time: a re-settle keeps the original
-          // settledAt but must not rewind updatedAt (sorting and relative-
-          // time labels key on it).
-          updatedAt: occurredAt,
+          settledAt: alreadySettled ? thread.settledAt : occurredAt,
+          // A re-emission is a projected no-op: keep the existing updatedAt
+          // so duplicate settles neither rewind nor churn ordering. A fresh
+          // settle stamps the command time.
+          updatedAt: alreadySettled ? thread.updatedAt : occurredAt,
         },
       };
     }
 
     case "thread.unsettle": {
-      yield* requireThreadNotArchived({
+      const thread = yield* requireThreadNotArchived({
         readModel,
         command,
         threadId: command.threadId,
       });
       // Idempotent by re-emission (see thread.settle): reducing the event a
-      // second time lands on the same override state.
+      // second time lands on the same override state. A re-emission keeps
+      // the existing updatedAt so duplicates do not churn ordering.
+      const alreadyPinnedActive = thread.settledOverride === "active";
       const occurredAt = yield* nowIso;
       return {
         ...(yield* withEventBase({
@@ -395,7 +432,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         payload: {
           threadId: command.threadId,
           reason: command.reason,
-          updatedAt: occurredAt,
+          updatedAt: alreadyPinnedActive ? thread.updatedAt : occurredAt,
         },
       };
     }

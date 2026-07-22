@@ -10,6 +10,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   canSettle,
   effectiveSettled,
+  hasQueuedTurnStart,
   threadLastActivityAt,
   type ChangeRequestStateLike,
 } from "./threadSettled.ts";
@@ -188,6 +189,49 @@ describe("effectiveSettled", () => {
   });
 });
 
+describe("hasQueuedTurnStart", () => {
+  const QUEUED_AT = "2026-04-09T12:00:00.000Z";
+
+  it("flags a user message no turn has picked up", () => {
+    const noTurn = { latestUserMessageAt: QUEUED_AT, latestTurn: null, session: null };
+    expect(hasQueuedTurnStart(noTurn)).toBe(true);
+
+    const staleTurn = {
+      ...makeShell({ activityAt: FRESH }),
+      latestUserMessageAt: QUEUED_AT,
+    };
+    expect(hasQueuedTurnStart(staleTurn)).toBe(true);
+  });
+
+  it("clears once a turn adopts the message or the start fails", () => {
+    const adopted = {
+      ...makeShell({ activityAt: QUEUED_AT }),
+      latestUserMessageAt: QUEUED_AT,
+    };
+    expect(hasQueuedTurnStart(adopted)).toBe(false);
+
+    const failed = makeShell({ activityAt: FRESH });
+    const failedShell = {
+      ...failed,
+      latestUserMessageAt: QUEUED_AT,
+      session: {
+        threadId: failed.id,
+        status: "error" as const,
+        providerName: "Codex",
+        runtimeMode: "full-access" as const,
+        activeTurnId: null,
+        lastError: "boom",
+        updatedAt: NOW,
+      },
+    };
+    expect(hasQueuedTurnStart(failedShell)).toBe(false);
+  });
+
+  it("is quiet without user messages", () => {
+    expect(hasQueuedTurnStart(makeShell({ activityAt: FRESH }))).toBe(false);
+  });
+});
+
 describe("canSettle", () => {
   it("blocks every state effectiveSettled refuses to classify as settled", () => {
     expect(canSettle(makeShell({ activityAt: FRESH }))).toBe(true);
@@ -195,6 +239,23 @@ describe("canSettle", () => {
     expect(canSettle(makeShell({ activityAt: FRESH, sessionStatus: "running" }))).toBe(false);
     expect(canSettle(makeShell({ activityAt: FRESH, pending: "approval" }))).toBe(false);
     expect(canSettle(makeShell({ activityAt: FRESH, pending: "user-input" }))).toBe(false);
+  });
+
+  it("blocks settling a queued turn start", () => {
+    const queued = {
+      ...makeShell({ activityAt: FRESH }),
+      latestUserMessageAt: "2026-04-09T12:00:00.000Z",
+    };
+    expect(canSettle(queued)).toBe(false);
+    // effectiveSettled must agree: queued work never auto-settles either,
+    // even with a merged PR.
+    expect(
+      effectiveSettled(queued, {
+        now: NOW,
+        autoSettleAfterDays: 3,
+        changeRequestState: "merged",
+      }),
+    ).toBe(false);
   });
 
   it("agrees with effectiveSettled's blockers for explicitly settled shells", () => {

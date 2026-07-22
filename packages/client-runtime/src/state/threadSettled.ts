@@ -27,6 +27,31 @@ export function threadLastActivityAt(shell: OrchestrationThreadShell): string | 
 }
 
 /**
+ * A user message no turn has picked up yet: the turn.start command was
+ * dispatched (message-sent + turn-start-requested) but no session has
+ * adopted it, so `session` is still null and the pending work is invisible
+ * to the session-status checks. Detectable as a user message strictly newer
+ * than every timestamp on the latest turn — on adoption the new turn's
+ * requestedAt equals the message time, clearing the condition.
+ */
+export function hasQueuedTurnStart(
+  shell: Pick<OrchestrationThreadShell, "latestUserMessageAt" | "latestTurn" | "session">,
+): boolean {
+  if (shell.latestUserMessageAt == null) return false;
+  // A failed session start clears the queued state: the failure is already
+  // visible (status edge / error), and holding the queue marker would make
+  // the thread permanently unsettleable.
+  if (shell.session?.status === "error") return false;
+  const messageAt = Date.parse(shell.latestUserMessageAt);
+  if (Number.isNaN(messageAt)) return false;
+  const turn = shell.latestTurn;
+  if (turn === null) return true;
+  return [turn.requestedAt, turn.startedAt, turn.completedAt].every(
+    (candidate) => candidate == null || Date.parse(candidate) < messageAt,
+  );
+}
+
+/**
  * A thread may be settled only when none of effectiveSettled's activity
  * blockers hold. This is deliberately the same list: anything the partition
  * refuses to CLASSIFY as settled must also be refused as a settle TARGET.
@@ -34,10 +59,16 @@ export function threadLastActivityAt(shell: OrchestrationThreadShell): string | 
  * the UI can disable/reject before a round trip.
  */
 export function canSettle(
-  shell: Pick<OrchestrationThreadShell, "hasPendingApprovals" | "hasPendingUserInput" | "session">,
+  shell: Pick<
+    OrchestrationThreadShell,
+    "hasPendingApprovals" | "hasPendingUserInput" | "session" | "latestUserMessageAt" | "latestTurn"
+  >,
 ): boolean {
   if (shell.hasPendingApprovals || shell.hasPendingUserInput) return false;
   if (shell.session?.status === "starting" || shell.session?.status === "running") return false;
+  // Queued work is as blocked-on-progress as a live session: settling it
+  // (or auto-settling it on a closed PR) would hide a just-requested turn.
+  if (hasQueuedTurnStart(shell)) return false;
   return true;
 }
 

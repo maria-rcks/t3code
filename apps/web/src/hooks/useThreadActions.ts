@@ -57,6 +57,18 @@ export class ThreadSettlementUnsupportedError extends Schema.TaggedErrorClass<Th
   }
 }
 
+export class ThreadSettleBlockedError extends Schema.TaggedErrorClass<ThreadSettleBlockedError>()(
+  "ThreadSettleBlockedError",
+  {
+    environmentId: EnvironmentId,
+    threadId: ThreadId,
+  },
+) {
+  override get message(): string {
+    return "This thread still needs attention. Resolve or interrupt it first, then try again.";
+  }
+}
+
 export function useThreadActions() {
   const closeTerminal = useAtomCommand(terminalEnvironment.close);
   const archiveThreadMutation = useAtomCommand(threadEnvironment.archive, {
@@ -390,7 +402,7 @@ export function useThreadActions() {
       if (resolved && !canSettle(resolved.thread)) {
         return AsyncResult.failure(
           Cause.fail(
-            new ThreadArchiveBlockedError({
+            new ThreadSettleBlockedError({
               environmentId: resolved.threadRef.environmentId,
               threadId: resolved.threadRef.threadId,
             }),

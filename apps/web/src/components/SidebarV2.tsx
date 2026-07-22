@@ -55,7 +55,7 @@ import {
 import { useClientSettings } from "../hooks/useSettings";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useProjects, useThreadShells } from "../state/entities";
-import { primaryServerKeybindingsAtom } from "../state/server";
+import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
 import { vcsEnvironment } from "../state/vcs";
 import { threadEnvironment } from "../state/threads";
 import { useEnvironmentQuery } from "../state/query";
@@ -624,6 +624,11 @@ export default function SidebarV2() {
     select: (params) => resolveThreadRouteRef(params),
   });
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
+  // Post-settle navigation validates against the CURRENT route, not the one
+  // captured when the settle started: if the user navigated elsewhere while
+  // the command was in flight, completing it must not yank them away.
+  const routeThreadKeyRef = useRef(routeThreadKey);
+  routeThreadKeyRef.current = routeThreadKey;
 
   const environmentLabelById = useMemo(
     () =>
@@ -711,11 +716,17 @@ export default function SidebarV2() {
       setProjectScopeKey(null);
     }
   }, [projectScopeKey, projects]);
+  // Scope flips drop the selection: rows selected under the old scope may be
+  // hidden now, and bulk actions must never count or touch invisible rows.
+  useEffect(() => {
+    clearSelection();
+  }, [clearSelection, projectScopeKey]);
 
   // Settled threads stay in the live shell stream (settled ≠ archived), so
   // the partition works directly off live shells: no archived-snapshot
   // merging, no optimistic holds. Archived threads remain hidden here —
   // archive keeps its original "remove from sidebar" meaning.
+  const serverConfigs = useAtomValue(environmentServerConfigsAtom);
   const { activeThreads, settledThreads } = useMemo(() => {
     const now = `${nowMinute}:00.000Z`;
     const visible = threads.filter(
@@ -728,9 +739,18 @@ export default function SidebarV2() {
     const active: EnvironmentThreadShell[] = [];
     const settled: EnvironmentThreadShell[] = [];
     for (const thread of visible) {
+      // Threads on servers without the settlement capability (old server,
+      // or descriptor not loaded yet) never classify as settled: the user
+      // could neither un-settle nor pin them, so auto-settling them would
+      // strand rows in a tail with no working affordances.
+      const supportsSettlement =
+        serverConfigs.get(thread.environmentId)?.environment.capabilities.threadSettlement === true;
       const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
       const changeRequestState = changeRequestStateByKey.get(threadKey) ?? null;
-      if (effectiveSettled(thread, { now, autoSettleAfterDays, changeRequestState })) {
+      if (
+        supportsSettlement &&
+        effectiveSettled(thread, { now, autoSettleAfterDays, changeRequestState })
+      ) {
         settled.push(thread);
       } else {
         active.push(thread);
@@ -744,7 +764,14 @@ export default function SidebarV2() {
           firstValidTimestampMs(left.latestUserMessageAt, left.updatedAt),
       ),
     };
-  }, [autoSettleAfterDays, changeRequestStateByKey, nowMinute, scopedProject, threads]);
+  }, [
+    autoSettleAfterDays,
+    changeRequestStateByKey,
+    nowMinute,
+    scopedProject,
+    serverConfigs,
+    threads,
+  ]);
 
   // The settled tail renders in pages: history shouldn't dominate the
   // sidebar, and the common lookups are recent. Expansion resets when the
@@ -959,7 +986,11 @@ export default function SidebarV2() {
             }
             return;
           }
-          navigateAfterSettle?.();
+          // Only move forward if the user is still on the settled thread —
+          // a navigation made during the await wins over ours.
+          if (routeThreadKeyRef.current === threadKey) {
+            navigateAfterSettle?.();
+          }
         } finally {
           settlingThreadKeysRef.current.delete(threadKey);
         }
@@ -991,7 +1022,13 @@ export default function SidebarV2() {
     async (position: { x: number; y: number }) => {
       const api = readLocalApi();
       if (!api) return;
-      const threadKeys = [...useThreadSelectionStore.getState().selectedThreadKeys];
+      // One exact actionable set: keys whose rows are actually rendered
+      // right now. Selections can outlive their rows (settled-tail paging,
+      // thread deletion elsewhere) and the menu labels must count only what
+      // the actions will touch.
+      const threadKeys = [...useThreadSelectionStore.getState().selectedThreadKeys].filter(
+        (threadKey) => threadByKeyRef.current.has(threadKey),
+      );
       if (threadKeys.length === 0) return;
       const count = threadKeys.length;
       const clicked = await settlePromise(() =>
