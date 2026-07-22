@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import {
   archiveSelectedThreadEntries,
   buildMultiSelectThreadContextMenuItems,
+  buildProjectRemovalConfirmation,
   createThreadJumpHintVisibilityController,
   getSidebarThreadIdsToPrewarm,
   getVisibleSidebarThreadIds,
@@ -41,6 +42,36 @@ import {
 } from "../types";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
+
+describe("buildProjectRemovalConfirmation", () => {
+  it("describes removing an empty project without implying its files are deleted", () => {
+    expect(
+      buildProjectRemovalConfirmation({
+        title: "Workbench",
+        workspaceRoot: "/work/workbench",
+        threadCount: 0,
+      }),
+    ).toBe(
+      [
+        'Remove project "Workbench"?',
+        "Path: /work/workbench",
+        "This removes only this project entry.",
+      ].join("\n"),
+    );
+  });
+
+  it("warns that removing a non-empty project permanently deletes its threads", () => {
+    const message = buildProjectRemovalConfirmation({
+      title: "Workbench",
+      workspaceRoot: "/work/workbench",
+      environmentLabel: "Remote",
+      threadCount: 2,
+    });
+    expect(message).toContain('Remove project "Workbench" and delete its 2 threads?');
+    expect(message).toContain("Environment: Remote");
+    expect(message).toContain("This action cannot be undone.");
+  });
+});
 
 describe("archiveSelectedThreadEntries", () => {
   const entries = [{ threadKey: "one" }, { threadKey: "two" }, { threadKey: "three" }] as const;

@@ -1,6 +1,7 @@
 "use client";
 
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
+import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu";
 import { ChevronRightIcon } from "lucide-react";
 import type * as React from "react";
 
@@ -10,6 +11,8 @@ const MenuCreateHandle = MenuPrimitive.createHandle;
 
 const Menu = MenuPrimitive.Root;
 
+const ContextMenu = ContextMenuPrimitive.Root;
+
 const MenuPortal = MenuPrimitive.Portal;
 
 function MenuTrigger({ className, children, ...props }: MenuPrimitive.Trigger.Props) {
@@ -17,6 +20,14 @@ function MenuTrigger({ className, children, ...props }: MenuPrimitive.Trigger.Pr
     <MenuPrimitive.Trigger className={className} data-slot="menu-trigger" {...props}>
       {children}
     </MenuPrimitive.Trigger>
+  );
+}
+
+function ContextMenuTrigger({ className, children, ...props }: ContextMenuPrimitive.Trigger.Props) {
+  return (
+    <ContextMenuPrimitive.Trigger className={className} data-slot="context-menu-trigger" {...props}>
+      {children}
+    </ContextMenuPrimitive.Trigger>
   );
 }
 
@@ -288,16 +299,20 @@ export {
   MenuCreateHandle,
   MenuCreateHandle as DropdownMenuCreateHandle,
   Menu,
+  ContextMenu,
   Menu as DropdownMenu,
   MenuPortal,
   MenuPortal as DropdownMenuPortal,
   MenuTrigger,
+  ContextMenuTrigger,
   MenuTrigger as DropdownMenuTrigger,
   MenuPopup,
+  MenuPopup as ContextMenuPopup,
   MenuPopup as DropdownMenuContent,
   MenuGroup,
   MenuGroup as DropdownMenuGroup,
   MenuItem,
+  MenuItem as ContextMenuItem,
   MenuItem as DropdownMenuItem,
   MenuCheckboxItem,
   MenuCheckboxItem as DropdownMenuCheckboxItem,

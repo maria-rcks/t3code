@@ -37,6 +37,35 @@ type ScopedSidebarThread = ThreadSortInput & {
 
 export type ThreadTraversalDirection = "previous" | "next";
 
+export function buildProjectRemovalConfirmation(input: {
+  title: string;
+  workspaceRoot: string;
+  environmentLabel?: string | undefined;
+  threadCount: number;
+}): string {
+  const details = [
+    `Path: ${input.workspaceRoot}`,
+    ...(input.environmentLabel ? [`Environment: ${input.environmentLabel}`] : []),
+  ];
+  if (input.threadCount > 0) {
+    return [
+      `Remove project "${input.title}" and delete its ${input.threadCount} thread${
+        input.threadCount === 1 ? "" : "s"
+      }?`,
+      ...details,
+      "This permanently clears conversation history for those threads.",
+      "This removes only this project entry.",
+      "This action cannot be undone.",
+    ].join("\n");
+  }
+
+  return [
+    `Remove project "${input.title}"?`,
+    ...details,
+    "This removes only this project entry.",
+  ].join("\n");
+}
+
 export async function archiveSelectedThreadEntries<
   TEntry extends { readonly threadKey: string },
   TResult extends { readonly _tag: "Success" | "Failure" },

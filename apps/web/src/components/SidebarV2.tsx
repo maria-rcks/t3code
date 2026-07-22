@@ -55,6 +55,7 @@ import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { readLocalApi } from "../localApi";
 import { useUiStateStore } from "../uiStateStore";
 import { useThreadSelectionStore } from "../threadSelectionStore";
+import { useComposerDraftStore } from "../composerDraftStore";
 import { useThreadActions } from "../hooks/useThreadActions";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { openCommandPalette } from "../commandPaletteBus";
@@ -65,13 +66,15 @@ import { useProjects, useThreadShells } from "../state/entities";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
 import { vcsEnvironment } from "../state/vcs";
 import { threadEnvironment } from "../state/threads";
+import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
 import { useAtomCommand } from "../state/use-atom-command";
 import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
 import { formatRelativeTimeLabel } from "../timestampFormat";
-import type { SidebarThreadSummary } from "../types";
+import type { Project, SidebarThreadSummary } from "../types";
 import { cn } from "~/lib/utils";
 import {
+  buildProjectRemovalConfirmation,
   firstValidTimestampMs,
   hasUnseenCompletion,
   isTrailingDoubleClick,
@@ -98,6 +101,7 @@ import {
 } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { ContextMenu, ContextMenuItem, ContextMenuPopup, ContextMenuTrigger } from "./ui/menu";
 
 // Settled-tail paging: recent history is the common lookup; the deep tail
 // stays behind an explicit Show more.
@@ -623,6 +627,9 @@ export default function SidebarV2() {
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
+  const deleteProject = useAtomCommand(projectEnvironment.delete, {
+    reportFailure: false,
+  });
   const newThreadContext = useHandleNewThread();
   const openAddProjectCommandPalette = useCallback(
     () => openCommandPalette({ open: "add-project" }),
@@ -737,6 +744,62 @@ export default function SidebarV2() {
   useEffect(() => {
     clearSelection();
   }, [clearSelection, projectScopeKey]);
+
+  const handleRemoveProject = useCallback(
+    (project: Project) => {
+      void (async () => {
+        const api = readLocalApi();
+        if (!api) return;
+
+        const projectThreads = threads.filter(
+          (thread) =>
+            thread.environmentId === project.environmentId && thread.projectId === project.id,
+        );
+        const confirmed = await settlePromise(() =>
+          api.dialogs.confirm(
+            buildProjectRemovalConfirmation({
+              title: project.title,
+              workspaceRoot: project.workspaceRoot,
+              environmentLabel: environmentLabelById.get(project.environmentId),
+              threadCount: projectThreads.length,
+            }),
+          ),
+        );
+        if (confirmed._tag === "Failure" || !confirmed.value) return;
+
+        const result = await deleteProject({
+          environmentId: project.environmentId,
+          input: {
+            projectId: project.id,
+            ...(projectThreads.length > 0 ? { force: true } : {}),
+          },
+        });
+        if (result._tag === "Failure") {
+          if (!isAtomCommandInterrupted(result)) {
+            const error = squashAtomCommandFailure(result);
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: `Failed to remove "${project.title}"`,
+                description:
+                  error instanceof Error ? error.message : "Unknown error removing project.",
+              }),
+            );
+          }
+          return;
+        }
+
+        const projectRef = scopeProjectRef(project.environmentId, project.id);
+        const draftStore = useComposerDraftStore.getState();
+        const projectDraftThread = draftStore.getDraftThreadByProjectRef(projectRef);
+        if (projectDraftThread) {
+          draftStore.clearDraftThread(projectDraftThread.draftId);
+        }
+        draftStore.clearProjectDraftThreadId(projectRef);
+      })();
+    },
+    [deleteProject, environmentLabelById, threads],
+  );
 
   // Settled threads stay in the live shell stream (settled ≠ archived), so
   // the partition works directly off live shells: no archived-snapshot
@@ -1419,26 +1482,39 @@ export default function SidebarV2() {
                   const scopeKey = `${project.environmentId}:${project.id}`;
                   const isScoped = projectScopeKey === scopeKey;
                   return (
-                    <button
-                      key={scopeKey}
-                      type="button"
-                      role="tab"
-                      aria-selected={isScoped}
-                      onClick={() => setProjectScopeKey(isScoped ? null : scopeKey)}
-                      className={cn(
-                        "flex shrink-0 items-center gap-1.5 rounded-md border py-1 pl-1.5 pr-2.5 text-[11px] font-medium transition-colors",
-                        isScoped
-                          ? "border-foreground/15 bg-accent text-foreground"
-                          : "border-black/15 text-muted-foreground hover:border-black/40 hover:text-foreground dark:border-white/15 dark:hover:border-white/40",
-                      )}
-                    >
-                      <ProjectFavicon
-                        environmentId={project.environmentId}
-                        cwd={project.workspaceRoot}
-                        className="size-3.5"
-                      />
-                      <span className="max-w-28 truncate">{project.title}</span>
-                    </button>
+                    <ContextMenu key={scopeKey}>
+                      <ContextMenuTrigger
+                        render={
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={isScoped}
+                            onClick={() => setProjectScopeKey(isScoped ? null : scopeKey)}
+                            className={cn(
+                              "flex shrink-0 items-center gap-1.5 rounded-md border py-1 pl-1.5 pr-2.5 text-[11px] font-medium transition-colors",
+                              isScoped
+                                ? "border-foreground/15 bg-accent text-foreground"
+                                : "border-black/15 text-muted-foreground hover:border-black/40 hover:text-foreground dark:border-white/15 dark:hover:border-white/40",
+                            )}
+                          />
+                        }
+                      >
+                        <ProjectFavicon
+                          environmentId={project.environmentId}
+                          cwd={project.workspaceRoot}
+                          className="size-3.5"
+                        />
+                        <span className="max-w-28 truncate">{project.title}</span>
+                      </ContextMenuTrigger>
+                      <ContextMenuPopup align="start" className="min-w-40">
+                        <ContextMenuItem
+                          variant="destructive"
+                          onClick={() => handleRemoveProject(project)}
+                        >
+                          Remove project
+                        </ContextMenuItem>
+                      </ContextMenuPopup>
+                    </ContextMenu>
                   );
                 })}
               </div>
