@@ -86,7 +86,7 @@ function useThreadActionExecutor(
         // Settle may only target what effectiveSettled could classify as
         // settled: not starting/running sessions, not threads waiting on
         // approvals or user input. Anything else would hide live work.
-        if (action === "settle" && !canSettle(thread)) {
+        if (action === "settle" && !canSettle(thread, { now: new Date().toISOString() })) {
           Alert.alert(
             actionFailureTitle(action),
             "This thread still needs attention. Resolve or interrupt it first, then try again.",

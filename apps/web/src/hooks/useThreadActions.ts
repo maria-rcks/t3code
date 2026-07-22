@@ -399,7 +399,7 @@ export function useThreadActions() {
       // Settle may only target what effectiveSettled could classify as
       // settled: not starting/running sessions, not threads waiting on
       // approvals or user input. Anything else would hide live work.
-      if (resolved && !canSettle(resolved.thread)) {
+      if (resolved && !canSettle(resolved.thread, { now: new Date().toISOString() })) {
         return AsyncResult.failure(
           Cause.fail(
             new ThreadSettleBlockedError({

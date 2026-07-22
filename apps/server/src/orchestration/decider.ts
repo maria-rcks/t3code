@@ -24,6 +24,11 @@ import { projectEvent } from "./projector.ts";
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
+// Session adoption takes seconds; a user message still unadopted after this
+// window is a failed/stale start, not pending work. Mirrors the client's
+// QUEUED_TURN_START_GRACE_MS in client-runtime threadSettled.ts.
+const QUEUED_TURN_START_GRACE_MS = 2 * 60 * 1_000;
+
 function withEventBase(
   input: Pick<OrchestrationCommand, "commandId"> & {
     readonly aggregateKind: OrchestrationEvent["aggregateKind"];
@@ -348,15 +353,18 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           }),
         );
       }
+      const occurredAt = yield* nowIso;
       // A queued turn start — a user message no turn has picked up yet — is
       // work in flight even though session is still null (turn.start emits
       // message-sent + turn-start-requested; the session arrives later).
       // Settling in that window would hide just-requested work. Detection
       // mirrors the client's hasQueuedTurnStart: the newest user message is
       // strictly newer than every latestTurn timestamp (adoption stamps the
-      // new turn's requestedAt with the message time, clearing this). A
-      // failed session start (status "error") clears the block so the
-      // thread does not become permanently unsettleable.
+      // new turn's requestedAt with the message time, clearing this), and
+      // only within the adoption grace window — historical threads whose
+      // last user message postdates their turn timestamps (older-server
+      // data, mid-turn messages) must stay settleable. A failed session
+      // start (status "error") clears the block immediately.
       const latestUserMessageAtMs = thread.messages.reduce(
         (latest, message) =>
           message.role === "user" ? Math.max(latest, Date.parse(message.createdAt)) : latest,
@@ -377,7 +385,8 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       const hasQueuedTurnStart =
         thread.session?.status !== "error" &&
         Number.isFinite(latestUserMessageAtMs) &&
-        latestUserMessageAtMs > latestTurnAtMs;
+        latestUserMessageAtMs > latestTurnAtMs &&
+        Date.parse(occurredAt) - latestUserMessageAtMs <= QUEUED_TURN_START_GRACE_MS;
       if (hasQueuedTurnStart) {
         return yield* Effect.fail(
           new OrchestrationCommandInvariantError({
@@ -386,7 +395,6 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           }),
         );
       }
-      const occurredAt = yield* nowIso;
       // Settling an already-settled thread re-emits with the original
       // settledAt: the engine rejects zero-event commands, and bulk-settle /
       // double-click must stay silent no-ops rather than surface errors.

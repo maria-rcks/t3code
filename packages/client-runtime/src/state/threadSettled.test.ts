@@ -191,16 +191,26 @@ describe("effectiveSettled", () => {
 
 describe("hasQueuedTurnStart", () => {
   const QUEUED_AT = "2026-04-09T12:00:00.000Z";
+  // Within the adoption grace window of the queued message.
+  const JUST_AFTER = { now: "2026-04-09T12:00:30.000Z" };
 
-  it("flags a user message no turn has picked up", () => {
+  it("flags a user message no turn has picked up, within the grace window", () => {
     const noTurn = { latestUserMessageAt: QUEUED_AT, latestTurn: null, session: null };
-    expect(hasQueuedTurnStart(noTurn)).toBe(true);
+    expect(hasQueuedTurnStart(noTurn, JUST_AFTER)).toBe(true);
 
     const staleTurn = {
       ...makeShell({ activityAt: FRESH }),
       latestUserMessageAt: QUEUED_AT,
     };
-    expect(hasQueuedTurnStart(staleTurn)).toBe(true);
+    expect(hasQueuedTurnStart(staleTurn, JUST_AFTER)).toBe(true);
+  });
+
+  it("expires after the grace window: an unadopted message is a failed start, not queued work", () => {
+    const noTurn = { latestUserMessageAt: QUEUED_AT, latestTurn: null, session: null };
+    expect(hasQueuedTurnStart(noTurn, { now: "2026-04-09T12:03:00.000Z" })).toBe(false);
+    // Historical shells (e.g. from servers that never carried latestTurn)
+    // must never read as queued.
+    expect(hasQueuedTurnStart(noTurn, { now: NOW })).toBe(false);
   });
 
   it("clears once a turn adopts the message or the start fails", () => {
@@ -208,7 +218,7 @@ describe("hasQueuedTurnStart", () => {
       ...makeShell({ activityAt: QUEUED_AT }),
       latestUserMessageAt: QUEUED_AT,
     };
-    expect(hasQueuedTurnStart(adopted)).toBe(false);
+    expect(hasQueuedTurnStart(adopted, JUST_AFTER)).toBe(false);
 
     const failed = makeShell({ activityAt: FRESH });
     const failedShell = {
@@ -224,38 +234,49 @@ describe("hasQueuedTurnStart", () => {
         updatedAt: NOW,
       },
     };
-    expect(hasQueuedTurnStart(failedShell)).toBe(false);
+    expect(hasQueuedTurnStart(failedShell, JUST_AFTER)).toBe(false);
   });
 
   it("is quiet without user messages", () => {
-    expect(hasQueuedTurnStart(makeShell({ activityAt: FRESH }))).toBe(false);
+    expect(hasQueuedTurnStart(makeShell({ activityAt: FRESH }), JUST_AFTER)).toBe(false);
   });
 });
 
 describe("canSettle", () => {
   it("blocks every state effectiveSettled refuses to classify as settled", () => {
-    expect(canSettle(makeShell({ activityAt: FRESH }))).toBe(true);
-    expect(canSettle(makeShell({ activityAt: FRESH, sessionStatus: "starting" }))).toBe(false);
-    expect(canSettle(makeShell({ activityAt: FRESH, sessionStatus: "running" }))).toBe(false);
-    expect(canSettle(makeShell({ activityAt: FRESH, pending: "approval" }))).toBe(false);
-    expect(canSettle(makeShell({ activityAt: FRESH, pending: "user-input" }))).toBe(false);
+    expect(canSettle(makeShell({ activityAt: FRESH }), { now: NOW })).toBe(true);
+    expect(
+      canSettle(makeShell({ activityAt: FRESH, sessionStatus: "starting" }), { now: NOW }),
+    ).toBe(false);
+    expect(
+      canSettle(makeShell({ activityAt: FRESH, sessionStatus: "running" }), { now: NOW }),
+    ).toBe(false);
+    expect(canSettle(makeShell({ activityAt: FRESH, pending: "approval" }), { now: NOW })).toBe(
+      false,
+    );
+    expect(canSettle(makeShell({ activityAt: FRESH, pending: "user-input" }), { now: NOW })).toBe(
+      false,
+    );
   });
 
-  it("blocks settling a queued turn start", () => {
+  it("blocks settling a queued turn start, only within the grace window", () => {
     const queued = {
       ...makeShell({ activityAt: FRESH }),
       latestUserMessageAt: "2026-04-09T12:00:00.000Z",
     };
-    expect(canSettle(queued)).toBe(false);
+    const justAfter = "2026-04-09T12:00:30.000Z";
+    expect(canSettle(queued, { now: justAfter })).toBe(false);
     // effectiveSettled must agree: queued work never auto-settles either,
     // even with a merged PR.
     expect(
       effectiveSettled(queued, {
-        now: NOW,
+        now: justAfter,
         autoSettleAfterDays: 3,
         changeRequestState: "merged",
       }),
     ).toBe(false);
+    // Past the window the message is a failed/stale start: settleable again.
+    expect(canSettle(queued, { now: NOW })).toBe(true);
   });
 
   it("agrees with effectiveSettled's blockers for explicitly settled shells", () => {
@@ -266,7 +287,7 @@ describe("canSettle", () => {
       activityAt: FRESH,
       pending: "user-input",
     });
-    expect(canSettle(blocked)).toBe(false);
+    expect(canSettle(blocked, { now: NOW })).toBe(false);
     expect(effectiveSettled(blocked, { now: NOW, autoSettleAfterDays: 3 })).toBe(false);
   });
 });
