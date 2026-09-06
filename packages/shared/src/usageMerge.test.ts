@@ -1,5 +1,6 @@
 import {
   USAGE_CONTRACT_VERSION,
+  USAGE_MERGE_COMPATIBLE_SINCE,
   type EnvironmentId,
   type UsageBucket,
   type UsageDay,
@@ -146,6 +147,31 @@ describe("mergeUsage", () => {
     ).toEqual({ claude: 1, codex: 1 });
   });
 
+  it("counts overlapping provider roots once while keeping each environment's unique root", () => {
+    const source = (homePath: string) => ({
+      provider: "opencode" as const,
+      hostId: "host",
+      homePath,
+    });
+    const usage = (sourcePath: string, costUsd: number) =>
+      bucket({ provider: "opencode", sourcePath, costUsd });
+    const merged = mergeUsage(
+      [
+        environment(
+          "env-a",
+          summary([usage("/shared", 10), usage("/a", 2)], [source("/shared"), source("/a")]),
+        ),
+        environment(
+          "env-b",
+          summary([usage("/shared", 10), usage("/b", 3)], [source("/shared"), source("/b")]),
+        ),
+      ],
+      USAGE_CONTRACT_VERSION,
+    );
+    expect(merged.costUsd).toBe(15);
+    expect(merged.sessions).toBe(3);
+  });
+
   it("excludes an environment reporting an older contract version", () => {
     const merged = mergeUsage(
       [
@@ -158,7 +184,7 @@ describe("mergeUsage", () => {
           summary(
             [bucket()],
             [{ provider: "claude", hostId: "linux", homePath: "/b" }],
-            USAGE_CONTRACT_VERSION - 2,
+            USAGE_MERGE_COMPATIBLE_SINCE - 1,
           ),
         ),
       ],

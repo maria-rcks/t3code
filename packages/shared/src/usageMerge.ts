@@ -142,6 +142,7 @@ function ownedContribution(
   readonly sessionsByProvider: ReadonlyMap<UsageProviderKind, number>;
 } {
   const ownedProviders = new Set<UsageProviderKind>();
+  const ownedSources = new Set<string>();
   const sessionsByProvider = new Map<UsageProviderKind, number>();
   for (const source of environment.summary.sources) {
     if (source.status === "missing") continue;
@@ -149,6 +150,7 @@ function ownedContribution(
     if (ownerByFingerprint.get(key) === environment.environmentId) {
       const provider = source.fingerprint.provider;
       ownedProviders.add(provider);
+      ownedSources.add(`${provider}\u0000${source.fingerprint.resolvedHomePath}`);
       // Distinct within a directory. Summing per-bucket session counts instead
       // would count a session once per day and model it spans.
       sessionsByProvider.set(
@@ -158,7 +160,11 @@ function ownedContribution(
     }
   }
   return {
-    buckets: environment.summary.buckets.filter((bucket) => ownedProviders.has(bucket.provider)),
+    buckets: environment.summary.buckets.filter((bucket) =>
+      bucket.sourcePath === undefined
+        ? ownedProviders.has(bucket.provider)
+        : ownedSources.has(`${bucket.provider}\u0000${bucket.sourcePath}`),
+    ),
     sessionsByProvider,
   };
 }

@@ -4,12 +4,39 @@
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as NodeSqlite from "node:sqlite";
 
 import { afterEach, assert, beforeEach, describe, it } from "@effect/vitest";
 
 import { readTranscriptRecords } from "./usageTranscriptReader.ts";
+import { readOpenCodeUsage } from "./opencodeUsageReader.ts";
+import { readCursorUsage } from "./cursorUsageReader.ts";
+import { readAntigravityUsage } from "./antigravityUsageReader.ts";
 
 let dir: string;
+
+function protoNumber(field: number, value: number): number[] {
+  const varint = (number: number) => {
+    const bytes: number[] = [];
+    do {
+      const byte = number % 128;
+      number = Math.floor(number / 128);
+      bytes.push(byte + (number > 0 ? 128 : 0));
+    } while (number > 0);
+    return bytes;
+  };
+  return [...varint(field * 8), ...varint(value)];
+}
+
+function protoBytes(field: number, bytes: readonly number[]): number[] {
+  const encoded = protoNumber(field, bytes.length);
+  encoded[0] = encoded[0]! + 2;
+  return [...encoded, ...bytes];
+}
+
+function protoText(field: number, value: string): number[] {
+  return protoBytes(field, [...Buffer.from(value)]);
+}
 
 beforeEach(async () => {
   dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "usage-reader-test-"));
@@ -206,5 +233,178 @@ describe("readTranscriptRecords resume", () => {
 
   it("returns null for an unreadable file", async () => {
     assert.isNull(await readTranscriptRecords(NodePath.join(dir, "missing.jsonl"), "claude"));
+  });
+});
+
+describe("SQLite usage readers", () => {
+  it("counts migrated OpenCode messages once and sees subsequent WAL writes", async () => {
+    const db = new NodeSqlite.DatabaseSync(NodePath.join(dir, "opencode.db"));
+    try {
+      db.exec(
+        "PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0; CREATE TABLE message (id TEXT, session_id TEXT, data TEXT)",
+      );
+      const message = {
+        id: "msg-1",
+        sessionID: "session-1",
+        role: "assistant",
+        modelID: "claude-sonnet-4-5",
+        time: { created: 1780000000000 },
+        cost: 0.25,
+        tokens: { input: 100, output: 20, reasoning: 5, cache: { read: 30, write: 10 } },
+      };
+      const insert = db.prepare("INSERT INTO message VALUES (?, ?, ?)");
+      insert.run(message.id, message.sessionID, JSON.stringify(message));
+      const legacy = NodePath.join(dir, "storage", "message", message.sessionID);
+      await NodeFSP.mkdir(legacy, { recursive: true });
+      await NodeFSP.writeFile(NodePath.join(legacy, "msg-1.json"), JSON.stringify(message));
+      const first = await readOpenCodeUsage(dir, 0);
+      assert.isFalse(first.error);
+      const records = first.files.flatMap((file) => file.records);
+      assert.strictEqual(records.length, 1);
+      assert.deepStrictEqual(records[0]?.totals, {
+        uncachedInputTokens: 100,
+        cachedInputTokens: 30,
+        cacheCreationTokens: 10,
+        outputTokens: 25,
+        reasoningTokens: 5,
+      });
+      assert.strictEqual(records[0]?.reportedCostUsd, 0.25);
+      insert.run(
+        "msg-2",
+        message.sessionID,
+        JSON.stringify({ ...message, id: "msg-2", time: { created: 1780000001000 } }),
+      );
+      const next = await readOpenCodeUsage(dir, 1780000001000);
+      assert.isFalse(next.error);
+      assert.deepStrictEqual(
+        next.files.flatMap((file) => file.records).map((record) => record.dedupeKey),
+        ["opencode:msg-2"],
+      );
+      assert.isAbove((await NodeFSP.stat(NodePath.join(dir, "opencode.db-wal"))).size, 0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("counts Cursor assistant usage without estimating zero-count or user bubbles", async () => {
+    const path = NodePath.join(dir, "state.vscdb");
+    const db = new NodeSqlite.DatabaseSync(path);
+    try {
+      db.exec("CREATE TABLE cursorDiskKV (key TEXT, value TEXT)");
+      const insert = db.prepare("INSERT INTO cursorDiskKV VALUES (?, ?)");
+      const bubble = {
+        type: 2,
+        createdAt: "2026-08-01T10:00:00Z",
+        requestId: "request-1",
+        modelInfo: { modelName: "claude-sonnet-4-5" },
+        tokenCount: { inputTokens: 120, outputTokens: 30 },
+      };
+      insert.run("bubbleId:session-1:assistant", JSON.stringify(bubble));
+      insert.run("bubbleId:session-1:copy", JSON.stringify(bubble));
+      insert.run(
+        "bubbleId:session-1:user",
+        JSON.stringify({ ...bubble, type: 1, requestId: "user-request" }),
+      );
+      insert.run(
+        "bubbleId:session-1:zero",
+        JSON.stringify({
+          ...bubble,
+          requestId: "zero",
+          tokenCount: { inputTokens: 0, outputTokens: 0 },
+          text: "real text without recorded usage",
+        }),
+      );
+    } finally {
+      db.close();
+    }
+    const result = await readCursorUsage(path, 0);
+    assert.isFalse(result.error);
+    const records = result.files.flatMap((file) => file.records);
+    assert.strictEqual(records.length, 1);
+    assert.strictEqual(records[0]?.model, "claude-sonnet-4-5");
+    assert.strictEqual(records[0]?.sessionId, "session-1");
+    assert.strictEqual(records[0]?.totals.uncachedInputTokens, 120);
+    assert.strictEqual(records[0]?.totals.outputTokens, 30);
+    assert.strictEqual(records[0]?.timestampMs, Date.parse("2026-08-01T10:00:00Z"));
+  });
+
+  it("deduplicates Antigravity generation and step usage while preserving retry model and token buckets", async () => {
+    const db = new NodeSqlite.DatabaseSync(NodePath.join(dir, "session-1.db"));
+    const stamp = protoNumber(1, 1780000000);
+    const usage = [
+      ...protoNumber(2, 100),
+      ...protoNumber(3, 40),
+      ...protoNumber(4, 5),
+      ...protoNumber(5, 20),
+      ...protoNumber(9, 10),
+      ...protoText(11, "response-1"),
+    ];
+    const retry = [
+      ...protoNumber(1, 1026),
+      ...protoNumber(2, 12),
+      ...protoNumber(3, 3),
+      ...protoText(11, "retry-1"),
+    ];
+    const generation = protoBytes(1, [
+      ...protoBytes(4, usage),
+      ...protoText(19, "Gemini 3 Pro"),
+      ...protoBytes(9, protoBytes(4, stamp)),
+    ]);
+    const step = [
+      ...protoBytes(9, usage),
+      ...protoBytes(8, stamp),
+      ...protoBytes(28, protoBytes(2, retry)),
+    ];
+    try {
+      db.exec(
+        "CREATE TABLE gen_metadata (idx INTEGER, data BLOB); CREATE TABLE steps (idx INTEGER, metadata BLOB)",
+      );
+      db.prepare("INSERT INTO gen_metadata VALUES (?, ?)").run(0, new Uint8Array(generation));
+      db.prepare("INSERT INTO steps VALUES (?, ?)").run(0, new Uint8Array(step));
+    } finally {
+      db.close();
+    }
+    const result = await readAntigravityUsage(dir, 0);
+    assert.deepStrictEqual(result.errors, []);
+    const records = result.files.flatMap((file) => file.records);
+    assert.strictEqual(records.length, 2);
+    const main = records.find((record) => record.model === "gemini-3-pro");
+    assert.isDefined(main);
+    assert.strictEqual(main?.timestampMs, 1780000000000);
+    assert.strictEqual(main?.sessionId, "session-1");
+    assert.deepStrictEqual(main?.totals, {
+      uncachedInputTokens: 100,
+      cachedInputTokens: 20,
+      cacheCreationTokens: 5,
+      outputTokens: 40,
+      reasoningTokens: 10,
+    });
+    assert.strictEqual(
+      records.find((record) => record.model === "claude-opus-4-6")?.totals.uncachedInputTokens,
+      12,
+    );
+    assert.deepStrictEqual(
+      (await readAntigravityUsage(dir, 1780000000001)).files.flatMap((file) => file.records),
+      [],
+    );
+  });
+
+  it("reads Antigravity step-only stores and reports malformed databases", async () => {
+    const db = new NodeSqlite.DatabaseSync(NodePath.join(dir, "steps.db"));
+    try {
+      db.exec("CREATE TABLE steps (idx INTEGER, metadata BLOB)");
+      const usage = [...protoNumber(1, 246), ...protoNumber(2, 10), ...protoNumber(3, 5)];
+      db.prepare("INSERT INTO steps VALUES (?, ?)").run(
+        0,
+        new Uint8Array([...protoBytes(9, usage), ...protoBytes(8, protoNumber(1, 1780000000))]),
+      );
+    } finally {
+      db.close();
+    }
+    await NodeFSP.writeFile(NodePath.join(dir, "broken.db"), "not a sqlite database");
+    const result = await readAntigravityUsage(dir, 0);
+    assert.strictEqual(result.errors.length, 1);
+    assert.strictEqual(result.files.flatMap((file) => file.records)[0]?.model, "gemini-2.5-pro");
+    assert.strictEqual(result.files.flatMap((file) => file.records)[0]?.totals.outputTokens, 5);
   });
 });
