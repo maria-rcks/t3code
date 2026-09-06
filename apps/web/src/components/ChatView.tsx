@@ -7760,7 +7760,7 @@ export default function ChatView(props: ChatViewProps) {
           data-chat-header
           electron={isElectron}
           reserveNativeControls={reserveTitleBarControlInset && !inlineRightPanelOwnsTitleBar}
-          className={cn("relative", hasTimelineBackground ? "isolate z-30" : "bg-background")}
+          className={cn("relative", hasTimelineBackground ? "isolate z-10" : "bg-background")}
         >
           {hasTimelineBackground ? <ChatTopbarBlur /> : null}
           {isElectron && rightPanelControlsAtRoot ? (
