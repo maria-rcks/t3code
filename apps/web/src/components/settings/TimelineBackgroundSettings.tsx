@@ -8,7 +8,13 @@ import {
 } from "../../hooks/useSettings";
 import { compressImageForStash, MAX_COMPRESSIBLE_SOURCE_BYTES } from "../../lib/imageCompression";
 import { TimelineBackgroundImage } from "../chat/ChatTimelineBackground";
-import { LiveActivityRow } from "../chat/MessagesTimeline";
+import ChatMarkdown from "../ChatMarkdown";
+import {
+  AssistantMessageSurface,
+  UserMessageBubble,
+  WorkingIndicator,
+  LiveActivityRow,
+} from "../chat/MessagesTimeline";
 import { Button } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { SettingsSection } from "./settingsLayout";
@@ -23,6 +29,7 @@ export function TimelineBackgroundSettings() {
   const setUrl = (value: string) => setDraft({ image, url: value });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [previewStartedAt] = useState(() => new Date().toISOString());
   const [opacityDraft, setOpacityDraft] = useState<number | null>(null);
   const [blurDraft, setBlurDraft] = useState<number | null>(null);
   const previewOpacity = opacityDraft ?? opacity;
@@ -152,12 +159,16 @@ export function TimelineBackgroundSettings() {
         >
           <TimelineBackgroundImage image={image} opacity={previewOpacity} blur={previewBlur} />
           <div className="mx-auto max-w-xl space-y-5 text-sm leading-relaxed">
-            <div className="surface-glass ml-auto w-fit max-w-[85%] rounded-2xl px-4 py-3 text-foreground">
-              Can you give this page a softer look?
+            <div className="flex justify-end">
+              <UserMessageBubble glass>Can you give this page a softer look?</UserMessageBubble>
             </div>
-            <p className="surface-glass w-fit max-w-[90%] rounded-2xl px-4 py-3 text-foreground">
-              I'll adjust the spacing and colors, then check how it looks.
-            </p>
+            <WorkingIndicator createdAt={previewStartedAt} />
+            <AssistantMessageSurface>
+              <ChatMarkdown
+                cwd={undefined}
+                text="I'll adjust the spacing and colors, then check how it looks."
+              />
+            </AssistantMessageSurface>
             <LiveActivityRow label="Reading styles.css" iconName="eye" active />
           </div>
         </div>

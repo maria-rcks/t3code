@@ -1293,6 +1293,25 @@ function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
   );
 }
 
+export function UserMessageBubble({
+  children,
+  glass = false,
+}: {
+  children: ReactNode;
+  glass?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground",
+        glass && "surface-glass",
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const resources = useMemo(
@@ -1340,7 +1359,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
 
   return (
     <div className="group flex flex-col items-end gap-1">
-      <div className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground">
+      <UserMessageBubble>
         {(regularImages.length > 0 || userVideos.length > 0) && (
           <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
             {regularImages.map((image) => (
@@ -1486,7 +1505,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           skills={ctx.skills}
           markdownCwd={ctx.markdownCwd}
         />
-      </div>
+      </UserMessageBubble>
       <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
         <div className="flex shrink-0 items-center gap-2">
           <Tooltip>
@@ -1556,13 +1575,17 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
   );
 }
 
+export function AssistantMessageSurface({ children }: { children: ReactNode }) {
+  return <div className="relative min-w-0 px-1 py-0.5">{children}</div>;
+}
+
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
 
   return (
     <>
-      <div className="relative min-w-0 px-1 py-0.5">
+      <AssistantMessageSurface>
         <AssistantCitationSource
           messageId={row.message.id}
           {...(ctx.threadRef ? { threadRef: ctx.threadRef } : {})}
@@ -1595,7 +1618,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
             copyStreaming={row.assistantCopyStreaming}
           />
         ) : null}
-      </div>
+      </AssistantMessageSurface>
     </>
   );
 }
@@ -1707,6 +1730,24 @@ function ProposedPlanTimelineRow({
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   const { isCompacting, isPreparingWorktree } = use(TimelineRowActivityCtx);
   return (
+    <WorkingIndicator
+      createdAt={row.createdAt}
+      isCompacting={isCompacting}
+      isPreparingWorktree={isPreparingWorktree}
+    />
+  );
+}
+
+export function WorkingIndicator({
+  createdAt,
+  isCompacting = false,
+  isPreparingWorktree = false,
+}: {
+  createdAt: string | null;
+  isCompacting?: boolean;
+  isPreparingWorktree?: boolean;
+}) {
+  return (
     <div className="border-b border-border/60 pb-2 pt-1">
       <div className="flex h-6 min-w-0 items-baseline px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">
         <span
@@ -1726,9 +1767,9 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
                 <CompactingLabel />
               </ActivityShimmerOverlay>
             </>
-          ) : row.createdAt ? (
+          ) : createdAt ? (
             <>
-              Working for <WorkingTimer createdAt={row.createdAt} />
+              Working for <WorkingTimer createdAt={createdAt} />
             </>
           ) : (
             "Working..."
