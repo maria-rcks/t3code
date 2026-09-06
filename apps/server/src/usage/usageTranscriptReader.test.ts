@@ -10,7 +10,7 @@ import { afterEach, assert, beforeEach, describe, it } from "@effect/vitest";
 
 import { readTranscriptRecords } from "./usageTranscriptReader.ts";
 import { readOpenCodeUsage } from "./opencodeUsageReader.ts";
-import { readCursorAccountUsage, readCursorUsage } from "./cursorUsageReader.ts";
+import { readCursorAccountUsage } from "./cursorUsageReader.ts";
 import { readAntigravityUsage } from "./antigravityUsageReader.ts";
 
 let dir: string;
@@ -284,6 +284,112 @@ describe("SQLite usage readers", () => {
     assert.isFalse(result.accountKey?.includes("demo") ?? true);
   });
 
+  it("accepts confirmed empty Cursor usage but rejects error envelopes", async () => {
+    const authPath = NodePath.join(dir, "auth.json");
+    const accessToken = `header.${Buffer.from(JSON.stringify({ sub: "auth|demo" })).toString("base64url")}.signature`;
+    await NodeFSP.writeFile(authPath, JSON.stringify({ accessToken }));
+    for (const body of [
+      {},
+      { totalUsageEventsCount: 0 },
+      { totalUsageEventsCount: 0, usageEventsDisplay: [] },
+    ]) {
+      const result = await readCursorAccountUsage(authPath, 0, 1781000000000, async () =>
+        Response.json(body),
+      );
+      assert.isNull(result.error);
+      assert.deepStrictEqual(result.records, []);
+      assert.isFalse(result.missing);
+    }
+    for (const body of [
+      { error: "upstream error" },
+      { detail: "unknown error envelope" },
+      { totalUsageEventsCount: 0, error: "upstream error" },
+      null,
+      [],
+      "invalid",
+      0,
+    ]) {
+      const result = await readCursorAccountUsage(authPath, 0, 1781000000000, async () =>
+        Response.json(body),
+      );
+      assert.isNotNull(result.error);
+      assert.deepStrictEqual(result.records, []);
+    }
+  });
+
+  it("requires a terminal Cursor page after a full page reaches the reported count", async () => {
+    const authPath = NodePath.join(dir, "auth.json");
+    const accessToken = `header.${Buffer.from(JSON.stringify({ sub: "auth|demo" })).toString("base64url")}.signature`;
+    await NodeFSP.writeFile(authPath, JSON.stringify({ accessToken }));
+    let requests = 0;
+    const result = await readCursorAccountUsage(authPath, 0, 1781000000000, async () => {
+      requests++;
+      return Response.json(
+        requests === 1
+          ? {
+              totalUsageEventsCount: 1000,
+              usageEventsDisplay: Array.from({ length: 1000 }, (_, index) => ({
+                timestamp: String(1780000000000 + index),
+                model: "gpt-5",
+                tokenUsage: { inputTokens: 10, outputTokens: 5 },
+              })),
+            }
+          : { totalUsageEventsCount: 1000 },
+      );
+    });
+    assert.isNull(result.error);
+    assert.strictEqual(result.records.length, 1000);
+    assert.strictEqual(requests, 2);
+  });
+
+  it("removes only count-proven Cursor boundary copies and preserves identical billed events", async () => {
+    const authPath = NodePath.join(dir, "auth.json");
+    const accessToken = `header.${Buffer.from(JSON.stringify({ sub: "auth|demo" })).toString("base64url")}.signature`;
+    await NodeFSP.writeFile(authPath, JSON.stringify({ accessToken }));
+    const event = (index: number) => ({
+      timestamp: String(1780000000000 + index),
+      model: "gpt-5",
+      tokenUsage: { inputTokens: 10, outputTokens: 5, totalCents: 1 },
+    });
+    for (const total of [2000, 2001]) {
+      let requests = 0;
+      const result = await readCursorAccountUsage(authPath, 0, 1781000000000, async () => {
+        requests++;
+        return Response.json({
+          totalUsageEventsCount: total,
+          usageEventsDisplay:
+            requests === 1
+              ? Array.from({ length: 1000 }, (_, index) => event(index))
+              : requests === 2
+                ? Array.from({ length: 1000 }, (_, index) => event(999 + index))
+                : [event(1999)],
+        });
+      });
+      assert.isNull(result.error);
+      assert.strictEqual(result.records.length, total);
+      assert.strictEqual(requests, 3);
+      assert.strictEqual(result.records.at(-1)?.timestampMs, 1780000001999);
+      assert.strictEqual(
+        result.records.filter((record) => record.timestampMs === 1780000000999).length,
+        total === 2000 ? 1 : 2,
+      );
+      assert.strictEqual(new Set(result.records.map((record) => record.dedupeKey)).size, total);
+    }
+    let requests = 0;
+    const inconsistent = await readCursorAccountUsage(authPath, 0, 1781000000000, async () => {
+      requests++;
+      return Response.json({
+        totalUsageEventsCount: 1001,
+        usageEventsDisplay:
+          requests === 1
+            ? Array.from({ length: 1000 }, (_, index) => event(index))
+            : [event(500), event(1000)],
+      });
+    });
+    assert.isNotNull(inconsistent.error);
+    assert.deepStrictEqual(inconsistent.records, []);
+  });
+
   it("does not present truncated Cursor account pages or authentication failures as complete history", async () => {
     const authPath = NodePath.join(dir, "auth.json");
     const accessToken = `header.${Buffer.from(JSON.stringify({ sub: "auth|demo", exp: 4102444800 })).toString("base64url")}.signature`;
@@ -363,53 +469,6 @@ describe("SQLite usage readers", () => {
     } finally {
       db.close();
     }
-  });
-
-  it("counts Cursor assistant usage without estimating zero-count or user bubbles", async () => {
-    const path = NodePath.join(dir, "state.vscdb");
-    const db = new NodeSqlite.DatabaseSync(path);
-    try {
-      db.exec("CREATE TABLE cursorDiskKV (key TEXT, value TEXT)");
-      const insert = db.prepare("INSERT INTO cursorDiskKV VALUES (?, ?)");
-      const bubble = {
-        type: 2,
-        createdAt: "2026-08-01T10:00:00Z",
-        requestId: "request-1",
-        modelInfo: { modelName: "claude-sonnet-4-5" },
-        tokenCount: { inputTokens: 120, outputTokens: 30 },
-      };
-      insert.run("bubbleId:session-1:assistant", JSON.stringify(bubble));
-      insert.run("bubbleId:session-1:assistant", JSON.stringify(bubble));
-      insert.run("bubbleId:session-1:copy", JSON.stringify(bubble));
-      insert.run(
-        "bubbleId:session-1:user",
-        JSON.stringify({ ...bubble, type: 1, requestId: "user-request" }),
-      );
-      insert.run(
-        "bubbleId:session-1:zero",
-        JSON.stringify({
-          ...bubble,
-          requestId: "zero",
-          tokenCount: { inputTokens: 0, outputTokens: 0 },
-          text: "real text without recorded usage",
-        }),
-      );
-    } finally {
-      db.close();
-    }
-    const result = await readCursorUsage(path, 0);
-    assert.isFalse(result.error);
-    const records = result.files.flatMap((file) => file.records);
-    assert.strictEqual(records.length, 2);
-    assert.strictEqual(
-      records.reduce((sum, record) => sum + record.totals.outputTokens, 0),
-      60,
-    );
-    assert.strictEqual(records[0]?.model, "claude-sonnet-4-5");
-    assert.strictEqual(records[0]?.sessionId, "session-1");
-    assert.strictEqual(records[0]?.totals.uncachedInputTokens, 120);
-    assert.strictEqual(records[0]?.totals.outputTokens, 30);
-    assert.strictEqual(records[0]?.timestampMs, Date.parse("2026-08-01T10:00:00Z"));
   });
 
   it("deduplicates Antigravity generation and step usage while preserving retry model and token buckets", async () => {

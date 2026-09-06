@@ -15,8 +15,8 @@ server to read a different data directory; comma-separated paths read multiple d
 
 Cursor reads account usage from Cursor's dashboard API using the CLI login saved on the server.
 This includes headless T3 sessions and desktop usage across machines; the same account counts
-once across connected environments. Without an accessible file-based CLI login, T3 falls back
-to partial desktop history and shows a notice. T3 does not estimate missing tokens from conversation text.
+once across connected environments. Without an accessible file-based CLI login, T3 shows a
+notice instead of incomplete local totals. T3 does not estimate missing tokens from conversation text.
 
 On web and desktop, use the environment dropdown to filter costs, tokens, and limits. All
 environments are selected by default. The dropdown shows which environments are still scanning;

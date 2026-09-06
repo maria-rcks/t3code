@@ -48,7 +48,7 @@ import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { resolveAntigravityProfileDirectory } from "../provider/antigravityAuthSupport.ts";
 import { readOpenCodeUsage } from "./opencodeUsageReader.ts";
 import { readAntigravityUsage } from "./antigravityUsageReader.ts";
-import { readCursorAccountUsage, readCursorUsage } from "./cursorUsageReader.ts";
+import { readCursorAccountUsage } from "./cursorUsageReader.ts";
 import { UsageAggregator } from "./usageAggregation.ts";
 import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
 import {
@@ -503,7 +503,6 @@ export const make = Effect.gen(function* () {
           : configHome && path.isAbsolute(configHome)
             ? configHome
             : path.join(home, ".config");
-    const cursorPath = path.join(cursorHome, "Cursor", "User", "globalStorage", "state.vscdb");
     const cursorAuthPath =
       platform === "darwin"
         ? path.join(home, ".cursor", "auth.json")
@@ -526,16 +525,14 @@ export const make = Effect.gen(function* () {
       });
       return scanned;
     }
-    const cursor = yield* Effect.promise(() => readCursorUsage(cursorPath, windowStartMs));
     scanned.push({
       provider: "cursor",
-      dir: cursorPath,
-      volumeId: yield* Effect.promise(() => readDirectoryVolumeId(cursorPath)),
-      files: cursor.missing && !cursor.error ? null : cursor.files,
-      status: "partial",
+      dir: cursorAuthPath,
+      volumeId: yield* Effect.promise(() => readDirectoryVolumeId(cursorAuthPath)),
+      // Never combine a local fallback with another server's account-wide history.
+      files: null,
       message:
-        account.error ??
-        "Cursor account history needs a Cursor CLI login saved on this server. Only available desktop token counts are shown.",
+        account.error ?? "Cursor account history needs a Cursor CLI login saved on this server.",
     });
     return scanned;
   });
