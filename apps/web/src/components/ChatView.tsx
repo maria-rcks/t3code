@@ -7755,6 +7755,7 @@ export default function ChatView(props: ChatViewProps) {
         data-chat-column-maximized-away={rightPanelMaximized ? "true" : "false"}
       >
         <ChatTimelineBackground className="z-0" />
+        {hasTimelineBackground ? <ChatTopbarBlur /> : null}
         {/* Top bar */}
         <WorkspacePageHeader
           data-chat-header
@@ -7762,7 +7763,6 @@ export default function ChatView(props: ChatViewProps) {
           reserveNativeControls={reserveTitleBarControlInset && !inlineRightPanelOwnsTitleBar}
           className={cn("relative", hasTimelineBackground ? "isolate z-10" : "bg-background")}
         >
-          {hasTimelineBackground ? <ChatTopbarBlur /> : null}
           {isElectron && rightPanelControlsAtRoot ? (
             <span
               aria-hidden
