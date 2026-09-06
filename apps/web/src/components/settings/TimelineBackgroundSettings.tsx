@@ -1,6 +1,10 @@
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
-import { useClientSettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
+import {
+  persistClientSettingsUpdate,
+  useClientSettings,
+  useUpdatePrimarySettings,
+} from "../../hooks/useSettings";
 import { compressImageForStash, MAX_COMPRESSIBLE_SOURCE_BYTES } from "../../lib/imageCompression";
 import { TimelineBackgroundImage } from "../chat/ChatTimelineBackground";
 import { Button } from "../ui/button";
@@ -78,7 +82,18 @@ export function TimelineBackgroundSettings() {
         probe.addEventListener("error", onError);
         probe.src = nextImage;
       });
-      if (generation === request.current) updateSettings({ timelineBackgroundImage: nextImage });
+      if (generation !== request.current) return;
+      try {
+        await persistClientSettingsUpdate((current) =>
+          generation === request.current
+            ? { ...current, timelineBackgroundImage: nextImage }
+            : current,
+        );
+      } catch {
+        throw new Error(
+          "Could not save this image. Client storage may be full. Try a smaller image.",
+        );
+      }
     } catch (cause) {
       if (generation === request.current) {
         setError(
