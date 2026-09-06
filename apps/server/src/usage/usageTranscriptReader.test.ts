@@ -300,6 +300,7 @@ describe("SQLite usage readers", () => {
         tokenCount: { inputTokens: 120, outputTokens: 30 },
       };
       insert.run("bubbleId:session-1:assistant", JSON.stringify(bubble));
+      insert.run("bubbleId:session-1:assistant", JSON.stringify(bubble));
       insert.run("bubbleId:session-1:copy", JSON.stringify(bubble));
       insert.run(
         "bubbleId:session-1:user",
@@ -320,7 +321,11 @@ describe("SQLite usage readers", () => {
     const result = await readCursorUsage(path, 0);
     assert.isFalse(result.error);
     const records = result.files.flatMap((file) => file.records);
-    assert.strictEqual(records.length, 1);
+    assert.strictEqual(records.length, 2);
+    assert.strictEqual(
+      records.reduce((sum, record) => sum + record.totals.outputTokens, 0),
+      60,
+    );
     assert.strictEqual(records[0]?.model, "claude-sonnet-4-5");
     assert.strictEqual(records[0]?.sessionId, "session-1");
     assert.strictEqual(records[0]?.totals.uncachedInputTokens, 120);
@@ -386,6 +391,132 @@ describe("SQLite usage readers", () => {
     assert.deepStrictEqual(
       (await readAntigravityUsage(dir, 1780000000001)).files.flatMap((file) => file.records),
       [],
+    );
+  });
+
+  it("merges Antigravity aliases that bridge previously separate step records", async () => {
+    const db = new NodeSqlite.DatabaseSync(NodePath.join(dir, "bridge.db"));
+    try {
+      db.exec(
+        "CREATE TABLE gen_metadata (idx INTEGER, data BLOB); CREATE TABLE steps (idx INTEGER, metadata BLOB)",
+      );
+      const step = db.prepare("INSERT INTO steps VALUES (?, ?)");
+      step.run(
+        0,
+        new Uint8Array(protoBytes(9, [...protoNumber(2, 100), ...protoText(11, "response")])),
+      );
+      step.run(
+        1,
+        new Uint8Array(protoBytes(9, [...protoNumber(3, 40), ...protoText(12, "provider")])),
+      );
+      db.prepare("INSERT INTO gen_metadata VALUES (?, ?)").run(
+        0,
+        new Uint8Array(
+          protoBytes(1, [
+            ...protoText(19, "Gemini 3 Pro"),
+            ...protoBytes(4, [
+              ...protoNumber(2, 50),
+              ...protoNumber(5, 20),
+              ...protoText(11, "response"),
+              ...protoText(12, "provider"),
+            ]),
+          ]),
+        ),
+      );
+    } finally {
+      db.close();
+    }
+    const result = await readAntigravityUsage(dir, 0);
+    assert.deepStrictEqual(result.errors, []);
+    const records = result.files.flatMap((file) => file.records);
+    assert.strictEqual(records.length, 1);
+    assert.deepStrictEqual(records[0]?.totals, {
+      uncachedInputTokens: 100,
+      cachedInputTokens: 20,
+      cacheCreationTokens: 0,
+      outputTokens: 40,
+      reasoningTokens: 0,
+    });
+  });
+
+  it("merges Antigravity provider and message aliases across configured roots while keeping original ownership", async () => {
+    const roots = [NodePath.join(dir, "first"), NodePath.join(dir, "second")];
+    for (const [index, root] of roots.entries()) {
+      await NodeFSP.mkdir(root);
+      const db = new NodeSqlite.DatabaseSync(NodePath.join(root, `session-${index}.db`));
+      try {
+        db.exec("CREATE TABLE steps (idx INTEGER, metadata BLOB)");
+        for (const identity of [7, 12]) {
+          const usage = [
+            ...protoNumber(1, 246),
+            ...protoNumber(2, index === 0 ? 100 : 150),
+            ...protoText(11, `response-${index}-${identity}`),
+            ...protoText(identity, `shared-${identity}`),
+          ];
+          db.prepare("INSERT INTO steps VALUES (?, ?)").run(
+            identity,
+            new Uint8Array(protoBytes(9, usage)),
+          );
+        }
+      } finally {
+        db.close();
+      }
+    }
+    const result = await readAntigravityUsage(roots, 0);
+    assert.deepStrictEqual(result.errors, []);
+    assert.strictEqual(result.files.length, 2);
+    assert.strictEqual(result.files[0]?.root, roots[0]);
+    assert.strictEqual(result.files[0]?.records.length, 2);
+    assert.strictEqual(result.files[1]?.records.length, 0);
+    assert.deepStrictEqual(
+      result.files[0]?.records.map((record) => record.totals.uncachedInputTokens),
+      [150, 150],
+    );
+    assert.isTrue(result.files[0]?.records.every((record) => record.sessionId === "session-0"));
+  });
+
+  it("upgrades Antigravity fallback timestamps before applying the date window", async () => {
+    for (const fallback of ["mtime", "trajectory"]) {
+      const path = NodePath.join(dir, `${fallback}.db`);
+      const db = new NodeSqlite.DatabaseSync(path);
+      try {
+        db.exec(
+          "CREATE TABLE gen_metadata (idx INTEGER, data BLOB); CREATE TABLE steps (idx INTEGER, metadata BLOB)",
+        );
+        if (fallback === "trajectory") {
+          db.exec("CREATE TABLE trajectory_metadata_blob (data BLOB)");
+          db.prepare("INSERT INTO trajectory_metadata_blob VALUES (?)").run(
+            new Uint8Array(protoBytes(2, protoNumber(1, 1780000200))),
+          );
+        }
+        for (const [index, seconds] of [1780000000, 1780000200].entries()) {
+          const usage = [...protoNumber(2, 10), ...protoText(11, `${fallback}-${index}`)];
+          db.prepare("INSERT INTO steps VALUES (?, ?)").run(
+            index,
+            new Uint8Array(protoBytes(9, usage)),
+          );
+          db.prepare("INSERT INTO gen_metadata VALUES (?, ?)").run(
+            index,
+            new Uint8Array(
+              protoBytes(1, [
+                ...protoBytes(4, usage),
+                ...protoBytes(9, protoBytes(4, protoNumber(1, seconds))),
+              ]),
+            ),
+          );
+        }
+      } finally {
+        db.close();
+      }
+      await NodeFSP.utimes(path, 1780000000, 1780000000);
+    }
+    const result = await readAntigravityUsage(dir, 1780000100000);
+    assert.deepStrictEqual(result.errors, []);
+    const records = result.files.flatMap((file) => file.records);
+    assert.strictEqual(records.length, 2);
+    assert.deepStrictEqual(
+      records.map((record) => record.timestampMs),
+      [1780000200000, 1780000200000],
     );
   });
 

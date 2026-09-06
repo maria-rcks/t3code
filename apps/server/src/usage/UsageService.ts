@@ -464,6 +464,7 @@ export const make = Effect.gen(function* () {
         );
       }
     }
+    const antigravityDirs = new Set<string>();
     for (const root of new Set(antigravityRoots)) {
       const nested = path.join(root, "conversations");
       const dir = (yield* fileSystem
@@ -471,19 +472,25 @@ export const make = Effect.gen(function* () {
         .pipe(Effect.catchCause(() => Effect.succeed(false))))
         ? nested
         : root;
+      antigravityDirs.add(dir);
+    }
+    const antigravity = yield* Effect.promise(() =>
+      readAntigravityUsage([...antigravityDirs], windowStartMs),
+    );
+    for (const dir of antigravityDirs) {
       const exists = yield* fileSystem
         .exists(dir)
         .pipe(Effect.catchCause(() => Effect.succeed(false)));
-      const result = yield* Effect.promise(() => readAntigravityUsage(dir, windowStartMs));
+      const failed = antigravity.errors.some(
+        (error) => error === dir || error.startsWith(`${dir}${path.sep}`),
+      );
       scanned.push({
         provider: "antigravity",
         dir,
         volumeId: yield* Effect.promise(() => readDirectoryVolumeId(dir)),
-        files: !exists && result.errors.length === 0 ? null : result.files,
-        status: result.errors.length > 0 ? "partial" : "ok",
-        ...(result.errors.length > 0
-          ? { message: "Some Antigravity history could not be read." }
-          : {}),
+        files: !exists && !failed ? null : antigravity.files.filter((file) => file.root === dir),
+        status: failed ? "partial" : "ok",
+        ...(failed ? { message: "Some Antigravity history could not be read." } : {}),
       });
     }
     const configHome = hostEnvironment["XDG_CONFIG_HOME"]?.trim();

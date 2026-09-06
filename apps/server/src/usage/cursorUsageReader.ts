@@ -43,7 +43,6 @@ export function parseCursorBubble(key: string, source: string): UsageRecord | nu
     typeof modelName === "string" && modelName && modelName !== "default"
       ? modelName
       : "cursor-auto";
-  const requestId = typeof bubble.requestId === "string" ? bubble.requestId : "";
   return {
     provider: "cursor",
     timestampMs,
@@ -57,7 +56,8 @@ export function parseCursorBubble(key: string, source: string): UsageRecord | nu
       reasoningTokens: 0,
     },
     reportedCostUsd: null,
-    dedupeKey: requestId ? `cursor:request:${requestId}` : `cursor:${key}`,
+    // One request can produce several distinct token-bearing assistant bubbles.
+    dedupeKey: `cursor:${key}`,
   };
 }
 

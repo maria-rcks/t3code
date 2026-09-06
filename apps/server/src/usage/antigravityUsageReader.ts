@@ -149,7 +149,13 @@ function blob(value: unknown): Uint8Array {
   return value;
 }
 
-async function readDatabase(path: string, fallbackTimestamp: number): Promise<UsageRecord[]> {
+interface UsageCandidate {
+  record: UsageRecord;
+  keys: readonly string[];
+  timestampQuality: number;
+}
+
+async function readDatabase(path: string, fallbackTimestamp: number): Promise<UsageCandidate[]> {
   const db = new NodeSqlite.DatabaseSync(path, { readOnly: true });
   try {
     db.exec("PRAGMA busy_timeout = 100; BEGIN");
@@ -187,8 +193,7 @@ async function readDatabase(path: string, fallbackTimestamp: number): Promise<Us
         )
       : [];
     const sessionId = NodePath.basename(path, ".db");
-    const records: UsageRecord[] = [];
-    const identities = new Map<string, number>();
+    const records: UsageCandidate[] = [];
     let currentModel = "";
     const generationModel = generations.findLast((entry) => entry.model)?.model ?? "";
     for (const [source, entries] of [
@@ -221,9 +226,6 @@ async function readDatabase(path: string, fallbackTimestamp: number): Promise<Us
             const id = textAt(usage, key);
             return id ? [`antigravity:${key}:${id}`] : [];
           });
-          const existingIndex = keys
-            .map((key) => identities.get(key))
-            .find((value) => value !== undefined);
           const record: UsageRecord = {
             provider: "antigravity",
             sessionId,
@@ -238,32 +240,11 @@ async function readDatabase(path: string, fallbackTimestamp: number): Promise<Us
             reportedCostUsd: null,
             dedupeKey: keys[0] ?? `antigravity:${sessionId}:${source}:${index}:${usageIndex}`,
           };
-          if (existingIndex === undefined) {
-            for (const key of keys) identities.set(key, records.length);
-            records.push(record);
-          } else {
-            const existing = records[existingIndex]!;
-            records[existingIndex] = {
-              ...existing,
-              totals: {
-                uncachedInputTokens: Math.max(
-                  existing.totals.uncachedInputTokens,
-                  totals.uncachedInputTokens,
-                ),
-                cachedInputTokens: Math.max(
-                  existing.totals.cachedInputTokens,
-                  totals.cachedInputTokens,
-                ),
-                cacheCreationTokens: Math.max(
-                  existing.totals.cacheCreationTokens,
-                  totals.cacheCreationTokens,
-                ),
-                outputTokens: Math.max(existing.totals.outputTokens, totals.outputTokens),
-                reasoningTokens: Math.max(existing.totals.reasoningTokens, totals.reasoningTokens),
-              },
-            };
-            for (const key of keys) identities.set(key, existingIndex);
-          }
+          records.push({
+            record,
+            keys,
+            timestampQuality: entry.timestampMs !== null ? 2 : trajectoryTimestamp !== null ? 1 : 0,
+          });
         }
       }
       currentModel = "";
@@ -274,11 +255,82 @@ async function readDatabase(path: string, fallbackTimestamp: number): Promise<Us
   }
 }
 
-/** Reads the SQLite usage metadata described by ccusage's Antigravity adapter. */
-export async function readAntigravityUsage(conversationsDirectory: string, sinceMs: number) {
-  const files: Array<{ path: string; records: readonly UsageRecord[] }> = [];
+/** Reads and merges aliases across every configured Antigravity store before date filtering. */
+export async function readAntigravityUsage(
+  conversationsDirectories: string | readonly string[],
+  sinceMs: number,
+) {
+  const roots =
+    typeof conversationsDirectories === "string"
+      ? [conversationsDirectories]
+      : conversationsDirectories;
+  const files: Array<{ root: string; path: string; records: UsageRecord[] }> = [];
   const errors: string[] = [];
-  const walk = async (directory: string): Promise<void> => {
+  const identities = new Map<string, number>();
+  const groups: Array<
+    UsageCandidate & { parent: number; size: number; owner: number; fileIndex: number }
+  > = [];
+  const find = (index: number): number => {
+    let root = index;
+    while (groups[root]!.parent !== root) root = groups[root]!.parent;
+    while (index !== root) {
+      const parent = groups[index]!.parent;
+      groups[index]!.parent = root;
+      index = parent;
+    }
+    return root;
+  };
+  const merge = (left: number, right: number): number => {
+    let a = find(left);
+    let b = find(right);
+    if (a === b) return a;
+    if (groups[a]!.size < groups[b]!.size) [a, b] = [b, a];
+    const target = groups[a]!;
+    const source = groups[b]!;
+    const first = target.owner < source.owner ? target : source;
+    const bestTime =
+      source.timestampQuality > target.timestampQuality ||
+      (source.timestampQuality === target.timestampQuality &&
+        source.record.timestampMs < target.record.timestampMs)
+        ? source
+        : target;
+    const x = target.record.totals;
+    const y = source.record.totals;
+    target.record = {
+      ...first.record,
+      model:
+        first.record.model === "antigravity-unknown"
+          ? first === target
+            ? source.record.model
+            : target.record.model
+          : first.record.model,
+      timestampMs: bestTime.record.timestampMs,
+      totals: {
+        uncachedInputTokens: Math.max(x.uncachedInputTokens, y.uncachedInputTokens),
+        cachedInputTokens: Math.max(x.cachedInputTokens, y.cachedInputTokens),
+        cacheCreationTokens: Math.max(x.cacheCreationTokens, y.cacheCreationTokens),
+        outputTokens: Math.max(x.outputTokens, y.outputTokens),
+        reasoningTokens: Math.max(x.reasoningTokens, y.reasoningTokens),
+      },
+    };
+    target.timestampQuality = bestTime.timestampQuality;
+    target.owner = first.owner;
+    target.fileIndex = first.fileIndex;
+    target.size += source.size;
+    source.parent = a;
+    return a;
+  };
+  const append = (candidate: UsageCandidate, fileIndex: number) => {
+    const index = groups.length;
+    groups.push({ ...candidate, parent: index, size: 1, owner: index, fileIndex });
+    for (const key of candidate.keys) {
+      const existing = identities.get(key);
+      if (existing !== undefined) merge(index, existing);
+      identities.set(key, index);
+    }
+  };
+  const visited = new Set<string>();
+  const walk = async (directory: string, root: string): Promise<void> => {
     let entries;
     try {
       entries = await NodeFSP.readdir(directory, { withFileTypes: true });
@@ -286,25 +338,35 @@ export async function readAntigravityUsage(conversationsDirectory: string, since
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") errors.push(directory);
       return;
     }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
     for (const entry of entries) {
       const path = NodePath.join(directory, entry.name);
       if (entry.isDirectory()) {
-        await walk(path);
+        await walk(path, root);
       } else if (entry.isFile() && entry.name.endsWith(".db")) {
         try {
+          const canonical = await NodeFSP.realpath(path);
+          if (visited.has(canonical)) continue;
+          visited.add(canonical);
           const stat = await NodeFSP.stat(path);
-          files.push({
-            path,
-            records: (await readDatabase(path, stat.mtimeMs)).filter(
-              (record) => record.timestampMs >= sinceMs,
-            ),
-          });
+          const candidates = await readDatabase(path, stat.mtimeMs);
+          const fileIndex = files.length;
+          files.push({ root, path, records: [] });
+          for (const [index, candidate] of candidates.entries()) {
+            append(candidate, fileIndex);
+            if (index % 256 === 255) await NodeTimersPromises.setImmediate();
+          }
         } catch {
           errors.push(path);
         }
       }
     }
   };
-  await walk(conversationsDirectory);
+  for (const root of roots) await walk(root, root);
+  for (const [index, group] of groups.entries()) {
+    if (group.parent === index && group.record.timestampMs >= sinceMs) {
+      files[group.fileIndex]!.records.push(group.record);
+    }
+  }
   return { files, errors };
 }
