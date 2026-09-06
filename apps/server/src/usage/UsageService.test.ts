@@ -137,7 +137,7 @@ describe("UsageService", () => {
       );
       assert.include(
         summary.sources.find((source) => source.fingerprint.provider === "cursor")?.message ?? "",
-        "Cursor CLI does not save token totals",
+        "Cursor account history needs a Cursor CLI login",
       );
     }).pipe(Effect.scoped),
   );

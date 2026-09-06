@@ -10,7 +10,7 @@ import { afterEach, assert, beforeEach, describe, it } from "@effect/vitest";
 
 import { readTranscriptRecords } from "./usageTranscriptReader.ts";
 import { readOpenCodeUsage } from "./opencodeUsageReader.ts";
-import { readCursorUsage } from "./cursorUsageReader.ts";
+import { readCursorAccountUsage, readCursorUsage } from "./cursorUsageReader.ts";
 import { readAntigravityUsage } from "./antigravityUsageReader.ts";
 
 let dir: string;
@@ -237,6 +237,85 @@ describe("readTranscriptRecords resume", () => {
 });
 
 describe("SQLite usage readers", () => {
+  it("reads paginated Cursor account history including headless calls with separate cache tokens", async () => {
+    const authPath = NodePath.join(dir, "auth.json");
+    const accessToken = `header.${Buffer.from(JSON.stringify({ sub: "auth|demo", exp: 4102444800 })).toString("base64url")}.signature`;
+    await NodeFSP.writeFile(authPath, JSON.stringify({ accessToken }));
+    const pages: number[] = [];
+    const request = async (url: string, init: RequestInit) => {
+      assert.strictEqual(String(url), "https://cursor.com/api/dashboard/get-filtered-usage-events");
+      assert.strictEqual(init?.redirect, "error");
+      const headers = new Headers(init?.headers);
+      assert.strictEqual(headers.get("origin"), "https://cursor.com");
+      assert.include(headers.get("cookie") ?? "", "WorkosCursorSessionToken=demo%3A%3A");
+      const body = JSON.parse(String(init?.body));
+      pages.push(body.page);
+      return Response.json({
+        totalUsageEventsCount: 1001,
+        usageEventsDisplay: Array.from({ length: body.page === 1 ? 1000 : 1 }, (_, index) => ({
+          timestamp: String(1780000000000 + ((body.page - 1) * 1000 + index) * 1000),
+          model: "claude-sonnet-4-5",
+          conversationId: `conversation-${body.page}`,
+          isHeadless: body.page === 2,
+          chargedCents: 0,
+          tokenUsage: {
+            inputTokens: 10,
+            outputTokens: 5,
+            cacheReadTokens: 30,
+            cacheWriteTokens: 2,
+            totalCents: 25,
+          },
+        })),
+      });
+    };
+    const result = await readCursorAccountUsage(authPath, 0, 1781000000000, request);
+    assert.isNull(result.error);
+    assert.deepStrictEqual(pages, [1, 2]);
+    assert.strictEqual(result.records.length, 1001);
+    assert.strictEqual(result.records.at(-1)?.sessionId, "conversation-2");
+    assert.deepStrictEqual(result.records[0]?.totals, {
+      uncachedInputTokens: 10,
+      cachedInputTokens: 30,
+      cacheCreationTokens: 2,
+      outputTokens: 5,
+      reasoningTokens: 0,
+    });
+    assert.strictEqual(result.records[0]?.reportedCostUsd, 0.25);
+    assert.isFalse(result.accountKey?.includes("demo") ?? true);
+  });
+
+  it("does not present truncated Cursor account pages or authentication failures as complete history", async () => {
+    const authPath = NodePath.join(dir, "auth.json");
+    const accessToken = `header.${Buffer.from(JSON.stringify({ sub: "auth|demo", exp: 4102444800 })).toString("base64url")}.signature`;
+    await NodeFSP.writeFile(authPath, JSON.stringify({ accessToken }));
+    const truncated = await readCursorAccountUsage(authPath, 0, 1781000000000, async () =>
+      Response.json({ totalUsageEventsCount: 101, usageEventsDisplay: [] }),
+    );
+    assert.isNotNull(truncated.error);
+    assert.deepStrictEqual(truncated.records, []);
+    const denied = await readCursorAccountUsage(
+      authPath,
+      0,
+      1781000000000,
+      async () => new Response(accessToken, { status: 401 }),
+    );
+    assert.isNotNull(denied.error);
+    assert.isFalse(denied.error?.includes(accessToken) ?? true);
+    assert.deepStrictEqual(denied.records, []);
+    let requested = false;
+    const missing = await readCursorAccountUsage(
+      NodePath.join(dir, "missing.json"),
+      0,
+      1781000000000,
+      async () => {
+        requested = true;
+        return Response.json({});
+      },
+    );
+    assert.isTrue(missing.missing);
+    assert.isFalse(requested);
+  });
+
   it("counts migrated OpenCode messages once and sees subsequent WAL writes", async () => {
     const db = new NodeSqlite.DatabaseSync(NodePath.join(dir, "opencode.db"));
     try {

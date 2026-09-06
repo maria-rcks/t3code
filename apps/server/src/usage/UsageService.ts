@@ -48,7 +48,7 @@ import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { resolveAntigravityProfileDirectory } from "../provider/antigravityAuthSupport.ts";
 import { readOpenCodeUsage } from "./opencodeUsageReader.ts";
 import { readAntigravityUsage } from "./antigravityUsageReader.ts";
-import { readCursorUsage } from "./cursorUsageReader.ts";
+import { readCursorAccountUsage, readCursorUsage } from "./cursorUsageReader.ts";
 import { UsageAggregator } from "./usageAggregation.ts";
 import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
 import {
@@ -378,6 +378,7 @@ export const make = Effect.gen(function* () {
     readonly provider: UsageProviderKind;
     readonly dir: string;
     readonly volumeId: string;
+    readonly hostId?: string;
     readonly status?: UsageSource["status"];
     readonly message?: string;
     /** Parsed records per file, or `null` when the directory does not exist. */
@@ -503,6 +504,28 @@ export const make = Effect.gen(function* () {
             ? configHome
             : path.join(home, ".config");
     const cursorPath = path.join(cursorHome, "Cursor", "User", "globalStorage", "state.vscdb");
+    const cursorAuthPath =
+      platform === "darwin"
+        ? path.join(home, ".cursor", "auth.json")
+        : path.join(cursorHome, platform === "win32" ? "Cursor" : "cursor", "auth.json");
+    const cursorUntilMs = yield* Clock.currentTimeMillis;
+    const account = yield* Effect.promise(() =>
+      readCursorAccountUsage(cursorAuthPath, windowStartMs, cursorUntilMs),
+    );
+    if (account.accountKey !== null && account.error === null && !account.missing) {
+      // The same account includes CLI and desktop history from every machine.
+      // A stable remote fingerprint prevents connected environments counting it twice.
+      const source = `cursor-account:${account.accountKey}`;
+      scanned.push({
+        provider: "cursor",
+        dir: source,
+        hostId: "cursor.com",
+        volumeId: account.accountKey,
+        files: [{ path: source, records: account.records }],
+        status: "ok",
+      });
+      return scanned;
+    }
     const cursor = yield* Effect.promise(() => readCursorUsage(cursorPath, windowStartMs));
     scanned.push({
       provider: "cursor",
@@ -511,7 +534,8 @@ export const make = Effect.gen(function* () {
       files: cursor.missing && !cursor.error ? null : cursor.files,
       status: "partial",
       message:
-        "Cursor local history is incomplete. Cursor CLI does not save token totals; check the Cursor Usage Dashboard for complete usage.",
+        account.error ??
+        "Cursor account history needs a Cursor CLI login saved on this server. Only available desktop token counts are shown.",
     });
     return scanned;
   });
@@ -587,10 +611,23 @@ export const make = Effect.gen(function* () {
     const livePaths = new Set<string>();
     const walkedRoots: string[] = [];
 
-    for (const { provider, dir, volumeId, files, status, message } of scannedDirs) {
+    for (const {
+      provider,
+      dir,
+      volumeId,
+      files,
+      status,
+      message,
+      hostId: sourceHostId,
+    } of scannedDirs) {
       if (files === null) {
         sources.push({
-          fingerprint: { hostId, provider, resolvedHomePath: dir, volumeId },
+          fingerprint: {
+            hostId: sourceHostId ?? hostId,
+            provider,
+            resolvedHomePath: dir,
+            volumeId,
+          },
           status: "missing",
           scannedFiles: 0,
           skippedFiles: 0,
@@ -625,7 +662,7 @@ export const make = Effect.gen(function* () {
       }
 
       sources.push({
-        fingerprint: { hostId, provider, resolvedHomePath: dir, volumeId },
+        fingerprint: { hostId: sourceHostId ?? hostId, provider, resolvedHomePath: dir, volumeId },
         status: status ?? "ok",
         scannedFiles,
         skippedFiles,
