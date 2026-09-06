@@ -56,8 +56,8 @@ export function ProjectDefaultsSettings({
     serverEnvironment.updateSettings,
     "project defaults update",
   );
-  const savingRef = useRef(false);
-  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(new Set<string>());
+  const [saving, setSaving] = useState<ReadonlySet<string>>(new Set());
   const scoped = environments.filter(
     (environment) => environmentId === null || environment.environmentId === environmentId,
   );
@@ -96,7 +96,7 @@ export function ProjectDefaultsSettings({
       target.serverConfig?.settings.enableAgentBrowserAccess !==
       serverSettings.enableAgentBrowserAccess,
   );
-  const disabled = saving || targets.length === 0;
+  const disabled = (key: keyof ServerSettingsPatch) => targets.length === 0 || saving.has(key);
   const mixedAutoPull = targets.some(
     (target) => target.serverConfig?.settings.defaultAutoPull !== serverSettings.defaultAutoPull,
   );
@@ -127,15 +127,16 @@ export function ProjectDefaultsSettings({
   }
 
   async function save(patch: ServerSettingsPatch) {
-    if (disabled || savingRef.current) return;
+    const keys = Object.keys(patch);
+    if (targets.length === 0 || keys.some((key) => savingRef.current.has(key))) return;
     const nextModel = patch.defaultModelSelection;
     const reason = nextModel ? modelDisabledReason(nextModel.instanceId, nextModel.model) : null;
     if (reason) {
       toastManager.add({ type: "error", title: "Default model not saved", description: reason });
       return;
     }
-    savingRef.current = true;
-    setSaving(true);
+    for (const key of keys) savingRef.current.add(key);
+    setSaving(new Set(savingRef.current));
     try {
       const results = await Promise.all(
         targets.map((target) =>
@@ -151,8 +152,8 @@ export function ProjectDefaultsSettings({
         });
       }
     } finally {
-      savingRef.current = false;
-      setSaving(false);
+      for (const key of keys) savingRef.current.delete(key);
+      setSaving(new Set(savingRef.current));
     }
   }
 
@@ -216,7 +217,7 @@ export function ProjectDefaultsSettings({
             storedSelection !== null || mixedModel ? (
               <SettingResetButton
                 label="default model"
-                disabled={disabled}
+                disabled={disabled("defaultModelSelection")}
                 onClick={() => setModel(null)}
               />
             ) : null
@@ -224,7 +225,7 @@ export function ProjectDefaultsSettings({
           control={
             selection && activeEntry ? (
               <fieldset
-                disabled={disabled}
+                disabled={disabled("defaultModelSelection")}
                 className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 disabled:opacity-50"
               >
                 <ProviderModelPicker
@@ -233,7 +234,7 @@ export function ProjectDefaultsSettings({
                   lockedProvider={null}
                   instanceEntries={entries}
                   modelOptionsByInstance={modelOptions}
-                  disabled={disabled}
+                  disabled={disabled("defaultModelSelection")}
                   triggerVariant="outline"
                   triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
                   getModelDisabledReason={modelDisabledReason}
@@ -280,7 +281,7 @@ export function ProjectDefaultsSettings({
             serverSettings.defaultThreadEnvMode !== DEFAULT_SERVER_SETTINGS.defaultThreadEnvMode ? (
               <SettingResetButton
                 label="default workspace"
-                disabled={disabled}
+                disabled={disabled("defaultThreadEnvMode")}
                 onClick={() =>
                   void save({ defaultThreadEnvMode: DEFAULT_SERVER_SETTINGS.defaultThreadEnvMode })
                 }
@@ -289,7 +290,7 @@ export function ProjectDefaultsSettings({
           }
           control={
             <Select
-              disabled={disabled}
+              disabled={disabled("defaultThreadEnvMode")}
               value={mixedWorkspace ? "mixed" : serverSettings.defaultThreadEnvMode}
               onValueChange={(value) => {
                 if (value === "local" || value === "worktree")
@@ -321,7 +322,7 @@ export function ProjectDefaultsSettings({
               <SettingResetButton
                 label="default automatic pull"
                 tooltip="Reset automatic pull to off"
-                disabled={disabled}
+                disabled={disabled("defaultAutoPull")}
                 onClick={() => void save({ defaultAutoPull: false })}
               />
             ) : null
@@ -330,7 +331,7 @@ export function ProjectDefaultsSettings({
             <Switch
               aria-label="Default automatic pull"
               checked={serverSettings.defaultAutoPull}
-              disabled={disabled}
+              disabled={disabled("defaultAutoPull")}
               onCheckedChange={(enabled) => void save({ defaultAutoPull: enabled })}
             />
           }
@@ -345,7 +346,7 @@ export function ProjectDefaultsSettings({
               DEFAULT_SERVER_SETTINGS.enableAgentBrowserAccess ? (
               <SettingResetButton
                 label="default browser access"
-                disabled={disabled}
+                disabled={disabled("enableAgentBrowserAccess")}
                 onClick={() =>
                   void save({
                     enableAgentBrowserAccess: DEFAULT_SERVER_SETTINGS.enableAgentBrowserAccess,
@@ -356,7 +357,7 @@ export function ProjectDefaultsSettings({
           }
           control={
             <Select
-              disabled={disabled}
+              disabled={disabled("enableAgentBrowserAccess")}
               value={
                 mixedBrowser
                   ? "mixed"
