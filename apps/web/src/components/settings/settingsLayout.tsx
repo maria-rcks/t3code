@@ -167,7 +167,6 @@ export function SettingsSection({
   ...sectionProps
 }: ComponentPropsWithoutRef<"section"> & {
   title: string;
-  description?: never;
   hideTitle?: boolean;
   icon?: ReactNode;
   headerAction?: ReactNode;
