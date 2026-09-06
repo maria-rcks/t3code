@@ -1,11 +1,18 @@
 import { connectionStatusText } from "@t3tools/client-runtime/connection";
-import type { CSSProperties } from "react";
 
 import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
 import type { EnvironmentPresentation } from "~/state/environments";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+
+const preferences = [
+  { value: 100, label: "Prefer" },
+  { value: 50, label: "Normal" },
+  { value: 25, label: "Less often" },
+  { value: 0, label: "Manual only" },
+];
 
 export function LoadBalancingSettings({
   environments,
@@ -18,7 +25,7 @@ export function LoadBalancingSettings({
   return (
     <SettingsSection
       {...searchableSetting("load-balancing")}
-      description="Preferences are saved for this client. Higher values favor a machine when it has capacity. Equal values give equal preference. Set a machine to 0 to use it only when chosen manually."
+      description="Choose how often each machine is used. Prefer gives a machine more work when it has capacity; Less often gives it less. Manual only excludes it from automatic selection. Preferences are saved for this client."
     >
       <SettingsRow
         title="Automatically balance load"
@@ -33,11 +40,8 @@ export function LoadBalancingSettings({
       />
       {environments.map((environment) => {
         const weight = settings.loadBalancingWeights[environment.environmentId] ?? 50;
-        const sliderId = `load-balancing-${environment.environmentId}`;
-        const sliderStyle = {
-          "--settings-slider-progress": `${weight}%`,
-          "--settings-slider-fill-offset": `${0.5 - weight / 100}rem`,
-        } as CSSProperties;
+        // Keep saved slider weights until the user chooses a different preference.
+        const preference = weight === 0 ? 0 : weight < 50 ? 25 : weight === 50 ? 50 : 100;
 
         return (
           <SettingsRow
@@ -45,35 +49,36 @@ export function LoadBalancingSettings({
             title={environment.label}
             description={connectionStatusText(environment.connection)}
             control={
-              <div className="flex w-full items-center gap-3 sm:w-52">
-                <output
-                  className="min-w-12 rounded-md bg-muted px-2 py-1 text-center font-mono text-xs font-medium tabular-nums text-foreground"
-                  htmlFor={sliderId}
-                >
-                  {weight === 0 ? "Manual" : weight}
-                </output>
-                <input
-                  id={sliderId}
-                  aria-label={`${environment.label} load preference`}
-                  aria-valuetext={weight === 0 ? "Manual only" : `${weight} preference`}
-                  className="settings-slider min-w-0 flex-1 disabled:opacity-50"
-                  disabled={!settings.loadBalancingEnabled}
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={5}
-                  value={weight}
-                  style={sliderStyle}
-                  onChange={(event) => {
+              <Select
+                items={preferences}
+                value={preference}
+                disabled={!settings.loadBalancingEnabled}
+                onValueChange={(value) => {
+                  if (value !== null) {
                     updateSettings({
                       loadBalancingWeights: {
                         ...settings.loadBalancingWeights,
-                        [environment.environmentId]: Number(event.currentTarget.value),
+                        [environment.environmentId]: value,
                       },
                     });
-                  }}
-                />
-              </div>
+                  }
+                }}
+              >
+                <SelectTrigger
+                  size="sm"
+                  className="w-full sm:w-40"
+                  aria-label={`${environment.label} load preference`}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  {preferences.map(({ value, label }) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
             }
           />
         );

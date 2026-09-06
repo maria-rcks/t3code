@@ -65,8 +65,10 @@ another link to share.
 
 On web and desktop, **Settings → Connections → Load balancing** enables automatic
 machine selection for new threads in projects grouped across connected environments.
-Higher preference values favor a machine when it has CPU and memory available; 0
-reserves it for manual selection. Preferences are saved separately in each client.
+Each machine starts at **Normal**. Choose **Prefer** to favor it when it has CPU and
+memory available, **Less often** to reduce its share, or **Manual only** to exclude
+it from automatic selection. These are preferences, not fixed traffic percentages.
+Preferences are saved separately in each client.
 
 The composer checks eligible machines when choosing a draft's environment, then keeps
 that choice stable. Choose **Auto balance** again to check current resources, or choose
