@@ -1,6 +1,10 @@
 import { connectionStatusText } from "@t3tools/client-runtime/connection";
 
-import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
+import {
+  useClientSettings,
+  useClientSettingsHydrated,
+  useUpdateClientSettings,
+} from "~/hooks/useSettings";
 import type { EnvironmentPresentation } from "~/state/environments";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
@@ -20,6 +24,7 @@ export function LoadBalancingSettings({
   environments: ReadonlyArray<EnvironmentPresentation>;
 }) {
   const settings = useClientSettings();
+  const settingsHydrated = useClientSettingsHydrated();
   const updateSettings = useUpdateClientSettings();
 
   return (
@@ -34,6 +39,7 @@ export function LoadBalancingSettings({
           <Switch
             aria-label="Automatically balance load"
             checked={settings.loadBalancingEnabled}
+            disabled={!settingsHydrated}
             onCheckedChange={(loadBalancingEnabled) => updateSettings({ loadBalancingEnabled })}
           />
         }
@@ -52,7 +58,7 @@ export function LoadBalancingSettings({
               <Select
                 items={preferences}
                 value={preference}
-                disabled={!settings.loadBalancingEnabled}
+                disabled={!settingsHydrated || !settings.loadBalancingEnabled}
                 onValueChange={(value) => {
                   if (value !== null) {
                     updateSettings({
