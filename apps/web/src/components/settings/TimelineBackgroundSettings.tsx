@@ -8,9 +8,9 @@ import {
 } from "../../hooks/useSettings";
 import { compressImageForStash, MAX_COMPRESSIBLE_SOURCE_BYTES } from "../../lib/imageCompression";
 import { TimelineBackgroundImage } from "../chat/ChatTimelineBackground";
+import { LiveActivityRow } from "../chat/MessagesTimeline";
 import { Button } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
-import { Spinner } from "../ui/spinner";
 import { SettingsSection } from "./settingsLayout";
 
 export function TimelineBackgroundSettings() {
@@ -152,17 +152,13 @@ export function TimelineBackgroundSettings() {
         >
           <TimelineBackgroundImage image={image} opacity={previewOpacity} blur={previewBlur} />
           <div className="mx-auto max-w-xl space-y-5 text-sm leading-relaxed">
-            <div className="ml-auto w-fit max-w-[85%] rounded-2xl bg-message px-4 py-3 text-message-foreground">
+            <div className="surface-glass ml-auto w-fit max-w-[85%] rounded-2xl px-4 py-3 text-foreground">
               Can you give this page a softer look?
             </div>
-            <p className="max-w-[90%] text-foreground">
+            <p className="surface-glass w-fit max-w-[90%] rounded-2xl px-4 py-3 text-foreground">
               I'll adjust the spacing and colors, then check how it looks.
             </p>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Spinner className="size-3.5 shrink-0" aria-label="Preview tool call running" />
-              <span>Reading</span>
-              <code className="text-foreground/80">styles.css</code>
-            </div>
+            <LiveActivityRow label="Reading styles.css" iconName="eye" active />
           </div>
         </div>
         <div className="space-y-4 border-t border-border/60 p-4">
