@@ -63,8 +63,9 @@ another link to share.
 
 ### Balance new threads across machines
 
-On web and desktop, **Settings → Connections → Load balancing** enables automatic
-machine selection for new threads in projects grouped across connected environments.
+Auto balance is off by default. On web and desktop, enable it in
+**Settings → Connections → Load balancing** to automatically choose a machine for
+new threads in projects grouped across connected environments.
 Each machine starts at **Normal**. Choose **Prefer** to favor it when it has CPU and
 memory available, **Less often** to reduce its share, or **Manual only** to exclude
 it from automatic selection. These are preferences, not fixed traffic percentages.
