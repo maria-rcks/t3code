@@ -157,7 +157,6 @@ export function useRelativeTimeTick(intervalMs = 1_000) {
 
 export function SettingsSection({
   title,
-  description,
   hideTitle = false,
   icon,
   headerAction,
@@ -167,7 +166,7 @@ export function SettingsSection({
   ...sectionProps
 }: ComponentPropsWithoutRef<"section"> & {
   title: string;
-  description?: ReactNode;
+  description?: never;
   hideTitle?: boolean;
   icon?: ReactNode;
   headerAction?: ReactNode;
@@ -195,11 +194,6 @@ export function SettingsSection({
               {icon}
               {title}
             </h2>
-            {description ? (
-              <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-[13px] leading-[1.45] text-muted-foreground/80">
-                {description}
-              </div>
-            ) : null}
           </div>
           <div className="flex min-h-7 min-w-7 items-center justify-end">{headerAction}</div>
         </div>
