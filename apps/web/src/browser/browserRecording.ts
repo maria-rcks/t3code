@@ -256,7 +256,7 @@ const createMediaRecorder = (stream: MediaStream): MediaRecorder => {
       50_000_000,
       Math.max(
         2_500_000,
-        (settings?.width ?? 1920) * (settings?.height ?? 1080) * (settings?.frameRate ?? 30) * 0.2,
+        (settings?.width ?? 1920) * (settings?.height ?? 1080) * (settings?.frameRate ?? 30) * 0.05,
       ),
     ),
   );
@@ -692,6 +692,9 @@ const finalizeBrowserRecording = async (
           cause,
         });
       }
+      // Encoding has flushed; release native capture before materializing and saving the file.
+      stopMediaStream(recording.stream);
+      recording.stream = null;
       const mimeType =
         recording.recorder.mimeType ||
         recording.chunks.find((chunk) => chunk.type.length > 0)?.type;

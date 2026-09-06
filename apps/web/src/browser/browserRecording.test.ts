@@ -216,9 +216,10 @@ describe("browser recording", () => {
   });
 
   it.each([
-    { width: 1280, height: 720, frameRate: 60, bitrate: 11_059_200 },
+    { width: 1280, height: 720, frameRate: 60, bitrate: 2_764_800 },
     { width: 320, height: 240, frameRate: 30, bitrate: 2_500_000 },
-    { width: 3840, height: 2160, frameRate: 60, bitrate: 50_000_000 },
+    { width: 3840, height: 2160, frameRate: 60, bitrate: 24_883_200 },
+    { width: 7680, height: 4320, frameRate: 60, bitrate: 50_000_000 },
   ])("records the native $width x $height stream at $frameRate fps", async (settings) => {
     const stopTrack = vi.fn();
     const stream = {
@@ -238,6 +239,7 @@ describe("browser recording", () => {
 
     await stopBrowserRecording("recording-tab");
     expect(stopTrack).toHaveBeenCalledOnce();
+    expect(stopTrack.mock.invocationCallOrder[0]).toBeLessThan(save.mock.invocationCallOrder[0]!);
   });
 
   it("uses the configured recording frame rate", async () => {
@@ -312,7 +314,7 @@ describe("browser recording", () => {
 
     expect(FakeMediaRecorder.instances[0]?.options).toEqual({
       mimeType: "video/mp4;codecs=avc1",
-      videoBitsPerSecond: 12_441_600,
+      videoBitsPerSecond: 3_110_400,
     });
     expect(save).toHaveBeenCalledWith(
       "recording-tab",
@@ -328,7 +330,7 @@ describe("browser recording", () => {
     await startBrowserRecording("recording-tab");
     await stopBrowserRecording("recording-tab");
 
-    expect(FakeMediaRecorder.instances[0]?.options).toEqual({ videoBitsPerSecond: 12_441_600 });
+    expect(FakeMediaRecorder.instances[0]?.options).toEqual({ videoBitsPerSecond: 3_110_400 });
     expect(save).toHaveBeenCalledWith(
       "recording-tab",
       "video/platform-default",
