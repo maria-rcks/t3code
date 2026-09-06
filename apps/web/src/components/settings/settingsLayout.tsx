@@ -155,6 +155,7 @@ export function useRelativeTimeTick(intervalMs = 1_000) {
   return nowMs;
 }
 
+/** Muted section headings have no descriptions; explanatory copy belongs to individual settings. */
 export function SettingsSection({
   title,
   hideTitle = false,
@@ -218,6 +219,9 @@ export function SettingsSection({
  * environment's settings.json; where there is no primary (the hosted app)
  * the control goes inert with a tooltip instead of showing an editable
  * default that would never save.
+ *
+ * Keep descriptions short enough for one line where possible. Allow wrapping
+ * for clarity or narrow screens instead of truncating or forcing no-wrap.
  *
  * Control sizing across settings follows three tiers so rows share a baseline:
  * - `control` slot: `size="sm"` (Button, Select, Input, NumberField) or `icon-sm`.

@@ -22,7 +22,7 @@ maxBudgetPerRun: 10
 
 # UI consistency review
 
-This is a styling guard for `apps/web`, not a general review. Review only the changed lines in the diff against the four rules below. Do not build the project, inspect emitted CSS, trace selector consumers across the codebase, or ask for screenshots. If the diff does not make a violation obvious, there is no finding.
+This is a styling guard for `apps/web`, not a general review. Review only the changed lines in the diff and answer three questions. Do not build the project, inspect emitted CSS, trace selector consumers across the codebase, or ask for screenshots. If the diff does not make a violation obvious, there is no finding.
 
 ## 1. Shared primitives over custom controls
 
@@ -53,11 +53,6 @@ Hold new and changed UI to that shape:
 - Flag a new component that copies a chunk of an existing primitive's markup and classes instead of composing or extending it.
 - Flag a large one-off class string on a shared component when it is clearly the same treatment another call site already uses. The fix is a variant or a new slot on the shared component.
 - Flag a new composer banner or notice that bypasses `ComposerBanner` slots and hand-builds its row, icon column, or actions.
-
-## 4. Concise settings copy
-
-- Muted settings section titles must never have descriptions. Flag descriptions added to `SettingsSection` headings or equivalent muted section headings.
-- Keep individual setting descriptions short enough for one line where possible. Flag unnecessarily verbose copy; allow wrapping when needed for clarity or narrow screens. Do not require truncation or no-wrap styling.
 
 ## Reporting
 
