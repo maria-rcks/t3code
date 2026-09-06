@@ -1,18 +1,24 @@
+import { cn } from "../../lib/utils";
 import { useClientSettings } from "../../hooks/useSettings";
 
 export function TimelineBackgroundImage({
   image,
   opacity,
   blur,
+  className,
 }: {
   image: string;
   opacity: number;
   blur: number;
+  className?: string | undefined;
 }) {
   if (!image) return null;
 
   return (
-    <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+    <div
+      aria-hidden="true"
+      className={cn("pointer-events-none absolute inset-0 -z-10 overflow-hidden", className)}
+    >
       <img
         src={image}
         alt=""
@@ -30,9 +36,11 @@ export function TimelineBackgroundImage({
   );
 }
 
-export function ChatTimelineBackground() {
+export function ChatTimelineBackground({ className }: { className?: string | undefined }) {
   const image = useClientSettings((settings) => settings.timelineBackgroundImage);
   const opacity = useClientSettings((settings) => settings.timelineBackgroundOpacity);
   const blur = useClientSettings((settings) => settings.timelineBackgroundBlur);
-  return <TimelineBackgroundImage image={image} opacity={opacity} blur={blur} />;
+  return (
+    <TimelineBackgroundImage image={image} opacity={opacity} blur={blur} className={className} />
+  );
 }
