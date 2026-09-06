@@ -4787,11 +4787,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (isInteractive) return;
 
         setIsComposerScrollCollapsed(false);
-        if (isComposerResting && !target.closest('[data-testid="composer-editor"]')) {
-          // Clicking resting-surface padding would otherwise blur the still
-          // focused editor after pointerdown: expansion starts, the blur check
-          // runs, and it immediately collapses again. Treat that padding like
-          // the editor without stealing native caret placement from text.
+        if (
+          (isComposerResting ||
+            (!isMobileViewport && target.closest('[data-chat-composer-footer="true"]'))) &&
+          !target.closest('[data-testid="composer-editor"]')
+        ) {
+          // Resting-surface and desktop footer padding must keep editor focus
+          // so the blur check does not collapse the composer after the click.
+          // Leave editor clicks alone for native caret placement and selection.
           event.preventDefault();
           setIsComposerFocused(true);
           scheduleComposerFocus();
