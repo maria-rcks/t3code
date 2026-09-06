@@ -22,6 +22,7 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
 import * as HttpServer from "effect/unstable/http/HttpServer";
@@ -1022,8 +1023,23 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
         assert.include(completed?.messages[1]?.text ?? "", "Verification");
         const streaming = snapshot.threads.find((thread) => thread.id === "drive-streaming");
         assert.equal(streaming?.session?.status, "running");
-        assert.equal(streaming?.messages[0]?.streaming, true);
-        assert.isNotEmpty(streaming?.messages[0]?.text);
+        assert.equal(streaming?.messages[1]?.streaming, true);
+        assert.isNotEmpty(streaming?.messages[1]?.text);
+        const config = yield* makeCliTestServerConfig(scenarioHome);
+        const windowed = yield* Effect.gen(function* () {
+          const query = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+          return yield* query.getThreadDetailSnapshot(ThreadId.make("drive-streaming"), {
+            turnLimit: 1,
+          });
+        }).pipe(Effect.provide(makeProjectPersistenceLayer(config)));
+        assert.isTrue(Option.isSome(windowed));
+        if (Option.isSome(windowed)) {
+          assert.deepEqual(
+            windowed.value.thread.messages.map((message) => message.role),
+            ["user", "assistant"],
+          );
+          assert.equal(windowed.value.thread.messages[1]?.streaming, true);
+        }
         assert.equal(
           snapshot.threads.find((thread) => thread.id === "drive-error")?.session?.status,
           "error",

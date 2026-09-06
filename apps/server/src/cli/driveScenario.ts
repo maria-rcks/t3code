@@ -235,6 +235,20 @@ export const driveExampleCommand = Command.make("example", {
         }
         if (state === "streaming" || state === "error") {
           commands.push({
+            type: "thread.turn.start",
+            commandId: `${threadId}-start`,
+            threadId,
+            message: {
+              messageId: `${threadId}-user`,
+              role: "user",
+              text: "Show the verification results.",
+              attachments: [],
+            },
+            runtimeMode: "approval-required",
+            interactionMode: "default",
+            createdAt,
+          });
+          commands.push({
             type: "thread.session.set",
             commandId: `${threadId}-session`,
             threadId,
@@ -259,7 +273,7 @@ export const driveExampleCommand = Command.make("example", {
             messageId: `${threadId}-assistant`,
             turnId: `${threadId}-turn`,
             delta: "Synthetic partial response, preserved for inspecting the streaming state…",
-            createdAt,
+            createdAt: completedAt,
           });
         }
         if (state === "archived") {
