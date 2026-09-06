@@ -14,6 +14,9 @@ import * as DesktopClientSettings from "./DesktopClientSettings.ts";
 
 const clientSettings: ClientSettings = {
   appearanceContrast: 100,
+  timelineBackgroundImage: "",
+  timelineBackgroundOpacity: 20,
+  timelineBackgroundBlur: 0,
   browserDefaultViewport: { _tag: "preset", width: 1024, height: 600, presetId: "nest-hub" },
   browserDefaultZoomFactor: 1.25,
   browserDefaultAppearance: "dark",

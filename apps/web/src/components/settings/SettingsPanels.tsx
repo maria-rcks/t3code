@@ -161,6 +161,7 @@ import {
 import { searchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
+import { TimelineBackgroundSettings } from "./TimelineBackgroundSettings";
 
 const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, string> = {
   artwork: "Artwork",
@@ -512,6 +513,11 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Contrast"]
         : []),
       ...(settings.glassOpacity !== DEFAULT_UNIFIED_SETTINGS.glassOpacity ? ["Glass opacity"] : []),
+      ...(settings.timelineBackgroundImage !== DEFAULT_UNIFIED_SETTINGS.timelineBackgroundImage ||
+      settings.timelineBackgroundOpacity !== DEFAULT_UNIFIED_SETTINGS.timelineBackgroundOpacity ||
+      settings.timelineBackgroundBlur !== DEFAULT_UNIFIED_SETTINGS.timelineBackgroundBlur
+        ? ["Chat background"]
+        : []),
       ...(settings.panelAnimationDurationMs !== DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs
         ? ["Panel animations"]
         : []),
@@ -604,6 +610,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.browserLinkTarget,
       settings.browserAutoShowFloatingPreview,
       settings.appearanceContrast,
+      settings.timelineBackgroundImage,
+      settings.timelineBackgroundOpacity,
+      settings.timelineBackgroundBlur,
       settings.enableAgentBrowserAccess,
       settings.confirmQuit,
       settings.confirmThreadArchive,
@@ -709,6 +718,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     }
     updateSettings({
       appearanceContrast: DEFAULT_UNIFIED_SETTINGS.appearanceContrast,
+      timelineBackgroundImage: DEFAULT_UNIFIED_SETTINGS.timelineBackgroundImage,
+      timelineBackgroundOpacity: DEFAULT_UNIFIED_SETTINGS.timelineBackgroundOpacity,
+      timelineBackgroundBlur: DEFAULT_UNIFIED_SETTINGS.timelineBackgroundBlur,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
@@ -1108,6 +1120,8 @@ export function AppearanceSettingsPanel() {
           />
         </div>
       </SettingsSection>
+
+      <TimelineBackgroundSettings />
 
       <SettingsSection id="appearance-interface" title="Interface">
         <SettingsRow
