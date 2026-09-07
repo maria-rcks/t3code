@@ -12,6 +12,7 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import { useRef, useState } from "react";
+import { Trash2Icon } from "lucide-react";
 
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { ensureLocalApi } from "../../localApi";
@@ -20,6 +21,7 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SettingsRow } from "./settingsLayout";
 
 interface ProviderSetupSectionProps {
@@ -69,16 +71,25 @@ export function readAntigravityAuthMethod(config: unknown): AntigravityAuthMetho
 /** Setup state belongs to the selected environment and is never saved in client settings. */
 export function ProviderSetupSection(props: ProviderSetupSectionProps) {
   return (
-    <section aria-label="Antigravity setup" className="divide-y divide-border/50 text-xs">
+    <section
+      aria-label="Antigravity setup"
+      className="@container/setup divide-y divide-border/50 text-xs"
+    >
       <SettingsRow
+        className="@max-lg/setup:[&>div:first-child]:flex @max-lg/setup:[&>div:first-child]:items-stretch @max-lg/setup:[&>div:first-child]:gap-3"
         title="Environment"
-        description={props.environmentLabel}
+        description="Device that runs this provider."
         control={
-          !props.enabled && !props.readOnly ? (
-            <Button size="sm" variant="outline" onClick={props.onEnable}>
-              Enable Antigravity
-            </Button>
-          ) : undefined
+          <div className="flex min-w-0 flex-col gap-2 sm:items-end">
+            <span className="text-muted-foreground [overflow-wrap:anywhere]">
+              {props.environmentLabel}
+            </span>
+            {!props.enabled && !props.readOnly ? (
+              <Button size="sm" variant="outline" onClick={props.onEnable}>
+                Enable Antigravity
+              </Button>
+            ) : null}
+          </div>
         }
       />
       {props.readOnly ? (
@@ -184,7 +195,9 @@ function ProviderSetupActions({
               ? enabled
                 ? "The configured Antigravity runtime is unavailable."
                 : "The configured Antigravity runtime has not been checked."
-              : "Not installed.";
+              : installation?.totalBytes
+                ? `${Math.ceil(installation.totalBytes / 1_000_000)} MB download.`
+                : "Not installed.";
 
   async function runCommand<A, E>(
     label: string,
@@ -267,16 +280,13 @@ function ProviderSetupActions({
     <div className="divide-y divide-border/50">
       <SettingsRow
         title="Runtime"
+        className="@max-lg/setup:[&>div:first-child]:flex @max-lg/setup:[&>div:first-child]:items-stretch @max-lg/setup:[&>div:first-child]:gap-3"
+        description="Install and manage Antigravity."
         status={
           <div className="space-y-2">
             {usesCustomBinary ? (
               <p className="text-muted-foreground">
                 Uses the custom binary path below. Installation keeps that path.
-              </p>
-            ) : null}
-            {!installed && !usesCustomBinary && !installActive && installation?.totalBytes ? (
-              <p className="text-muted-foreground">
-                {Math.ceil(installation.totalBytes / 1_000_000)} MB download.
               </p>
             ) : null}
             {!installed && !provider.setup?.canInstall ? (
@@ -287,77 +297,86 @@ function ProviderSetupActions({
           </div>
         }
         control={
-          <div className="flex min-w-0 flex-col gap-2 sm:max-w-56 sm:items-end sm:text-right xl:max-w-72">
-            <p
-              role="status"
-              className={
-                !installed && !usesCustomBinary && !installActive
-                  ? "sr-only"
-                  : "text-muted-foreground"
-              }
-            >
+          <div className="flex w-full min-w-0 flex-col gap-2 sm:w-56 sm:text-right">
+            <p role="status" className="min-h-4 text-muted-foreground tabular-nums">
               {installationStatusMessage}
             </p>
-            {installation?.phase === "downloading" &&
-            installation.totalBytes !== null &&
-            installation.totalBytes > 0 ? (
-              <progress
-                aria-label="Antigravity download"
-                className="h-1 w-full accent-foreground"
-                value={installation.downloadedBytes}
-                max={installation.totalBytes}
-              />
-            ) : null}
-            {installation?.message && installation.message !== installationStatusMessage ? (
+            <div className="h-1">
+              {installation?.phase === "downloading" &&
+              installation.totalBytes !== null &&
+              installation.totalBytes > 0 ? (
+                <progress
+                  aria-label="Antigravity download"
+                  className="block h-1 w-full accent-foreground"
+                  value={installation.downloadedBytes}
+                  max={installation.totalBytes}
+                />
+              ) : null}
+            </div>
+            {!installActive &&
+            installation?.message &&
+            installation.message !== installationStatusMessage ? (
               <p className="text-muted-foreground [overflow-wrap:anywhere]">
                 {installation.message}
               </p>
             ) : null}
-            <div className="flex flex-wrap gap-2 sm:justify-end">
-              {installActive && installation.operationId ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={actionsDisabled}
-                  onClick={() => {
-                    const operationId = installation.operationId;
-                    if (!operationId) return;
-                    void runCommand("Cancelling installation", () =>
-                      cancelInstall({ environmentId, input: { instanceId, operationId } }),
-                    );
-                  }}
-                >
-                  Cancel installation
-                </Button>
-              ) : !installActive && provider.setup?.canInstall ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={actionsDisabled || installation === null || authActive}
-                  onClick={() =>
-                    void runCommand("Starting installation", () => startInstall(target))
-                  }
-                >
-                  {installation?.installedVersion
-                    ? installation.version && installation.version !== installation.installedVersion
-                      ? "Update Antigravity"
-                      : "Reinstall Antigravity"
-                    : installation?.phase === "failed" || installation?.phase === "cancelled"
-                      ? "Retry installation"
-                      : installed
-                        ? "Install managed runtime"
-                        : "Install Antigravity"}
-                </Button>
-              ) : null}
+            <div className="grid min-h-7 grid-cols-[1.75rem_minmax(0,1fr)] gap-2">
+              <div className="col-start-2 row-start-1 grid">
+                {installActive && installation.operationId ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={actionsDisabled}
+                    onClick={() => {
+                      const operationId = installation.operationId;
+                      if (!operationId) return;
+                      void runCommand("Cancelling installation", () =>
+                        cancelInstall({ environmentId, input: { instanceId, operationId } }),
+                      );
+                    }}
+                  >
+                    Cancel installation
+                  </Button>
+                ) : !installActive && provider.setup?.canInstall ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={actionsDisabled || installation === null || authActive}
+                    onClick={() =>
+                      void runCommand("Starting installation", () => startInstall(target))
+                    }
+                  >
+                    {installation?.installedVersion
+                      ? installation.version &&
+                        installation.version !== installation.installedVersion
+                        ? "Update Antigravity"
+                        : "Reinstall Antigravity"
+                      : installation?.phase === "failed" || installation?.phase === "cancelled"
+                        ? "Retry installation"
+                        : installed
+                          ? "Install managed runtime"
+                          : "Install Antigravity"}
+                  </Button>
+                ) : null}
+              </div>
               {installation?.canRemove && !installActive ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={actionsDisabled || authActive}
-                  onClick={() => void removeRuntime()}
-                >
-                  Remove downloaded runtime
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        className="col-start-1 row-start-1"
+                        aria-label="Remove downloaded runtime"
+                        disabled={actionsDisabled || authActive}
+                        onClick={() => void removeRuntime()}
+                      />
+                    }
+                  >
+                    <Trash2Icon className="size-3.5" />
+                  </TooltipTrigger>
+                  <TooltipPopup>Remove downloaded runtime</TooltipPopup>
+                </Tooltip>
               ) : null}
             </div>
           </div>
@@ -366,6 +385,10 @@ function ProviderSetupActions({
 
       <SettingsRow
         title={methodLabel}
+        className="@max-lg/setup:[&>div:first-child]:flex @max-lg/setup:[&>div:first-child]:items-stretch @max-lg/setup:[&>div:first-child]:gap-3"
+        description={
+          usesBrowser ? "Connect your Google account." : "Connect with the credentials below."
+        }
         control={
           <div className="flex min-w-0 flex-col gap-2 sm:max-w-56 sm:items-end sm:text-right xl:max-w-72">
             <p
@@ -494,11 +517,9 @@ function ProviderSetupActions({
         ) : null}
       </SettingsRow>
 
-      {pendingLabel ? (
-        <p className="px-3 py-3 sm:px-4" role="status">
-          {pendingLabel}.
-        </p>
-      ) : null}
+      <p className="sr-only" role="status">
+        {pendingLabel ? `${pendingLabel}.` : null}
+      </p>
       {error || queryError ? (
         <div className="grid gap-2 px-3 py-3 sm:px-4">
           <p role="alert" className="text-destructive [overflow-wrap:anywhere]">
