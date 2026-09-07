@@ -864,29 +864,51 @@ export class PreviewAutomationRecordingTransferError extends Schema.TaggedErrorC
     threadId: ThreadId,
     reason: Schema.Literals([
       "invalid-metadata",
-      "desktop-update-required",
       "invalid-upload",
       "size-mismatch",
       "retain-failed",
+      "upload-failed",
     ]),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
   override get message(): string {
-    const detail = {
-      "invalid-metadata": "The desktop returned invalid recording metadata.",
-      "desktop-update-required":
-        "Update the desktop app to transfer recordings. The recording remains on the desktop.",
-      "invalid-upload": "The uploaded recording is missing, expired, or already claimed.",
-      "size-mismatch": "The uploaded recording size does not match its metadata or exceeds 50 MiB.",
-      "retain-failed": "The uploaded recording could not be retained.",
-    }[this.reason];
-    return `Preview recording could not be saved to the agent environment: ${detail}`;
+    return "Preview recording could not be saved to the agent environment. The saved copy remains on the desktop.";
+  }
+}
+
+export class PreviewAutomationRecordingDesktopUpdateRequiredError extends Schema.TaggedErrorClass<PreviewAutomationRecordingDesktopUpdateRequiredError>()(
+  "PreviewAutomationRecordingDesktopUpdateRequiredError",
+  { threadId: ThreadId, cause: Schema.optional(Schema.Defect()) },
+) {
+  override get message(): string {
+    return "Update the desktop app to transfer recordings. The recording remains on the desktop.";
+  }
+}
+
+export class PreviewAutomationRecordingTooLargeError extends Schema.TaggedErrorClass<PreviewAutomationRecordingTooLargeError>()(
+  "PreviewAutomationRecordingTooLargeError",
+  { threadId: ThreadId, cause: Schema.optional(Schema.Defect()) },
+) {
+  override get message(): string {
+    return "The recording exceeds 50 MiB. The saved copy remains on the desktop.";
+  }
+}
+
+export class PreviewAutomationRecordingDeadlineExpiredError extends Schema.TaggedErrorClass<PreviewAutomationRecordingDeadlineExpiredError>()(
+  "PreviewAutomationRecordingDeadlineExpiredError",
+  { threadId: ThreadId, cause: Schema.optional(Schema.Defect()) },
+) {
+  override get message(): string {
+    return "The recording transfer deadline expired. The saved copy remains on the desktop.";
   }
 }
 
 export const PreviewAutomationError = Schema.Union([
   PreviewAutomationRecordingTransferError,
+  PreviewAutomationRecordingDesktopUpdateRequiredError,
+  PreviewAutomationRecordingTooLargeError,
+  PreviewAutomationRecordingDeadlineExpiredError,
   PreviewAutomationUnavailableError,
   PreviewAutomationNoAvailableHostError,
   PreviewAutomationUnsupportedClientError,

@@ -726,7 +726,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
             const artifact = stopRuntimeTabId
               ? transferToEnvironment
                 ? await stopBrowserRecordingForUpload(stopRuntimeTabId, (saved, blob) =>
-                    uploadBrowserRecording(environmentId, saved, blob, hostDeadlineMs),
+                    uploadBrowserRecording(threadRef, saved, blob, hostDeadlineMs),
                   )
                 : await stopBrowserRecording(stopRuntimeTabId)
               : null;

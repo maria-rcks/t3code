@@ -5,6 +5,7 @@ import {
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   PREVIEW_RECORDING_STOP_TIMEOUT_MS,
   PreviewAutomationRecordingTransferError,
+  PreviewAutomationRecordingDesktopUpdateRequiredError,
   PreviewAutomationRecordingArtifact,
   type ThreadId,
   type PreviewAutomationOperation,
@@ -17,7 +18,13 @@ import {
   type PreviewTabId,
 } from "@t3tools/contracts";
 
-import { planAttachmentClaim } from "../../../attachmentStore.ts";
+import {
+  parseAttachmentUuid,
+  parseAttachmentFileExtension,
+  PENDING_ATTACHMENT_THREAD_SEGMENT,
+  toSafeThreadAttachmentSegment,
+} from "../../../attachmentStore.ts";
+import { resolveAttachmentRelativePath } from "../../../attachmentPaths.ts";
 import * as ServerConfig from "../../../config.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as PreviewAutomationBroker from "../../PreviewAutomationBroker.ts";
@@ -97,38 +104,71 @@ export const claimPreviewRecording = Effect.fn("PreviewToolkit.claimRecording")(
     ),
   );
   if (!artifact.uploadedAttachmentId) {
-    return yield* new PreviewAutomationRecordingTransferError({
-      threadId,
-      reason: "desktop-update-required",
-    });
+    return yield* new PreviewAutomationRecordingDesktopUpdateRequiredError({ threadId });
   }
   const config = yield* ServerConfig.ServerConfig;
-  const claim = planAttachmentClaim({
+  const uuid = parseAttachmentUuid(artifact.uploadedAttachmentId);
+  const extension = parseAttachmentFileExtension(artifact.uploadedAttachmentId);
+  const threadSegment = toSafeThreadAttachmentSegment(threadId);
+  const pendingId = `${PENDING_ATTACHMENT_THREAD_SEGMENT}-${uuid}-${extension}`;
+  if (!uuid || !extension || !threadSegment || artifact.uploadedAttachmentId !== pendingId) {
+    return yield* new PreviewAutomationRecordingTransferError({
+      threadId,
+      reason: "invalid-upload",
+    });
+  }
+  // The same completed upload can be returned to overlapping stop requests.
+  const finalId = `${threadSegment}-${uuid}-${extension}`;
+  const currentPath = resolveAttachmentRelativePath({
     attachmentsDir: config.attachmentsDir,
-    threadId,
-    attachmentId: artifact.uploadedAttachmentId,
+    relativePath: `${pendingId}.${extension}`,
   });
-  if (!claim.ok) {
+  const finalPath = resolveAttachmentRelativePath({
+    attachmentsDir: config.attachmentsDir,
+    relativePath: `${finalId}.${extension}`,
+  });
+  if (!currentPath || !finalPath) {
     return yield* new PreviewAutomationRecordingTransferError({
       threadId,
       reason: "invalid-upload",
     });
   }
   const fileSystem = yield* FileSystem.FileSystem;
+  const matchesRecording = (stat: FileSystem.File.Info) =>
+    stat.type === "File" &&
+    Number(stat.size) === artifact.sizeBytes &&
+    artifact.sizeBytes > 0 &&
+    artifact.sizeBytes <= PROVIDER_SEND_TURN_MAX_FILE_BYTES;
   yield* Effect.gen(function* () {
-    const stat = yield* fileSystem.stat(claim.currentPath);
-    if (
-      stat.type !== "File" ||
-      Number(stat.size) !== artifact.sizeBytes ||
-      artifact.sizeBytes <= 0 ||
-      artifact.sizeBytes > PROVIDER_SEND_TURN_MAX_FILE_BYTES
-    ) {
+    const pendingStat = yield* fileSystem
+      .stat(currentPath)
+      .pipe(
+        Effect.catch((cause) =>
+          cause.reason._tag === "NotFound" ? Effect.succeed(null) : Effect.fail(cause),
+        ),
+      );
+    const stat = pendingStat ?? (yield* fileSystem.stat(finalPath));
+    if (!matchesRecording(stat)) {
       return yield* new PreviewAutomationRecordingTransferError({
         threadId,
         reason: "size-mismatch",
       });
     }
-    yield* fileSystem.rename(claim.currentPath, claim.finalPath);
+    if (pendingStat) {
+      yield* fileSystem
+        .rename(currentPath, finalPath)
+        .pipe(
+          Effect.catch((cause) =>
+            cause.reason._tag === "NotFound" ? Effect.void : Effect.fail(cause),
+          ),
+        );
+      if (!matchesRecording(yield* fileSystem.stat(finalPath))) {
+        return yield* new PreviewAutomationRecordingTransferError({
+          threadId,
+          reason: "size-mismatch",
+        });
+      }
+    }
   }).pipe(
     Effect.mapError((cause) =>
       isRecordingTransferError(cause)
@@ -141,7 +181,7 @@ export const claimPreviewRecording = Effect.fn("PreviewToolkit.claimRecording")(
     ),
   );
   const { uploadedAttachmentId: _uploadedAttachmentId, ...recording } = artifact;
-  return { ...recording, id: claim.finalId, path: claim.finalPath };
+  return { ...recording, id: finalId, path: finalPath };
 });
 
 const handlers = {

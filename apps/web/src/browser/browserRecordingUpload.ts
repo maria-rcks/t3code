@@ -1,10 +1,16 @@
 import {
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
+  PreviewAutomationRecordingTransferError,
+  PreviewAutomationRecordingTooLargeError,
+  PreviewAutomationRecordingDeadlineExpiredError,
   type DesktopPreviewRecordingArtifact,
-  type EnvironmentId,
+  type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { resolveAssetUrl } from "@t3tools/client-runtime/state/assets";
-import { runAttachmentUploadCycle } from "@t3tools/client-runtime/state/attachments";
+import {
+  deletePendingAttachmentUpload,
+  runAttachmentUploadCycle,
+} from "@t3tools/client-runtime/state/attachments";
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { attachmentEnvironment } from "~/state/attachments";
@@ -12,13 +18,13 @@ import { readPreparedConnection } from "~/state/session";
 
 /** Sends the finished encoded file once; capture frames never cross the environment connection. */
 export async function uploadBrowserRecording(
-  environmentId: EnvironmentId,
+  { environmentId, threadId }: ScopedThreadRef,
   artifact: DesktopPreviewRecordingArtifact,
   blob: Blob,
   deadlineMs: number,
 ): Promise<string> {
   if (blob.size > PROVIDER_SEND_TURN_MAX_FILE_BYTES) {
-    throw new Error(`Recording exceeds the 50 MiB transfer limit. Desktop copy: ${artifact.path}`);
+    throw new PreviewAutomationRecordingTooLargeError({ threadId });
   }
   const result = await runAttachmentUploadCycle({
     registry: appAtomRegistry,
@@ -57,8 +63,22 @@ export async function uploadBrowserRecording(
     },
   });
   if (result.status !== "uploaded") {
-    throw new Error(`Recording transfer failed. Desktop copy: ${artifact.path}`, {
-      cause: result.status === "failed" ? result.error : undefined,
+    if (result.attachmentId) {
+      deletePendingAttachmentUpload({
+        registry: appAtomRegistry,
+        remove: attachmentEnvironment.remove,
+        environmentId,
+        attachmentId: result.attachmentId,
+      });
+    }
+    const cause = result.status === "failed" ? result.error : undefined;
+    if (Date.now() >= deadlineMs - 1_000) {
+      throw new PreviewAutomationRecordingDeadlineExpiredError({ threadId, cause });
+    }
+    throw new PreviewAutomationRecordingTransferError({
+      threadId,
+      reason: "upload-failed",
+      cause,
     });
   }
   return result.attachmentId;

@@ -7,6 +7,10 @@ import {
   PreviewAutomationMalformedResponseError,
   PreviewAutomationNoAvailableHostError,
   PreviewAutomationRemoteUnavailableError,
+  PreviewAutomationRecordingTransferError,
+  PreviewAutomationRecordingDesktopUpdateRequiredError,
+  PreviewAutomationRecordingTooLargeError,
+  PreviewAutomationRecordingDeadlineExpiredError,
   PreviewAutomationRequestQueueClosedError,
   PreviewAutomationResultTooLargeError,
   PreviewAutomationTabNotFoundError,
@@ -183,6 +187,8 @@ function remoteDetailKind(detail: unknown): RemoteDetailKind {
   }
 }
 
+const isRecordingTransferReason = Schema.is(PreviewAutomationRecordingTransferError.fields.reason);
+
 const classifyResponseError = (
   context: PreviewAutomationRequestErrorContext,
   error: NonNullable<PreviewAutomationResponse["error"]>,
@@ -194,6 +200,32 @@ const classifyResponseError = (
     cause: error,
   };
   switch (error._tag) {
+    case "PreviewAutomationRecordingDesktopUpdateRequiredError":
+      return new PreviewAutomationRecordingDesktopUpdateRequiredError({
+        threadId: context.threadId,
+        cause: error,
+      });
+    case "PreviewAutomationRecordingTooLargeError":
+      return new PreviewAutomationRecordingTooLargeError({
+        threadId: context.threadId,
+        cause: error,
+      });
+    case "PreviewAutomationRecordingDeadlineExpiredError":
+      return new PreviewAutomationRecordingDeadlineExpiredError({
+        threadId: context.threadId,
+        cause: error,
+      });
+    case "PreviewAutomationRecordingTransferError": {
+      const reason =
+        typeof error.detail === "object" && error.detail !== null && "reason" in error.detail
+          ? error.detail.reason
+          : undefined;
+      return new PreviewAutomationRecordingTransferError({
+        threadId: context.threadId,
+        reason: isRecordingTransferReason(reason) ? reason : "upload-failed",
+        cause: error,
+      });
+    }
     case "PreviewAutomationNoAvailableHostError":
       return new PreviewAutomationNoAvailableHostError({
         ...context,
