@@ -7845,7 +7845,12 @@ export default function ChatView(props: ChatViewProps) {
               />
             </div>
             {/* Messages Wrapper */}
-            <div className="relative isolate flex min-h-0 flex-1 flex-col">
+            <div
+              className={cn(
+                "relative isolate flex min-h-0 flex-1 flex-col",
+                hasTimelineBackground && "-mt-[var(--workspace-topbar-height)]",
+              )}
+            >
               {/* Messages — LegendList handles virtualization and scrolling internally */}
               <MessagesTimeline
                 citationRequest={citationRequest}
@@ -7893,6 +7898,7 @@ export default function ChatView(props: ChatViewProps) {
                 hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
                 topFadeEnabled={!hasTimelineTopBanner}
                 topFadeMaskEnabled={!hasTimelineBackground}
+                underHeader={hasTimelineBackground}
                 loadEarlier={loadEarlierTurns}
               />
 
@@ -7924,11 +7930,12 @@ export default function ChatView(props: ChatViewProps) {
             <div
               ref={setComposerOverlayElement}
               data-chat-composer-overlay="true"
-              className={
+              className={cn(
                 isDraftHeroState
-                  ? "pointer-events-none absolute inset-0 z-20 flex items-center"
-                  : "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
-              }
+                  ? "pointer-events-none absolute inset-0 flex items-center"
+                  : "pointer-events-none absolute inset-x-0 bottom-0 pt-1.5 sm:pt-2",
+                hasTimelineBackground ? "z-[1]" : "z-20",
+              )}
             >
               <div
                 ref={attachDraftHeroTransitionGroupRef}

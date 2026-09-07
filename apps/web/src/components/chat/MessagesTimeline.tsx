@@ -349,6 +349,8 @@ interface MessagesTimelineProps {
   topFadeEnabled?: boolean;
   /** Masks block row backdrop filters from sampling a wallpaper behind the list. */
   topFadeMaskEnabled?: boolean;
+  /** Reserve header space inside the scrollport so rows can scroll beneath its blur. */
+  underHeader?: boolean;
   /** Non-null when older turns exist beyond the loaded window. */
   loadEarlier?: CitationHistoryPage | null;
 }
@@ -398,6 +400,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   hideEmptyPlaceholder = false,
   topFadeEnabled = false,
   topFadeMaskEnabled = true,
+  underHeader = false,
   loadEarlier = null,
 }: MessagesTimelineProps) {
   const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<TurnId>>(new Set());
@@ -852,17 +855,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               topFadeEnabled && topFadeMaskEnabled && "topbar-scroll-fade",
             )}
             ListHeaderComponent={
-              loadEarlier !== null ? (
-                <TimelineLoadEarlierHeader
-                  loading={loadEarlier.loading}
-                  onLoadEarlier={loadEarlier.onLoadEarlier}
-                  fade={topFadeEnabled}
-                />
-              ) : topFadeEnabled ? (
-                TIMELINE_LIST_FADE_HEADER
-              ) : (
-                TIMELINE_LIST_HEADER
-              )
+              <div className={underHeader ? "pt-[var(--workspace-topbar-height)]" : undefined}>
+                {loadEarlier !== null ? (
+                  <TimelineLoadEarlierHeader
+                    loading={loadEarlier.loading}
+                    onLoadEarlier={loadEarlier.onLoadEarlier}
+                    fade={topFadeEnabled}
+                  />
+                ) : topFadeEnabled ? (
+                  TIMELINE_LIST_FADE_HEADER
+                ) : (
+                  TIMELINE_LIST_HEADER
+                )}
+              </div>
             }
             ListFooterComponent={timelineListFooter}
           />
@@ -876,7 +881,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               void listRef.current?.scrollToIndex({
                 index: item.rowIndex,
                 animated: true,
-                viewOffset: 24,
+                viewOffset:
+                  24 +
+                  (underHeader && timelineViewportElement
+                    ? Number.parseFloat(
+                        getComputedStyle(timelineViewportElement).getPropertyValue(
+                          "--workspace-topbar-height",
+                        ),
+                      ) || 0
+                    : 0),
               });
             }}
           />
