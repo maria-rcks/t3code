@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import type { ServerUpdateState } from "@t3tools/client-runtime/state/server";
 import { Atom } from "effect/unstable/reactivity";
 import { useMemo, useState } from "react";
 
@@ -39,7 +40,9 @@ export function useAutoBalanceUpdateBanner(
     [environments],
   );
   const states = useAtomValue(statesAtom);
-  const [, refreshDismissals] = useState(0);
+  const [dismissedNotices, setDismissedNotices] = useState<ReadonlySet<string | ServerUpdateState>>(
+    () => new Set(),
+  );
   const machines = states.flatMap(({ environment, state }) => {
     const mismatch = resolveServerConfigVersionMismatch(environment.serverConfig);
     const dismissKey = mismatch
@@ -47,8 +50,10 @@ export function useAutoBalanceUpdateBanner(
       : null;
     if (
       state.status === "idle"
-        ? !mismatch || isVersionMismatchDismissed(dismissKey)
-        : isServerUpdateFailureDismissed(state)
+        ? !mismatch ||
+          (dismissKey !== null && dismissedNotices.has(dismissKey)) ||
+          isVersionMismatchDismissed(dismissKey)
+        : dismissedNotices.has(state) || isServerUpdateFailureDismissed(state)
     )
       return [];
     const selfUpdate = resolveServerSelfUpdateCapability(environment.serverConfig);
@@ -153,7 +158,14 @@ export function useAutoBalanceUpdateBanner(
               dismissServerUpdateFailure(machine.state);
               dismissVersionMismatch(machine.dismissKey);
             }
-            refreshDismissals((tick) => tick + 1);
+            setDismissedNotices((current) => {
+              const next = new Set(current);
+              for (const machine of machines) {
+                if (machine.dismissKey) next.add(machine.dismissKey);
+                if (machine.state.status === "failed") next.add(machine.state);
+              }
+              return next;
+            });
           },
         }),
   };
