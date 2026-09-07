@@ -72,8 +72,7 @@ export function ProviderSetupSection(props: ProviderSetupSectionProps) {
     <section aria-label="Antigravity setup" className="divide-y divide-border/50 text-xs">
       <SettingsRow
         title="Environment"
-        description={<>Antigravity runs on {props.environmentLabel}.</>}
-        status={!props.enabled ? "Enable it to use it in threads." : undefined}
+        description={props.environmentLabel}
         control={
           !props.enabled && !props.readOnly ? (
             <Button size="sm" variant="outline" onClick={props.onEnable}>
@@ -83,14 +82,11 @@ export function ProviderSetupSection(props: ProviderSetupSectionProps) {
         }
       />
       {props.readOnly ? (
-        <SettingsRow
-          title="Setup unavailable"
-          description="This connection cannot change provider setup."
-        />
+        <SettingsRow title="Setup unavailable" description="Provider setup is read-only." />
       ) : props.provider?.setup === undefined ? (
         <SettingsRow
           title="Update required"
-          description="Update this environment to install Antigravity and sign in with Google here."
+          description="Update this environment to manage Antigravity."
         />
       ) : (
         <ProviderSetupActions
@@ -183,12 +179,12 @@ function ProviderSetupActions({
         : installation?.phase === "verifying"
           ? "Checking the downloaded runtime."
           : installed
-            ? "Antigravity is installed."
+            ? "Installed."
             : usesCustomBinary
               ? enabled
                 ? "The configured Antigravity runtime is unavailable."
                 : "The configured Antigravity runtime has not been checked."
-              : "Install the official Antigravity runtime before signing in.";
+              : "Not installed.";
 
   async function runCommand<A, E>(
     label: string,
@@ -271,24 +267,21 @@ function ProviderSetupActions({
     <div className="divide-y divide-border/50">
       <SettingsRow
         title="Runtime"
-        description="Download and manage the official Antigravity runtime."
         status={
           <div className="space-y-2">
             {usesCustomBinary ? (
               <p className="text-muted-foreground">
-                This instance uses the binary path below. Installing a managed runtime does not
-                change that path.
+                Uses the custom binary path below. Installation keeps that path.
               </p>
             ) : null}
             {!installed && !usesCustomBinary && !installActive && installation?.totalBytes ? (
               <p className="text-muted-foreground">
-                Downloads {Math.ceil(installation.totalBytes / 1_000_000)} MB from Google.
+                {Math.ceil(installation.totalBytes / 1_000_000)} MB download.
               </p>
             ) : null}
             {!installed && !provider.setup?.canInstall ? (
               <p className="text-muted-foreground">
-                Automatic installation is unavailable here. Set an existing binary path below or use
-                a supported remote environment.
+                Automatic installation unavailable. Set a binary path or use another environment.
               </p>
             ) : null}
           </div>
@@ -366,7 +359,6 @@ function ProviderSetupActions({
 
       <SettingsRow
         title={methodLabel}
-        description={phaseLabels.idle}
         control={
           <div className="flex min-w-0 flex-col gap-2 sm:max-w-56 sm:items-end sm:text-right xl:max-w-72">
             <p
