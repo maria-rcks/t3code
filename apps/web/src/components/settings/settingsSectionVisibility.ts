@@ -59,50 +59,56 @@ function createBrowserEnvironment(): SettingsSectionVisibilityEnvironment {
       return target && root.contains(target) ? target : null;
     },
     createIntersectionObserver(onEntries, scrollRoot) {
-      const observers = new Map<Element, { observer: IntersectionObserver; threshold: number }>();
-      const updateObserver = (target: Element) => {
-        // Require half a section, capped at a quarter of the viewport for tall sections.
-        const threshold = Math.min(
-          0.5,
-          (scrollRoot.clientHeight * 0.25) / Math.max(1, target.getBoundingClientRect().height),
+      const targets = new Set<Element>();
+      let frame: number | null = null;
+      let stopped = false;
+      const measure = () => {
+        frame = null;
+        const top = scrollRoot.getBoundingClientRect().top + scrollRoot.clientTop;
+        const bottom = top + scrollRoot.clientHeight;
+        const center = (top + bottom) / 2;
+        let activeTarget: Element | null = null;
+        let nearestDistance = Infinity;
+        for (const target of targets) {
+          const bounds = target.getBoundingClientRect();
+          if (Math.min(bounds.bottom, bottom) <= Math.max(bounds.top, top)) continue;
+          const distance = Math.max(bounds.top - center, center - bounds.bottom, 0);
+          if (distance < nearestDistance) {
+            activeTarget = target;
+            nearestDistance = distance;
+          }
+        }
+        onEntries(
+          [...targets].map((target) => ({
+            target,
+            intersectionRatio: target === activeTarget ? 1 : 0,
+            isIntersecting: target === activeTarget,
+          })),
         );
-        const previous = observers.get(target);
-        if (previous?.threshold === threshold) return;
-        previous?.observer.disconnect();
-        const observer = new IntersectionObserver(
-          (entries) => {
-            if (observers.get(target)?.observer !== observer) return;
-            onEntries(
-              entries.map((entry) => ({
-                target: entry.target,
-                intersectionRatio: entry.intersectionRatio,
-                isIntersecting: entry.isIntersecting && entry.intersectionRatio >= threshold,
-              })),
-            );
-          },
-          { root: scrollRoot, threshold },
-        );
-        observers.set(target, { observer, threshold });
-        observer.observe(target);
       };
-      const resizeObserver = new ResizeObserver(() => {
-        for (const target of observers.keys()) updateObserver(target);
-      });
+      const scheduleMeasure = () => {
+        if (!stopped && frame === null) frame = requestAnimationFrame(measure);
+      };
+      const resizeObserver = new ResizeObserver(scheduleMeasure);
       resizeObserver.observe(scrollRoot);
+      scrollRoot.addEventListener("scroll", scheduleMeasure, { passive: true });
       return {
         observe(target) {
-          updateObserver(target);
+          targets.add(target);
           resizeObserver.observe(target);
+          scheduleMeasure();
         },
         unobserve(target) {
-          observers.get(target)?.observer.disconnect();
-          observers.delete(target);
+          targets.delete(target);
           resizeObserver.unobserve(target);
+          scheduleMeasure();
         },
         disconnect() {
+          stopped = true;
+          if (frame !== null) cancelAnimationFrame(frame);
+          scrollRoot.removeEventListener("scroll", scheduleMeasure);
           resizeObserver.disconnect();
-          for (const { observer } of observers.values()) observer.disconnect();
-          observers.clear();
+          targets.clear();
         },
       };
     },
