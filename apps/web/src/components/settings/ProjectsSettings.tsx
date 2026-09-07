@@ -1,5 +1,5 @@
 import { resolveEnvironmentMachineKind } from "@t3tools/contracts";
-import { ChevronDownIcon, FolderIcon, SearchIcon } from "lucide-react";
+import { ChevronDownIcon, FolderIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { ProjectFavicon } from "../ProjectFavicon";
@@ -9,7 +9,7 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import {
   Combobox,
   ComboboxEmpty,
-  ComboboxInput,
+  ComboboxSearchInput,
   ComboboxItem,
   ComboboxList,
   ComboboxPopup,
@@ -60,15 +60,7 @@ function ScopePicker({
         <ChevronDownIcon aria-hidden className="-me-1 size-3 opacity-50" />
       </ComboboxTrigger>
       <ComboboxPopup align="start" className="w-64">
-        <div className="shrink-0 p-2">
-          <ComboboxInput
-            aria-label={`Search ${label}s`}
-            placeholder={`Search ${label}s...`}
-            startAddon={<SearchIcon />}
-            showTrigger={false}
-            size="sm"
-          />
-        </div>
+        <ComboboxSearchInput aria-label={`Search ${label}s`} placeholder={`Search ${label}s...`} />
         <ComboboxEmpty>No matching {label}s.</ComboboxEmpty>
         <ComboboxList>
           {(item: (typeof items)[number]) => (
