@@ -59,11 +59,52 @@ function createBrowserEnvironment(): SettingsSectionVisibilityEnvironment {
       return target && root.contains(target) ? target : null;
     },
     createIntersectionObserver(onEntries, scrollRoot) {
-      const observer = new IntersectionObserver(onEntries, {
-        root: scrollRoot,
-        threshold: 0,
+      const observers = new Map<Element, { observer: IntersectionObserver; threshold: number }>();
+      const updateObserver = (target: Element) => {
+        // Require half a section, capped at a quarter of the viewport for tall sections.
+        const threshold = Math.min(
+          0.5,
+          (scrollRoot.clientHeight * 0.25) / Math.max(1, target.getBoundingClientRect().height),
+        );
+        const previous = observers.get(target);
+        if (previous?.threshold === threshold) return;
+        previous?.observer.disconnect();
+        const observer = new IntersectionObserver(
+          (entries) => {
+            if (observers.get(target)?.observer !== observer) return;
+            onEntries(
+              entries.map((entry) => ({
+                target: entry.target,
+                intersectionRatio: entry.intersectionRatio,
+                isIntersecting: entry.isIntersecting && entry.intersectionRatio >= threshold,
+              })),
+            );
+          },
+          { root: scrollRoot, threshold },
+        );
+        observers.set(target, { observer, threshold });
+        observer.observe(target);
+      };
+      const resizeObserver = new ResizeObserver(() => {
+        for (const target of observers.keys()) updateObserver(target);
       });
-      return observer;
+      resizeObserver.observe(scrollRoot);
+      return {
+        observe(target) {
+          updateObserver(target);
+          resizeObserver.observe(target);
+        },
+        unobserve(target) {
+          observers.get(target)?.observer.disconnect();
+          observers.delete(target);
+          resizeObserver.unobserve(target);
+        },
+        disconnect() {
+          resizeObserver.disconnect();
+          for (const { observer } of observers.values()) observer.disconnect();
+          observers.clear();
+        },
+      };
     },
     createMutationObserver(onMutation, container) {
       const observer = new MutationObserver(onMutation);
