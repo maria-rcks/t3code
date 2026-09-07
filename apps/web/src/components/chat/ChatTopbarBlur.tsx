@@ -14,7 +14,7 @@ export function ChatTopbarBlur() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[calc(var(--workspace-topbar-height)+4rem)] overflow-hidden"
+      className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[calc(var(--workspace-topbar-height)+1.5rem)] overflow-hidden"
     >
       {BLUR_LAYERS.map((style) => (
         <div key={style.backdropFilter} className="absolute inset-0" style={style} />
