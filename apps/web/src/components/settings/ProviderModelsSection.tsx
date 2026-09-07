@@ -497,7 +497,7 @@ export function ProviderModelsSection({
             onChange={(event) => setFilter(event.target.value)}
             placeholder="Filter models"
             size="sm"
-            className="w-56"
+            className="w-56 max-w-full"
             spellCheck={false}
             aria-label="Filter models"
           />
@@ -507,6 +507,18 @@ export function ProviderModelsSection({
           {favoriteCount > 0 ? ` · ${favoriteCount} favorite${favoriteCount === 1 ? "" : "s"}` : ""}
           {hiddenCount > 0 ? ` · ${hiddenCount} hidden` : ""}
         </span>
+        {driverKind !== "antigravity" && !isAdding ? (
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost-muted"
+            className="ml-auto"
+            onClick={() => setIsAdding(true)}
+          >
+            <PlusIcon className="size-3" />
+            Add custom model
+          </Button>
+        ) : null}
       </div>
       <div
         ref={listRef}
@@ -586,18 +598,7 @@ export function ProviderModelsSection({
             </Button>
           </div>
         </div>
-      ) : (
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost-muted"
-          className="mt-2 -ml-2"
-          onClick={() => setIsAdding(true)}
-        >
-          <PlusIcon className="size-3" />
-          Add custom model
-        </Button>
-      )}
+      ) : null}
 
       {driverKind !== "antigravity" && error ? (
         <p className="mt-2 text-xs text-destructive">{error}</p>
