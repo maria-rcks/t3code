@@ -1,16 +1,23 @@
 import * as Effect from "effect/Effect";
-import type {
-  PreviewAutomationOperation,
-  PreviewAutomationOpenInput,
+import * as FileSystem from "effect/FileSystem";
+import * as Schema from "effect/Schema";
+import {
+  PROVIDER_SEND_TURN_MAX_FILE_BYTES,
+  PreviewAutomationRecordingTransferError,
   PreviewAutomationRecordingArtifact,
-  PreviewAutomationRecordingStatus,
-  PreviewAutomationResizeResult,
-  PreviewAutomationSetColorSchemeResult,
-  PreviewAutomationSnapshot,
-  PreviewAutomationStatus,
-  PreviewTabId,
+  type ThreadId,
+  type PreviewAutomationOperation,
+  type PreviewAutomationOpenInput,
+  type PreviewAutomationRecordingStatus,
+  type PreviewAutomationResizeResult,
+  type PreviewAutomationSetColorSchemeResult,
+  type PreviewAutomationSnapshot,
+  type PreviewAutomationStatus,
+  type PreviewTabId,
 } from "@t3tools/contracts";
 
+import { planAttachmentClaim } from "../../../attachmentStore.ts";
+import * as ServerConfig from "../../../config.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as PreviewAutomationBroker from "../../PreviewAutomationBroker.ts";
 import { PreviewSnapshotToolkit, PreviewStandardToolkit, PreviewToolkit } from "./tools.ts";
@@ -67,6 +74,73 @@ const invokeTargeted = <A>(
   return invoke<A>(operation, operationInput, timeoutMs, tabId);
 };
 
+const UploadedRecordingArtifact = Schema.Struct({
+  ...PreviewAutomationRecordingArtifact.fields,
+  uploadedAttachmentId: Schema.optional(Schema.String),
+});
+const decodeUploadedRecordingArtifact = Schema.decodeUnknownEffect(UploadedRecordingArtifact);
+const isRecordingTransferError = Schema.is(PreviewAutomationRecordingTransferError);
+
+export const claimPreviewRecording = Effect.fn("PreviewToolkit.claimRecording")(function* (
+  threadId: ThreadId,
+  response: unknown,
+) {
+  const artifact = yield* decodeUploadedRecordingArtifact(response).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PreviewAutomationRecordingTransferError({
+          threadId,
+          detail: "The desktop returned invalid recording metadata.",
+          cause,
+        }),
+    ),
+  );
+  if (!artifact.uploadedAttachmentId) {
+    return yield* new PreviewAutomationRecordingTransferError({
+      threadId,
+      detail:
+        "Update the desktop app to transfer recordings. The recording remains on the desktop.",
+    });
+  }
+  const config = yield* ServerConfig.ServerConfig;
+  const claim = planAttachmentClaim({
+    attachmentsDir: config.attachmentsDir,
+    threadId,
+    attachmentId: artifact.uploadedAttachmentId,
+  });
+  if (!claim.ok) {
+    return yield* new PreviewAutomationRecordingTransferError({ threadId, detail: claim.reason });
+  }
+  const fileSystem = yield* FileSystem.FileSystem;
+  yield* Effect.gen(function* () {
+    const stat = yield* fileSystem.stat(claim.currentPath);
+    if (
+      stat.type !== "File" ||
+      Number(stat.size) !== artifact.sizeBytes ||
+      artifact.sizeBytes <= 0 ||
+      artifact.sizeBytes > PROVIDER_SEND_TURN_MAX_FILE_BYTES
+    ) {
+      return yield* new PreviewAutomationRecordingTransferError({
+        threadId,
+        detail: "The uploaded recording size does not match its metadata or exceeds 50 MiB.",
+      });
+    }
+    yield* fileSystem.rename(claim.currentPath, claim.finalPath);
+  }).pipe(
+    Effect.mapError((cause) =>
+      isRecordingTransferError(cause)
+        ? cause
+        : new PreviewAutomationRecordingTransferError({
+            threadId,
+            detail: "The uploaded recording could not be retained.",
+            cause,
+          }),
+    ),
+  );
+  const { uploadedAttachmentId: _uploadedAttachmentId, ...recording } = artifact;
+  return { ...recording, id: claim.finalId, path: claim.finalPath };
+});
+
 const handlers = {
   preview_status: (input) => invokeTargeted<PreviewAutomationStatus>("status", input ?? {}),
   preview_open: (input) =>
@@ -94,7 +168,15 @@ const handlers = {
   preview_recording_start: (input) =>
     invokeTargeted<PreviewAutomationRecordingStatus>("recordingStart", input ?? {}),
   preview_recording_stop: (input) =>
-    invokeTargeted<PreviewAutomationRecordingArtifact>("recordingStop", input ?? {}),
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.requireMcpCapability("preview");
+      const response = yield* invokeTargeted<unknown>(
+        "recordingStop",
+        { ...input, transferToEnvironment: true },
+        120_000,
+      );
+      return yield* claimPreviewRecording(scope.threadId, response);
+    }),
 } satisfies Parameters<typeof PreviewToolkit.toLayer>[0];
 
 const { preview_snapshot, ...standardHandlers } = handlers;

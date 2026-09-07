@@ -661,6 +661,7 @@ export async function startBrowserRecording(
 const finalizeBrowserRecording = async (
   bridge: NonNullable<typeof previewBridge>,
   recording: ActiveRecording,
+  onSaved?: (artifact: DesktopPreviewRecordingArtifact, blob: Blob) => Promise<void>,
 ): Promise<DesktopPreviewRecordingArtifact | null> => {
   const { tabId } = recording;
   let result:
@@ -708,6 +709,7 @@ const finalizeBrowserRecording = async (
           mimeType,
           new Uint8Array(await blob.arrayBuffer()),
         );
+        await onSaved?.(artifact, blob);
         result = { _tag: "Success", artifact };
       } catch (cause) {
         throw new BrowserRecordingOperationError({
@@ -792,6 +794,7 @@ const discardBrowserRecording = async (
 
 export function stopBrowserRecording(
   tabId: string,
+  onSaved?: (artifact: DesktopPreviewRecordingArtifact, blob: Blob) => Promise<void>,
 ): Promise<DesktopPreviewRecordingArtifact | null> {
   const bridge = previewBridge;
   const recording = activeRecordings.get(tabId);
@@ -800,7 +803,7 @@ export function stopBrowserRecording(
   if (recording.lifecycle.phase === "starting") recording.lifecycle.cancelBeforeGrant();
 
   const stopPromise = Promise.resolve()
-    .then(() => finalizeBrowserRecording(bridge, recording))
+    .then(() => finalizeBrowserRecording(bridge, recording, onSaved))
     .catch((error) => {
       if (isStartupWaitTimeout(error) && activeRecordings.get(recording.tabId) === recording) {
         const cleanupAfterStartup = recording.startupSettled.then(() =>

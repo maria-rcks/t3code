@@ -180,6 +180,44 @@ describe("browser recording", () => {
     await stopBrowserRecording("automation-recording-tab");
   });
 
+  it("saves locally and releases capture before transferring the encoded recording once", async () => {
+    const stopTrack = vi.fn();
+    getDisplayMedia.mockResolvedValue({
+      getVideoTracks: () => [],
+      getTracks: () => [{ stop: stopTrack }],
+    });
+    await startBrowserRecording("transfer-tab");
+    let finishUpload!: () => void;
+    const uploaded = new Promise<void>((resolve) => {
+      finishUpload = resolve;
+    });
+    const transfer = vi.fn(async (artifact, blob: Blob) => {
+      expect(save).toHaveBeenCalledOnce();
+      expect(stopTrack).toHaveBeenCalled();
+      expect(artifact.path).toBe("/tmp/recording-test.webm");
+      expect(blob.type).toBe("video/webm;codecs=vp9");
+      await uploaded;
+    });
+    const firstStop = stopBrowserRecording("transfer-tab", transfer);
+    const secondStop = stopBrowserRecording("transfer-tab", transfer);
+    finishUpload();
+    expect(await firstStop).toEqual(await secondStop);
+    expect(transfer).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the saved desktop file and releases the recording when transfer fails", async () => {
+    await startBrowserRecording("failed-transfer-tab");
+    await expect(
+      stopBrowserRecording("failed-transfer-tab", async () => {
+        throw new Error("Connection interrupted");
+      }),
+    ).rejects.toMatchObject({ _tag: "BrowserRecordingOperationError" });
+    expect(save).toHaveBeenCalledOnce();
+    expect(readActiveBrowserRecordingTabIds().has("failed-transfer-tab")).toBe(false);
+    await startBrowserRecording("failed-transfer-tab");
+    await stopBrowserRecording("failed-transfer-tab");
+  });
+
   it("paints and holds a hidden browser surface for the recording lifetime", async () => {
     startScreencast.mockImplementationOnce(async (tabId: string) => {
       expect(animationFrameCount).toBe(2);
