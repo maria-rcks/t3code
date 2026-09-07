@@ -15,6 +15,7 @@ export async function uploadBrowserRecording(
   environmentId: EnvironmentId,
   artifact: DesktopPreviewRecordingArtifact,
   blob: Blob,
+  deadlineMs: number,
 ): Promise<string> {
   if (blob.size > PROVIDER_SEND_TURN_MAX_FILE_BYTES) {
     throw new Error(`Recording exceeds the 50 MiB transfer limit. Desktop copy: ${artifact.path}`);
@@ -36,16 +37,22 @@ export async function uploadBrowserRecording(
     },
     transport: (url) => {
       const controller = new AbortController();
+      // Encoding, saving and minting consume the same request budget. Leave time to reply.
+      const remainingMs = deadlineMs - Date.now() - 1_000;
       return {
         abort: () => controller.abort(),
-        done: fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": artifact.mimeType },
-          body: blob,
-          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(110_000)]),
-        }).then((response) => {
-          if (!response.ok) throw new Error(`Recording upload rejected (${response.status}).`);
-        }),
+        done:
+          remainingMs <= 0
+            ? Promise.reject(new Error("Recording transfer deadline expired."))
+            : fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": artifact.mimeType },
+                body: blob,
+                signal: AbortSignal.any([controller.signal, AbortSignal.timeout(remainingMs)]),
+              }).then((response) => {
+                if (!response.ok)
+                  throw new Error(`Recording upload rejected (${response.status}).`);
+              }),
       };
     },
   });

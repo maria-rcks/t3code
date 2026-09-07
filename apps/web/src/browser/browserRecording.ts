@@ -123,6 +123,8 @@ interface ActiveRecording {
   releaseSurfaceActivity: (() => void) | null;
   stream: MediaStream | null;
   recorder: MediaRecorder | null;
+  savedBlob?: Blob;
+  uploadPromise?: Promise<string>;
   lifecycle: BrowserRecordingLifecycle;
 }
 
@@ -661,7 +663,6 @@ export async function startBrowserRecording(
 const finalizeBrowserRecording = async (
   bridge: NonNullable<typeof previewBridge>,
   recording: ActiveRecording,
-  onSaved?: (artifact: DesktopPreviewRecordingArtifact, blob: Blob) => Promise<void>,
 ): Promise<DesktopPreviewRecordingArtifact | null> => {
   const { tabId } = recording;
   let result:
@@ -709,7 +710,7 @@ const finalizeBrowserRecording = async (
           mimeType,
           new Uint8Array(await blob.arrayBuffer()),
         );
-        await onSaved?.(artifact, blob);
+        recording.savedBlob = blob;
         result = { _tag: "Success", artifact };
       } catch (cause) {
         throw new BrowserRecordingOperationError({
@@ -794,7 +795,6 @@ const discardBrowserRecording = async (
 
 export function stopBrowserRecording(
   tabId: string,
-  onSaved?: (artifact: DesktopPreviewRecordingArtifact, blob: Blob) => Promise<void>,
 ): Promise<DesktopPreviewRecordingArtifact | null> {
   const bridge = previewBridge;
   const recording = activeRecordings.get(tabId);
@@ -803,7 +803,7 @@ export function stopBrowserRecording(
   if (recording.lifecycle.phase === "starting") recording.lifecycle.cancelBeforeGrant();
 
   const stopPromise = Promise.resolve()
-    .then(() => finalizeBrowserRecording(bridge, recording, onSaved))
+    .then(() => finalizeBrowserRecording(bridge, recording))
     .catch((error) => {
       if (isStartupWaitTimeout(error) && activeRecordings.get(recording.tabId) === recording) {
         const cleanupAfterStartup = recording.startupSettled.then(() =>
@@ -816,4 +816,17 @@ export function stopBrowserRecording(
     });
   recording.lifecycle = { phase: "stopping", stopPromise };
   return stopPromise;
+}
+
+/** Joins local stops and shares one upload among concurrent automation requests. */
+export async function stopBrowserRecordingForUpload(
+  tabId: string,
+  upload: (artifact: DesktopPreviewRecordingArtifact, blob: Blob) => Promise<string>,
+): Promise<(DesktopPreviewRecordingArtifact & { uploadedAttachmentId: string }) | null> {
+  const recording = activeRecordings.get(tabId);
+  if (!recording) return null;
+  const artifact = await stopBrowserRecording(tabId);
+  if (!artifact || !recording.savedBlob) return null;
+  recording.uploadPromise ??= upload(artifact, recording.savedBlob);
+  return { ...artifact, uploadedAttachmentId: await recording.uploadPromise };
 }

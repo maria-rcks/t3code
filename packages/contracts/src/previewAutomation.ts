@@ -553,6 +553,8 @@ export const PreviewAutomationRecordingStatus = Schema.Struct({
 });
 export type PreviewAutomationRecordingStatus = typeof PreviewAutomationRecordingStatus.Type;
 
+export const PREVIEW_RECORDING_STOP_TIMEOUT_MS = 120_000;
+
 export const PreviewAutomationRecordingArtifact = Schema.Struct({
   id: Schema.String,
   tabId: PreviewTabId,
@@ -860,12 +862,26 @@ export class PreviewAutomationRecordingTransferError extends Schema.TaggedErrorC
   "PreviewAutomationRecordingTransferError",
   {
     threadId: ThreadId,
-    detail: Schema.String,
+    reason: Schema.Literals([
+      "invalid-metadata",
+      "desktop-update-required",
+      "invalid-upload",
+      "size-mismatch",
+      "retain-failed",
+    ]),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
   override get message(): string {
-    return `Preview recording could not be saved to the agent environment: ${this.detail}`;
+    const detail = {
+      "invalid-metadata": "The desktop returned invalid recording metadata.",
+      "desktop-update-required":
+        "Update the desktop app to transfer recordings. The recording remains on the desktop.",
+      "invalid-upload": "The uploaded recording is missing, expired, or already claimed.",
+      "size-mismatch": "The uploaded recording size does not match its metadata or exceeds 50 MiB.",
+      "retain-failed": "The uploaded recording could not be retained.",
+    }[this.reason];
+    return `Preview recording could not be saved to the agent environment: ${detail}`;
   }
 }
 

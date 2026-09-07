@@ -78,6 +78,7 @@ import {
   readActiveBrowserRecordingTargets,
   startBrowserRecording,
   stopBrowserRecording,
+  stopBrowserRecordingForUpload,
 } from "./browserRecording";
 import { useBrowserSurfaceStore } from "./browserSurfaceStore";
 import { previewRuntimeTabId } from "./previewRuntimeTabId";
@@ -197,21 +198,25 @@ describe("browser recording", () => {
       expect(artifact.path).toBe("/tmp/recording-test.webm");
       expect(blob.type).toBe("video/webm;codecs=vp9");
       await uploaded;
+      return "uploaded-recording";
     });
-    const firstStop = stopBrowserRecording("transfer-tab", transfer);
-    const secondStop = stopBrowserRecording("transfer-tab", transfer);
+    const localStop = stopBrowserRecording("transfer-tab");
+    const firstStop = stopBrowserRecordingForUpload("transfer-tab", transfer);
+    const secondStop = stopBrowserRecordingForUpload("transfer-tab", transfer);
     finishUpload();
     expect(await firstStop).toEqual(await secondStop);
+    expect((await firstStop)?.uploadedAttachmentId).toBe("uploaded-recording");
+    expect((await localStop)?.path).toBe("/tmp/recording-test.webm");
     expect(transfer).toHaveBeenCalledOnce();
   });
 
   it("keeps the saved desktop file and releases the recording when transfer fails", async () => {
     await startBrowserRecording("failed-transfer-tab");
     await expect(
-      stopBrowserRecording("failed-transfer-tab", async () => {
+      stopBrowserRecordingForUpload("failed-transfer-tab", async () => {
         throw new Error("Connection interrupted");
       }),
-    ).rejects.toMatchObject({ _tag: "BrowserRecordingOperationError" });
+    ).rejects.toThrow("Connection interrupted");
     expect(save).toHaveBeenCalledOnce();
     expect(readActiveBrowserRecordingTabIds().has("failed-transfer-tab")).toBe(false);
     await startBrowserRecording("failed-transfer-tab");

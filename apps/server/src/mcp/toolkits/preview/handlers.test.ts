@@ -75,6 +75,8 @@ describe("claimPreviewRecording", () => {
           expect(yield* fileSystem.exists(pendingPath)).toBe(false);
         } else {
           expect(result._tag).toBe("Failure");
+          if (result._tag !== "Failure") return;
+          expect(result.failure.reason).toBe("size-mismatch");
           expect(yield* fileSystem.exists(pendingPath)).toBe(true);
         }
       }).pipe(
@@ -98,6 +100,7 @@ describe("claimPreviewRecording", () => {
       }).pipe(Effect.result);
       expect(result._tag).toBe("Failure");
       if (result._tag !== "Failure") return;
+      expect(result.failure.reason).toBe("desktop-update-required");
       expect(result.failure.message).toContain("Update the desktop app");
     }).pipe(
       Effect.provide(

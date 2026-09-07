@@ -35,6 +35,7 @@ import {
   readActiveBrowserRecordingTargets,
   startBrowserRecording,
   stopBrowserRecording,
+  stopBrowserRecordingForUpload,
 } from "~/browser/browserRecording";
 import { resolveBrowserRecordingStopTarget } from "~/browser/browserRecordingScope";
 import { uploadBrowserRecording } from "~/browser/browserRecordingUpload";
@@ -722,20 +723,12 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
               request.input !== null &&
               "transferToEnvironment" in request.input &&
               request.input.transferToEnvironment === true;
-            let uploadedAttachmentId: string | undefined;
             const artifact = stopRuntimeTabId
-              ? await stopBrowserRecording(
-                  stopRuntimeTabId,
-                  transferToEnvironment
-                    ? async (saved, blob) => {
-                        uploadedAttachmentId = await uploadBrowserRecording(
-                          environmentId,
-                          saved,
-                          blob,
-                        );
-                      }
-                    : undefined,
-                )
+              ? transferToEnvironment
+                ? await stopBrowserRecordingForUpload(stopRuntimeTabId, (saved, blob) =>
+                    uploadBrowserRecording(environmentId, saved, blob, hostDeadlineMs),
+                  )
+                : await stopBrowserRecording(stopRuntimeTabId)
               : null;
             if (!artifact || !stopTabId) {
               return raisePreviewAutomationHostError(
@@ -750,7 +743,6 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
             return {
               ...artifact,
               tabId: stopTabId,
-              ...(uploadedAttachmentId ? { uploadedAttachmentId } : {}),
             };
           }
         }

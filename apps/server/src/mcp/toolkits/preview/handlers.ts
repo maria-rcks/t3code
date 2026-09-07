@@ -3,6 +3,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
 import {
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
+  PREVIEW_RECORDING_STOP_TIMEOUT_MS,
   PreviewAutomationRecordingTransferError,
   PreviewAutomationRecordingArtifact,
   type ThreadId,
@@ -90,7 +91,7 @@ export const claimPreviewRecording = Effect.fn("PreviewToolkit.claimRecording")(
       (cause) =>
         new PreviewAutomationRecordingTransferError({
           threadId,
-          detail: "The desktop returned invalid recording metadata.",
+          reason: "invalid-metadata",
           cause,
         }),
     ),
@@ -98,8 +99,7 @@ export const claimPreviewRecording = Effect.fn("PreviewToolkit.claimRecording")(
   if (!artifact.uploadedAttachmentId) {
     return yield* new PreviewAutomationRecordingTransferError({
       threadId,
-      detail:
-        "Update the desktop app to transfer recordings. The recording remains on the desktop.",
+      reason: "desktop-update-required",
     });
   }
   const config = yield* ServerConfig.ServerConfig;
@@ -109,7 +109,10 @@ export const claimPreviewRecording = Effect.fn("PreviewToolkit.claimRecording")(
     attachmentId: artifact.uploadedAttachmentId,
   });
   if (!claim.ok) {
-    return yield* new PreviewAutomationRecordingTransferError({ threadId, detail: claim.reason });
+    return yield* new PreviewAutomationRecordingTransferError({
+      threadId,
+      reason: "invalid-upload",
+    });
   }
   const fileSystem = yield* FileSystem.FileSystem;
   yield* Effect.gen(function* () {
@@ -122,7 +125,7 @@ export const claimPreviewRecording = Effect.fn("PreviewToolkit.claimRecording")(
     ) {
       return yield* new PreviewAutomationRecordingTransferError({
         threadId,
-        detail: "The uploaded recording size does not match its metadata or exceeds 50 MiB.",
+        reason: "size-mismatch",
       });
     }
     yield* fileSystem.rename(claim.currentPath, claim.finalPath);
@@ -132,7 +135,7 @@ export const claimPreviewRecording = Effect.fn("PreviewToolkit.claimRecording")(
         ? cause
         : new PreviewAutomationRecordingTransferError({
             threadId,
-            detail: "The uploaded recording could not be retained.",
+            reason: "retain-failed",
             cause,
           }),
     ),
@@ -173,7 +176,7 @@ const handlers = {
       const response = yield* invokeTargeted<unknown>(
         "recordingStop",
         { ...input, transferToEnvironment: true },
-        120_000,
+        PREVIEW_RECORDING_STOP_TIMEOUT_MS,
       );
       return yield* claimPreviewRecording(scope.threadId, response);
     }),
