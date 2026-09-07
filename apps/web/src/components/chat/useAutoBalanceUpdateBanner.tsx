@@ -90,7 +90,7 @@ export function useAutoBalanceUpdateBanner(
         ? `Could not update ${failed.length} ${failed.length === 1 ? "machine" : "machines"}`
         : `Update available for ${machines.length} ${machines.length === 1 ? "machine" : "machines"}`;
   return {
-    id: "auto-balance-server-updates",
+    id: `auto-balance-server-updates-${dismissedNotices.size}`,
     variant: failed.length > 0 ? "error" : "default",
     priority: running.length > 0 ? "urgent" : "notice",
     icon: (
