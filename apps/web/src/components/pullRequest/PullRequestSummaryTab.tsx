@@ -12,14 +12,13 @@ import {
   ChevronRightIcon,
   GitPullRequestClosedIcon,
   HammerIcon,
-  MessageSquareIcon,
   PencilIcon,
   RotateCcwIcon,
   SendIcon,
   TagIcon,
   UsersIcon,
 } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 
 import { useAtomCommand } from "~/state/use-atom-command";
 import { pullRequestEnvironment } from "~/state/pullRequests";
@@ -41,6 +40,7 @@ import {
   pullRequestReviewOutcomeLabel,
   pullRequestReviewOutcomeRingClassName,
   pullRequestReviewOutcomeStaleLabel,
+  summarizePullRequestChecks,
 } from "./pullRequestPresentation";
 import { PullRequestLabelPicker } from "./PullRequestLabelPicker";
 import { PullRequestReviewerPicker } from "./PullRequestReviewerPicker";
@@ -229,8 +229,8 @@ function MetaRow({
   children: ReactNode;
 }) {
   return (
-    <div className="grid min-h-8 grid-cols-[6rem_minmax(0,1fr)] items-center gap-2 py-1.5 text-xs">
-      <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+    <div className="flex min-w-0 max-w-full items-center gap-2 text-xs">
+      <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
         {icon}
         {label}
       </span>
@@ -461,6 +461,12 @@ export function PullRequestSummaryTab({
   // Keyed by the pull request, so opening another one starts at the end of its conversation
   // rather than wherever the last one had been read back to.
   const [shown, setShown] = useState({ url: detail.url, count: COMMENT_PAGE });
+  const checksId = useId();
+  const [expandedChecksUrl, setExpandedChecksUrl] = useState<string | null>(null);
+  const showCompletedChecks = expandedChecksUrl === detail.url;
+  const completedCheckCount = detail.checks.filter((check) =>
+    ["success", "skipped", "neutral"].includes(check.status),
+  ).length;
   const shownComments = shown.url === detail.url ? shown.count : COMMENT_PAGE;
   // Windowed by recency regardless of display order: expanding always reaches further back in
   // time, whether the newest comment currently reads first or last.
@@ -596,8 +602,8 @@ export function PullRequestSummaryTab({
 
   return (
     <div className="h-full overflow-y-auto" data-pull-request-summary-scroll>
-      <section className="px-4 py-3">
-        <div>
+      <section className="px-4 py-2.5">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <MetaRow icon={<UsersIcon className="size-3.5" />} label="Reviewers">
             <span className="flex min-w-0 flex-wrap items-center gap-1.5">
               {reviewerEntries.length === 0 ? (
@@ -724,15 +730,6 @@ export function PullRequestSummaryTab({
               </span>
             </MetaRow>
           ) : null}
-          <MetaRow icon={<MessageSquareIcon className="size-3.5" />} label="Comments">
-            {activityPending
-              ? "Loading conversation…"
-              : activityError
-                ? "Conversation unavailable"
-                : detail.commentCount === 1
-                  ? "1 comment"
-                  : `${detail.commentCount} comments`}
-          </MetaRow>
         </div>
       </section>
 
@@ -789,51 +786,78 @@ export function PullRequestSummaryTab({
         {detail.checks.length === 0 ? (
           <p className="text-xs text-muted-foreground">No checks reported.</p>
         ) : (
-          <div className="space-y-0.5">
-            {detail.checks.map((check, index) => {
-              const finding = { kind: "check", check } as const;
-              const failing = check.status === "failure" || check.status === "cancelled";
-              return (
-                <div
-                  // Position too: the host decides how many runs share a name, and a repeated
-                  // key would be a rendering fault on top of whatever the list already says.
-                  key={`${index}:${check.name}:${check.url ?? ""}`}
-                  className="group flex items-center gap-1 rounded-md pr-1 hover:bg-accent/60"
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xs">
+              <span className="text-muted-foreground">
+                {summarizePullRequestChecks(detail.checks)}
+              </span>
+              {completedCheckCount > 0 ? (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  aria-expanded={showCompletedChecks}
+                  aria-controls={checksId}
+                  onClick={() => setExpandedChecksUrl(showCompletedChecks ? null : detail.url)}
                 >
-                  <button
-                    type="button"
-                    disabled={!check.url}
-                    onClick={() => check.url && openCheck(check.url)}
-                    className={cn(
-                      "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs",
-                      check.url ? undefined : "cursor-default",
-                    )}
+                  <ChevronRightIcon
+                    className={cn("size-3.5", showCompletedChecks && "rotate-90")}
+                  />
+                  {showCompletedChecks ? "Hide" : "Show"} {completedCheckCount} completed
+                </Button>
+              ) : null}
+            </div>
+            <div id={checksId} className="mt-2 divide-y divide-border/50">
+              {detail.checks.map((check, index) => {
+                if (
+                  !showCompletedChecks &&
+                  ["success", "skipped", "neutral"].includes(check.status)
+                ) {
+                  return null;
+                }
+                const finding = { kind: "check", check } as const;
+                const failing = check.status === "failure" || check.status === "cancelled";
+                return (
+                  <div
+                    // Position too: the host decides how many runs share a name, and a repeated
+                    // key would be a rendering fault on top of whatever the list already says.
+                    key={`${index}:${check.name}:${check.url ?? ""}`}
+                    className="group flex items-center gap-2 rounded-md pr-1 hover:bg-accent/60"
                   >
-                    <PullRequestCheckStatusIcon status={check.status} />
-                    <span className="min-w-0 flex-1 truncate">{check.name}</span>
-                    <span className="shrink-0 text-muted-foreground">
-                      {pullRequestCheckStatusLabel(check)}
-                    </span>
-                  </button>
-                  {/* Only where there is something to fix. A passing check has no failure to
-                      reproduce, and the button would be an invitation to waste a thread. */}
-                  {onFixFinding && failing ? (
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      className="shrink-0"
-                      disabled={pendingFinding !== null && pendingFinding !== undefined}
-                      onClick={() => onFixFinding(finding)}
+                    <button
+                      type="button"
+                      disabled={!check.url}
+                      onClick={() => check.url && openCheck(check.url)}
+                      className={cn(
+                        "flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-2 text-left text-xs leading-5 [&>svg]:mt-0.5",
+                        check.url ? undefined : "cursor-default",
+                      )}
                     >
-                      <HammerIcon className="size-3" />
-                      {pendingFinding === pullRequestFindingKey(finding)
-                        ? "Preparing..."
-                        : fixCheckLabel}
-                    </Button>
-                  ) : null}
-                </div>
-              );
-            })}
+                      <PullRequestCheckStatusIcon status={check.status} />
+                      <span className="min-w-0 flex-1 wrap-anywhere">{check.name}</span>
+                      <span className="shrink-0 text-muted-foreground">
+                        {pullRequestCheckStatusLabel(check)}
+                      </span>
+                    </button>
+                    {/* Only where there is something to fix. A passing check has no failure to
+                      reproduce, and the button would be an invitation to waste a thread. */}
+                    {onFixFinding && failing ? (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        className="shrink-0"
+                        disabled={pendingFinding !== null && pendingFinding !== undefined}
+                        onClick={() => onFixFinding(finding)}
+                      >
+                        <HammerIcon className="size-3" />
+                        {pendingFinding === pullRequestFindingKey(finding)
+                          ? "Preparing..."
+                          : fixCheckLabel}
+                      </Button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </Section>
