@@ -160,7 +160,7 @@ export function TimelineBackgroundSettings() {
           <TimelineBackgroundImage image={image} opacity={previewOpacity} blur={previewBlur} />
           <div className="mx-auto max-w-xl space-y-5 text-sm leading-relaxed">
             <div className="flex justify-end">
-              <UserMessageBubble glass>Can you give this page a softer look?</UserMessageBubble>
+              <UserMessageBubble>Can you give this page a softer look?</UserMessageBubble>
             </div>
             <WorkingIndicator createdAt={previewStartedAt} />
             <AssistantMessageSurface>

@@ -7892,6 +7892,7 @@ export default function ChatView(props: ChatViewProps) {
                 onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
                 hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
                 topFadeEnabled={!hasTimelineTopBanner}
+                topFadeMaskEnabled={!hasTimelineBackground}
                 loadEarlier={loadEarlierTurns}
               />
 
