@@ -369,11 +369,16 @@ function ProviderSetupActions({
         description={phaseLabels.idle}
         control={
           <div className="flex min-w-0 flex-col gap-2 sm:max-w-56 sm:items-end sm:text-right xl:max-w-72">
-            {authStatusMessage !== phaseLabels.idle ? (
-              <p role="status" className="text-muted-foreground [overflow-wrap:anywhere]">
-                {authStatusMessage}
-              </p>
-            ) : null}
+            <p
+              role="status"
+              className={
+                authStatusMessage === phaseLabels.idle
+                  ? "sr-only"
+                  : "text-muted-foreground [overflow-wrap:anywhere]"
+              }
+            >
+              {authStatusMessage}
+            </p>
             {authorizationUrl ? (
               <div className="flex flex-wrap gap-2 sm:justify-end">
                 <Button size="sm" variant="outline" onClick={() => void openSignInPage()}>
