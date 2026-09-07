@@ -70,6 +70,7 @@ export type RightPanelSurface =
       projectId: string;
       repository: string;
       number: number;
+      url?: string;
     }
   | { id: "agents"; kind: "agents" };
 
@@ -120,7 +121,13 @@ interface RightPanelStoreState {
   openAttachment: (ref: ScopedThreadRef, attachment: ChatFileAttachment) => void;
   openPullRequest: (
     ref: ScopedThreadRef,
-    target: { environmentId?: string; projectId: string; repository: string; number: number },
+    target: {
+      environmentId?: string;
+      projectId: string;
+      repository: string;
+      number: number;
+      url?: string;
+    },
   ) => void;
   openTerminal: (ref: ScopedThreadRef, terminalId: string) => void;
   splitTerminal: (
@@ -221,6 +228,7 @@ export function pullRequestSurface(target: {
   projectId: string;
   repository: string;
   number: number;
+  url?: string;
 }): PullRequestSurface {
   return {
     id: pullRequestSurfaceId(target),
@@ -229,6 +237,7 @@ export function pullRequestSurface(target: {
     projectId: target.projectId,
     repository: target.repository,
     number: target.number,
+    ...(typeof target.url === "string" ? { url: target.url } : {}),
   };
 }
 
@@ -455,7 +464,16 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       openPullRequest: (ref, target) =>
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) => {
-            return upsertSurface(current, pullRequestSurface(target));
+            const surface = pullRequestSurface(target);
+            const next = upsertSurface(current, surface);
+            return target.url
+              ? {
+                  ...next,
+                  surfaces: next.surfaces.map((entry) =>
+                    entry.id === surface.id ? surface : entry,
+                  ),
+                }
+              : next;
           }),
         ),
       openFile: (ref, relativePath, line) =>

@@ -605,7 +605,11 @@ function OpenCommandPaletteDialog(props: {
   const projects = useProjects();
   const referenceThreadRef =
     pathname === "/pull-requests"
-      ? PULL_REQUESTS_PANEL_REF
+      ? environments.some(
+          (environment) => environment.serverConfig?.environment.capabilities.pullRequests === true,
+        )
+        ? PULL_REQUESTS_PANEL_REF
+        : null
       : activeThread
         ? scopeThreadRef(activeThread.environmentId, activeThread.id)
         : null;
