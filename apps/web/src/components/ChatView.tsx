@@ -1480,6 +1480,18 @@ export default function ChatView(props: ChatViewProps) {
   const hasTimelineBackground = useClientSettings((settings) =>
     Boolean(settings.timelineBackgroundImage),
   );
+  const [chatHeaderElement, setChatHeaderElement] = useState<HTMLElement | null>(null);
+  const [chatHeaderHeight, setChatHeaderHeight] = useState(0);
+  useLayoutEffect(() => {
+    if (!chatHeaderElement || !hasTimelineBackground) return;
+    const measure = () => setChatHeaderHeight(chatHeaderElement.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(chatHeaderElement);
+    return () => observer.disconnect();
+  }, [chatHeaderElement, hasTimelineBackground]);
+  const timelineHeaderInset = hasTimelineBackground ? chatHeaderHeight : 0;
+  const timelineAnchorOffset = CHAT_TIMELINE_ANCHOR_OFFSET + timelineHeaderInset;
   const primaryServerSettings = useAtomValue(primaryServerSettingsAtom);
   const setStickyComposerModelSelection = useComposerDraftStore(
     (store) => store.setStickyModelSelection,
@@ -4583,18 +4595,18 @@ export default function ChatView(props: ChatViewProps) {
         state,
         anchorIndex,
         composerOverlayHeight: composerTimelineInset,
-        anchorOffset: CHAT_TIMELINE_ANCHOR_OFFSET,
+        anchorOffset: timelineAnchorOffset,
       });
     },
-    [composerTimelineInset],
+    [composerTimelineInset, timelineAnchorOffset],
   );
   const timelineRealContentOverflowsViewport = useCallback(
     (list?: LegendListRef | null) =>
       timelineContentOverflowsViewport((list ?? legendListRef.current)?.getState(), {
         composerInset: composerTimelineInset,
-        anchorOffset: CHAT_TIMELINE_ANCHOR_OFFSET,
+        anchorOffset: timelineAnchorOffset,
       }),
-    [composerTimelineInset],
+    [composerTimelineInset, timelineAnchorOffset],
   );
   const pageScrollControllerRef = useRef<ReturnType<typeof createPageScrollController> | null>(
     null,
@@ -4794,51 +4806,54 @@ export default function ChatView(props: ChatViewProps) {
     };
   }, [activeThread?.id, timelineRealContentOverflowsViewport]);
 
-  const onTimelineAnchorReady = useCallback((messageId: MessageId, anchorIndex: number) => {
-    // Anchored-end space can be remeasured when the turn completes. Once the
-    // user has scrolled away (or returned to ordinary end-following), that
-    // remeasurement must not restart the send-time anchor positioning.
-    if (timelineScrollModeRef.current !== "anchoring-new-turn") {
-      return;
-    }
-    if (pendingTimelineAnchorRef.current === messageId) {
-      pendingTimelineAnchorRef.current = null;
-    }
-    activeTimelineAnchorIndexRef.current = anchorIndex;
-    if (positionedTimelineAnchorRef.current === messageId) {
-      return;
-    }
-    positionedTimelineAnchorRef.current = messageId;
-    settledTimelineAnchorRef.current = null;
-    const positionAnchor = (remainingAttempts: number) => {
-      requestAnimationFrame(() => {
-        if (positionedTimelineAnchorRef.current !== messageId) {
-          return;
-        }
-        const list = legendListRef.current;
-        if (!list) {
-          if (remainingAttempts > 0) {
-            positionAnchor(remainingAttempts - 1);
+  const onTimelineAnchorReady = useCallback(
+    (messageId: MessageId, anchorIndex: number) => {
+      // Anchored-end space can be remeasured when the turn completes. Once the
+      // user has scrolled away (or returned to ordinary end-following), that
+      // remeasurement must not restart the send-time anchor positioning.
+      if (timelineScrollModeRef.current !== "anchoring-new-turn") {
+        return;
+      }
+      if (pendingTimelineAnchorRef.current === messageId) {
+        pendingTimelineAnchorRef.current = null;
+      }
+      activeTimelineAnchorIndexRef.current = anchorIndex;
+      if (positionedTimelineAnchorRef.current === messageId) {
+        return;
+      }
+      positionedTimelineAnchorRef.current = messageId;
+      settledTimelineAnchorRef.current = null;
+      const positionAnchor = (remainingAttempts: number) => {
+        requestAnimationFrame(() => {
+          if (positionedTimelineAnchorRef.current !== messageId) {
+            return;
           }
-          return;
-        }
-        void list
-          .scrollToIndex({
-            index: anchorIndex,
-            animated: true,
-            viewPosition: 0,
-            viewOffset: CHAT_TIMELINE_ANCHOR_OFFSET,
-          })
-          .then(() => {
-            if (positionedTimelineAnchorRef.current !== messageId) {
-              return;
+          const list = legendListRef.current;
+          if (!list) {
+            if (remainingAttempts > 0) {
+              positionAnchor(remainingAttempts - 1);
             }
-            settledTimelineAnchorRef.current = messageId;
-          });
-      });
-    };
-    requestAnimationFrame(() => positionAnchor(12));
-  }, []);
+            return;
+          }
+          void list
+            .scrollToIndex({
+              index: anchorIndex,
+              animated: true,
+              viewPosition: 0,
+              viewOffset: timelineAnchorOffset,
+            })
+            .then(() => {
+              if (positionedTimelineAnchorRef.current !== messageId) {
+                return;
+              }
+              settledTimelineAnchorRef.current = messageId;
+            });
+        });
+      };
+      requestAnimationFrame(() => positionAnchor(12));
+    },
+    [timelineAnchorOffset],
+  );
 
   const onToolOutputCollapsedAtEnd = useCallback(() => {
     composerRef.current?.restoreAfterTimelineReachedEnd();
@@ -7758,6 +7773,7 @@ export default function ChatView(props: ChatViewProps) {
         {hasTimelineBackground ? <ChatTopbarBlur /> : null}
         {/* Top bar */}
         <WorkspacePageHeader
+          ref={setChatHeaderElement}
           data-chat-header
           electron={isElectron}
           reserveNativeControls={reserveTitleBarControlInset && !inlineRightPanelOwnsTitleBar}
@@ -7898,7 +7914,7 @@ export default function ChatView(props: ChatViewProps) {
                 hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
                 topFadeEnabled={!hasTimelineTopBanner}
                 topFadeMaskEnabled={!hasTimelineBackground}
-                underHeader={hasTimelineBackground}
+                headerInset={timelineHeaderInset}
                 loadEarlier={loadEarlierTurns}
               />
 

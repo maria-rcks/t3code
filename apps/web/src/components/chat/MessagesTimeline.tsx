@@ -350,7 +350,7 @@ interface MessagesTimelineProps {
   /** Masks block row backdrop filters from sampling a wallpaper behind the list. */
   topFadeMaskEnabled?: boolean;
   /** Reserve header space inside the scrollport so rows can scroll beneath its blur. */
-  underHeader?: boolean;
+  headerInset?: number;
   /** Non-null when older turns exist beyond the loaded window. */
   loadEarlier?: CitationHistoryPage | null;
 }
@@ -400,7 +400,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   hideEmptyPlaceholder = false,
   topFadeEnabled = false,
   topFadeMaskEnabled = true,
-  underHeader = false,
+  headerInset = 0,
   loadEarlier = null,
 }: MessagesTimelineProps) {
   const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<TurnId>>(new Set());
@@ -608,10 +608,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       rows,
       anchorMessageId,
       (row) => (row.kind === "message" && row.message.role === "user" ? row.message.id : null),
-      { anchorOffset: CHAT_TIMELINE_ANCHOR_OFFSET },
+      { anchorOffset: CHAT_TIMELINE_ANCHOR_OFFSET + headerInset },
     );
     return config ? { ...config, onReady: handleAnchorReady } : undefined;
-  }, [anchorMessageId, handleAnchorReady, rows]);
+  }, [anchorMessageId, handleAnchorReady, rows, headerInset]);
   const timelineListFooter = useMemo(
     () => <TimelineListFooter composerInset={anchoredEndSpace ? 0 : contentInsetEndAdjustment} />,
     [anchoredEndSpace, contentInsetEndAdjustment],
@@ -621,9 +621,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     () =>
       timelineContentOverflowsViewport(listRef.current?.getState?.(), {
         composerInset: contentInsetEndAdjustment,
-        anchorOffset: CHAT_TIMELINE_ANCHOR_OFFSET,
+        anchorOffset: CHAT_TIMELINE_ANCHOR_OFFSET + headerInset,
       }),
-    [contentInsetEndAdjustment, listRef],
+    [contentInsetEndAdjustment, listRef, headerInset],
   );
   // LegendList lays rows out from layout effects, so a read on the next frame
   // sees the settled positions. One frame is shared across bursts of size
@@ -855,7 +855,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               topFadeEnabled && topFadeMaskEnabled && "topbar-scroll-fade",
             )}
             ListHeaderComponent={
-              <div className={underHeader ? "pt-[var(--workspace-topbar-height)]" : undefined}>
+              <div style={{ paddingTop: headerInset }}>
                 {loadEarlier !== null ? (
                   <TimelineLoadEarlierHeader
                     loading={loadEarlier.loading}
@@ -881,15 +881,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               void listRef.current?.scrollToIndex({
                 index: item.rowIndex,
                 animated: true,
-                viewOffset:
-                  24 +
-                  (underHeader && timelineViewportElement
-                    ? Number.parseFloat(
-                        getComputedStyle(timelineViewportElement).getPropertyValue(
-                          "--workspace-topbar-height",
-                        ),
-                      ) || 0
-                    : 0),
+                viewOffset: CHAT_TIMELINE_ANCHOR_OFFSET + headerInset,
               });
             }}
           />
