@@ -288,7 +288,14 @@ function ProviderSetupActions({
         }
         control={
           <div className="flex min-w-0 flex-col gap-2 sm:max-w-56 sm:items-end sm:text-right xl:max-w-72">
-            <p role="status" className="text-muted-foreground">
+            <p
+              role="status"
+              className={
+                !installed && !usesCustomBinary && !installActive
+                  ? "sr-only"
+                  : "text-muted-foreground"
+              }
+            >
               {installationStatusMessage}
             </p>
             {installation?.phase === "downloading" &&
