@@ -294,7 +294,7 @@ function ProviderSetupActions({
           </div>
         }
         control={
-          <div className="flex min-w-0 flex-col gap-2 sm:max-w-72 sm:items-end sm:text-right">
+          <div className="flex min-w-0 flex-col gap-2 sm:max-w-56 sm:items-end sm:text-right xl:max-w-72">
             <p role="status" className="text-muted-foreground">
               {installationStatusMessage}
             </p>
@@ -368,7 +368,7 @@ function ProviderSetupActions({
         title={methodLabel}
         description={phaseLabels.idle}
         control={
-          <div className="flex min-w-0 flex-col gap-2 sm:max-w-72 sm:items-end sm:text-right">
+          <div className="flex min-w-0 flex-col gap-2 sm:max-w-56 sm:items-end sm:text-right xl:max-w-72">
             {authStatusMessage !== phaseLabels.idle ? (
               <p role="status" className="text-muted-foreground [overflow-wrap:anywhere]">
                 {authStatusMessage}
