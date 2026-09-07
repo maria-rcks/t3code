@@ -2,22 +2,30 @@ import {
   createAssetEnvironmentAtoms,
   createProjectFaviconUrlAtomFamily,
 } from "@t3tools/client-runtime/state/assets";
+import { Atom } from "effect/unstable/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { projectFaviconCache } from "../assets/projectFaviconCache";
 import { isElectron } from "../env";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { primaryEnvironmentIdAtom } from "./primaryEnvironment";
-import { environmentSession, readPreparedConnection } from "./session";
+import { environmentSession } from "./session";
+
+const localMediaEnvironment = Atom.make((get) => {
+  if (!isElectron) return null;
+  const environmentId = get(primaryEnvironmentIdAtom);
+  if (environmentId === null) return null;
+  const connection = get(environmentSession.preparedConnectionValueAtom(environmentId));
+  // The session's bootstrap config clears on disconnect and refreshes on reconnect.
+  const config = get(environmentSession.initialConfigValueAtom(environmentId));
+  return connection._tag === "None" || config === null
+    ? null
+    : { environmentId, httpBaseUrl: connection.value.httpBaseUrl };
+});
 
 export const assetEnvironment = createAssetEnvironmentAtoms(connectionAtomRuntime, {
-  localMediaEnvironment: () => {
-    if (!isElectron) return null;
-    const environmentId = appAtomRegistry.get(primaryEnvironmentIdAtom);
-    if (environmentId === null) return null;
-    const connection = readPreparedConnection(environmentId);
-    return connection === null ? null : { environmentId, httpBaseUrl: connection.httpBaseUrl };
-  },
+  localMediaEnvironment: () => appAtomRegistry.get(localMediaEnvironment),
+  localMediaRefreshTrigger: localMediaEnvironment,
 });
 
 export const projectFaviconUrlAtom = createProjectFaviconUrlAtomFamily({

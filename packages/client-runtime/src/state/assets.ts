@@ -20,8 +20,8 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
-import { EnvironmentRegistry } from "../connection/registry.ts";
-import { EnvironmentSupervisor } from "../connection/supervisor.ts";
+import * as EnvironmentRegistry from "../connection/registry.ts";
+import * as EnvironmentSupervisor from "../connection/supervisor.ts";
 import { request } from "../rpc/client.ts";
 import type { ProjectFaviconCache, ProjectFaviconTarget } from "../projectFaviconCache.ts";
 import { createEnvironmentQueryAtomFamily } from "./runtime.ts";
@@ -99,12 +99,13 @@ export function assetUrlStateFromResult(
 }
 
 export function createAssetEnvironmentAtoms<R, E>(
-  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
+  runtime: Atom.AtomRuntime<EnvironmentRegistry.EnvironmentRegistry | R, E>,
   options?: {
     readonly localMediaEnvironment?: () => {
       readonly environmentId: EnvironmentId;
       readonly httpBaseUrl: string;
     } | null;
+    readonly localMediaRefreshTrigger?: Atom.Atom<unknown>;
   },
 ) {
   const execute = Effect.fn("assets.createUrl")(function* (input: AssetCreateUrlInput) {
@@ -124,9 +125,9 @@ export function createAssetEnvironmentAtoms<R, E>(
       )
         return yield* error;
       const local = options?.localMediaEnvironment?.();
-      const supervisor = yield* EnvironmentSupervisor;
+      const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
       if (!local || local.environmentId === supervisor.target.environmentId) return yield* error;
-      const registry = yield* EnvironmentRegistry;
+      const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
       const result = yield* registry.run(
         local.environmentId,
         request(WS_METHODS.assetsCreateUrl, input),
@@ -148,6 +149,8 @@ export function createAssetEnvironmentAtoms<R, E>(
     staleTimeMs: ASSET_URL_STALE_TIME_MS,
     idleTtlMs: ASSET_URL_IDLE_TTL_MS,
     refreshIntervalMs: ASSET_URL_REFRESH_INTERVAL_MS,
+    refreshTrigger: ({ input }) =>
+      input.resource._tag === "media-file" ? options?.localMediaRefreshTrigger : undefined,
   });
   const createUrlsFamily = Atom.family((key: string) => {
     const [environmentId, resources] = parseAssetCollectionKey(key);

@@ -67,6 +67,7 @@ describe("createAssetEnvironmentAtoms", () => {
     { name: "remote success", path: "/tmp/clip.mp4", success: true },
     { name: "relative path", path: "clip.mp4" },
     { name: "no primary", path: "/tmp/clip.mp4", primary: "none" },
+    { name: "primary reconnect", path: "/tmp/frame.png", primary: "reconnecting" },
     { name: "same environment", path: "/tmp/clip.mp4", primary: "same" },
     { name: "non-media", path: "/tmp/report.html" },
     { name: "authorization failure", path: "/tmp/clip.mp4", error: "auth" },
@@ -133,20 +134,22 @@ describe("createAssetEnvironmentAtoms", () => {
           followStream: (id, stream) =>
             Stream.provideService(stream, EnvironmentSupervisor, supervisors.get(id)!),
         } as EnvironmentRegistry["Service"]);
+        const registry = AtomRegistry.make();
+        yield* Effect.addFinalizer(() => Effect.sync(() => registry.dispose()));
+        const localTarget = {
+          environmentId: scenario.primary === "same" ? remoteId : localId,
+          httpBaseUrl: "https://local.test",
+        };
+        const localEnvironment = Atom.make<typeof localTarget | null>(
+          scenario.primary === "none" || scenario.primary === "reconnecting" ? null : localTarget,
+        );
         const assets = createAssetEnvironmentAtoms(
           Atom.runtime(Layer.succeed(EnvironmentRegistry, environments)),
           {
-            localMediaEnvironment: () =>
-              scenario.primary === "none"
-                ? null
-                : {
-                    environmentId: scenario.primary === "same" ? remoteId : localId,
-                    httpBaseUrl: "https://local.test",
-                  },
+            localMediaEnvironment: () => registry.get(localEnvironment),
+            localMediaRefreshTrigger: localEnvironment,
           },
         );
-        const registry = AtomRegistry.make();
-        yield* Effect.addFinalizer(() => Effect.sync(() => registry.dispose()));
         const query = assets.createUrl({ environmentId: remoteId, input: { resource } });
         const result = AtomRegistry.getResult(registry, query, { suspendOnWaiting: true });
         if (scenario.fallback || scenario.success) {
@@ -159,6 +162,11 @@ describe("createAssetEnvironmentAtoms", () => {
           expect(yield* Effect.flip(result)).toEqual(error);
         }
         expect(calls).toEqual(scenario.fallback ? [remoteId, localId] : [remoteId]);
+        if (scenario.primary === "reconnecting") {
+          registry.set(localEnvironment, localTarget);
+          expect((yield* result).relativeUrl).toBe("https://local.test/api/assets/local/media");
+          expect(calls).toEqual([remoteId, remoteId, localId]);
+        }
       }).pipe(Effect.scoped),
     );
   }
