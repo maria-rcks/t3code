@@ -683,8 +683,6 @@ const CodexThreadResumeMetadata = Schema.Struct({
 });
 const decodeCodexThreadResumeMetadata = Schema.decodeUnknownEffect(CodexThreadResumeMetadata);
 
-type CodexThreadOpenMethod = "thread/start" | "thread/resume";
-
 interface CodexThreadOpenClient {
   readonly raw: {
     readonly request: (
@@ -694,10 +692,13 @@ interface CodexThreadOpenClient {
       },
     ) => Effect.Effect<unknown, CodexErrors.CodexAppServerError>;
   };
-  readonly request: <M extends CodexThreadOpenMethod>(
-    method: M,
-    payload: CodexRpc.ClientRequestParamsByMethod[M],
-  ) => Effect.Effect<CodexRpc.ClientRequestResponsesByMethod[M], CodexErrors.CodexAppServerError>;
+  readonly request: (
+    method: "thread/start",
+    payload: CodexRpc.ClientRequestParamsByMethod["thread/start"],
+  ) => Effect.Effect<
+    CodexRpc.ClientRequestResponsesByMethod["thread/start"],
+    CodexErrors.CodexAppServerError
+  >;
 }
 
 export const openCodexThread = (input: {
