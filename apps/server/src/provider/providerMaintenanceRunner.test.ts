@@ -7,6 +7,8 @@ import {
 } from "@t3tools/contracts";
 import { ServerProviderUpdateError } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
+import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -209,18 +211,16 @@ function makeRegistry(
 }
 
 const makeTestRunner = (registry: ProviderRegistryShape) =>
-  Effect.service(ProviderMaintenanceRunner.ProviderMaintenanceRunner).pipe(
-    Effect.provide(
-      ProviderMaintenanceRunner.layer.pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            Layer.succeed(ProviderRegistry, registry),
-            // Fresh per runner so a version cached by one test cannot leak into another.
-            Layer.sync(ProviderVersionCache, () => new Map()),
-          ),
-        ),
+  ProviderMaintenanceRunner.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.succeed(ProviderRegistry, registry),
+        // Fresh per runner so a version cached by one test cannot leak into another.
+        Layer.sync(ProviderVersionCache, () => new Map()),
       ),
     ),
+    Layer.build,
+    Effect.map(Context.get(ProviderMaintenanceRunner.ProviderMaintenanceRunner)),
   );
 
 describe("providerMaintenanceRunner", () => {
@@ -797,56 +797,54 @@ describe("providerMaintenanceRunner", () => {
     );
   });
 
-  it.effect(
-    "releases the running-provider marker when interrupted after queuing but before the lock run starts",
-    () =>
-      Effect.gen(function* () {
-        const { registry } = yield* makeRegistry(baseProvider);
-        let blockQueuedState = true;
-        const queuedStateWrittenLatch: { resolve: () => void } = { resolve: () => {} };
-        const releaseQueuedStateLatch: { resolve: () => void } = { resolve: () => {} };
-        const queuedStateWritten = new Promise<void>((resolve) => {
-          queuedStateWrittenLatch.resolve = resolve;
-        });
-        const releaseQueuedState = new Promise<void>((resolve) => {
-          releaseQueuedStateLatch.resolve = resolve;
-        });
+  it.effect("keeps an update and its lock alive when the requesting client disconnects", () =>
+    Effect.gen(function* () {
+      const { registry } = yield* makeRegistry(baseProvider);
+      const running = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const completed = yield* Deferred.make<void>();
 
-        const updater = yield* makeTestRunner({
-          ...registry,
-          setProviderMaintenanceActionState: Effect.fn(
-            "providerMaintenanceRunner.test.blockQueuedState",
-          )(function* (input) {
-            const providers = yield* registry.setProviderMaintenanceActionState(input);
-            if (input.state?.status === "queued" && blockQueuedState) {
-              queuedStateWrittenLatch.resolve();
-              yield* Effect.promise(() => releaseQueuedState);
-            }
-            return providers;
-          }),
-        });
+      const updater = yield* makeTestRunner({
+        ...registry,
+        setProviderMaintenanceActionState: Effect.fn(
+          "providerMaintenanceRunner.test.blockRunningState",
+        )(function* (input) {
+          const providers = yield* registry.setProviderMaintenanceActionState(input);
+          if (input.state?.status === "running") {
+            yield* Deferred.succeed(running, undefined);
+            yield* Deferred.await(release);
+          }
+          if (input.state?.status === "succeeded") {
+            yield* Deferred.succeed(completed, undefined);
+          }
+          return providers;
+        }),
+      });
 
-        const first = yield* updater.updateProvider(CODEX_DRIVER).pipe(Effect.forkScoped);
-        yield* Effect.promise(() => queuedStateWritten);
-        blockQueuedState = false;
-
-        yield* Fiber.interrupt(first);
-        releaseQueuedStateLatch.resolve();
-
-        const second = yield* updater.updateProvider(CODEX_DRIVER).pipe(Effect.exit);
-        assert.strictEqual(Exit.isSuccess(second), true);
-        if (Exit.isSuccess(second)) {
-          assert.strictEqual(second.value.providers[0]?.updateState?.status, "succeeded");
+      const first = yield* updater.updateProvider(CODEX_DRIVER).pipe(Effect.forkScoped);
+      yield* Deferred.await(running);
+      yield* Fiber.interrupt(first);
+      const second = yield* updater.updateProvider(CODEX_DRIVER).pipe(Effect.exit);
+      assert.strictEqual(Exit.isFailure(second), true);
+      if (Exit.isFailure(second)) {
+        const error = Cause.squash(second.cause);
+        assert.isTrue(isServerProviderUpdateError(error));
+        if (isServerProviderUpdateError(error)) {
+          assert.strictEqual(error.reason, "An update is already running for this provider.");
         }
-      }).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            NonWindowsPlatform,
-            latestVersionHttpClient("0.0.0"),
-            mockSpawnerLayer(() => ({ stdout: "updated" })),
-          ),
+      }
+      yield* Deferred.succeed(release, undefined);
+      yield* Deferred.await(completed);
+      assert.strictEqual((yield* registry.getProviders)[0]?.updateState?.status, "succeeded");
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NonWindowsPlatform,
+          latestVersionHttpClient("0.0.0"),
+          mockSpawnerLayer(() => ({ stdout: "updated" })),
         ),
       ),
+    ),
   );
 
   it.effect("resolves npm to a .cmd shim and routes through the shell on win32", () => {

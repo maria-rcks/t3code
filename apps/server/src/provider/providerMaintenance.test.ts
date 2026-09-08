@@ -277,6 +277,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
               "@example/package-tool@latest",
             ],
             lockKey: `npm-global:${normalizeCommandPath(tempDir)}`,
+            env: { PATH: "" },
           },
         });
       }),
@@ -310,6 +311,33 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
       ),
     ).toBeNull();
   });
+
+  it.effect.skipIf(!symlinksSupported)(
+    "uses npm for a native-looking alias into an npm install",
+    () =>
+      Effect.gen(function* () {
+        const tempDir = yield* makeTempDir("t3-native-alias-npm");
+        const installed = linkIntoPackage(tempDir, "native-package-tool", [
+          "lib",
+          "node_modules",
+          "@example",
+          "native-package-tool",
+        ]);
+        const alias = NodePath.join(tempDir, ".local", "bin", "native-package-tool");
+        NodeFS.mkdirSync(NodePath.dirname(alias), { recursive: true });
+        NodeFS.symlinkSync(installed, alias);
+
+        const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
+          nativePackageToolUpdate,
+          { binaryPath: alias, env: { PATH: "" } },
+        ).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, noSpawn));
+
+        expect(capabilities.update).toMatchObject({
+          executable: "npm",
+          lockKey: `npm-global:${normalizeCommandPath(tempDir)}`,
+        });
+      }),
+  );
 
   // The Codex Windows installer exposes `%LOCALAPPDATA%\\Programs\\OpenAI\\Codex\\bin`
   // as a junction into `%CODEX_HOME%\\packages\\standalone\\current\\bin`. Node's
@@ -415,6 +443,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
         expect(capabilities.update).toMatchObject({
           command: "pnpm add -g @example/package-tool@latest",
           lockKey: "pnpm-global",
+          env: { PATH: "" },
         });
       }),
   );
@@ -441,6 +470,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
         expect(capabilities.update).toMatchObject({
           command: "bun i -g @example/package-tool@latest",
           lockKey: "bun-global",
+          env: { PATH: bunBinDir },
         });
       }),
   );
@@ -471,6 +501,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
           executable: nativePath,
           args: ["update"],
           lockKey: "nativePackageTool-native",
+          env: { PATH: nativeBinDir },
         },
       });
     }),
@@ -591,10 +622,14 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
 
       const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(resolver, {
         binaryPath: nativePath,
-        env: { PATH: "" },
+        env: { PATH: "", TOOL_HOME: "other-home", HTTPS_PROXY: "http://instance-proxy:8080" },
       }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, noSpawn));
 
-      expect(capabilities.update?.env).toEqual({ TOOL_HOME: tempDir });
+      expect(capabilities.update?.env).toEqual({
+        PATH: "",
+        TOOL_HOME: tempDir,
+        HTTPS_PROXY: "http://instance-proxy:8080",
+      });
     }),
   );
 
@@ -637,7 +672,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
     { directory: "Cellar", name: "package-tool", kind: "formula" },
     { directory: "Cellar", name: "package-tool@latest", kind: "formula" },
   ] as const)(
-    "upgrades the owning Homebrew $kind $name through an executable alias",
+    "upgrades the owning Homebrew $kind $name through a native-looking alias",
     (fixture) =>
       Effect.gen(function* () {
         const tempDir = yield* makeTempDir("t3-homebrew-capabilities");
@@ -652,13 +687,20 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
           "package-tool-0.148.0",
         );
         writeExecutable(ownedBinary);
-        const link = NodePath.join(tempDir, "bin", "custom-package-tool");
+        const link = NodePath.join(tempDir, ".local", "bin", "native-package-tool");
         NodeFS.mkdirSync(NodePath.dirname(link), { recursive: true });
         NodeFS.symlinkSync(ownedBinary, link);
         const spawned: Array<ReadonlyArray<string>> = [];
 
         const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
-          packageToolUpdate,
+          makePackageManagedProviderMaintenanceResolver({
+            provider: driver("packageTool"),
+            npmPackageName: "@example/package-tool",
+            nativeUpdate: {
+              args: ["update"],
+              isCommandPath: isNativeTestCommandPath("/.local/bin/native-package-tool"),
+            },
+          }),
           {
             binaryPath: link,
             env: { PATH: brewBinDir },
@@ -699,6 +741,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
                 ? ["upgrade", "--cask", fixture.name]
                 : ["upgrade", fixture.name],
             lockKey: "homebrew",
+            env: { PATH: brewBinDir },
           },
         });
       }),

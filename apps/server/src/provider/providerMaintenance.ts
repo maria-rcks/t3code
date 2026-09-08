@@ -365,7 +365,8 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
   const packageName = definition.npmPackageName;
 
   const nativeUpdate = definition.nativeUpdate;
-  if (nativeUpdate && commandPaths.some((commandPath) => nativeUpdate.isCommandPath(commandPath))) {
+  // A familiar launcher path can be a symlink into a package manager's install.
+  if (nativeUpdate && nativeUpdate.isCommandPath(context.realCommandPath)) {
     return makeProviderMaintenanceCapabilities({
       provider: definition.provider,
       packageName,
@@ -373,7 +374,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
       updateArgs: nativeUpdate.args,
       updateLockKey: `${definition.provider}-native`,
       platform: context.platform,
-      ...(nativeUpdate.env ? { env: nativeUpdate.env } : {}),
+      env: { ...context.env, ...nativeUpdate.env },
     });
   }
   if (commandPaths.some(isVitePlusGlobalCommandPath)) {
@@ -383,6 +384,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
       updateExecutable: "vp",
       updateArgs: ["i", "-g", packageName],
       updateLockKey: "vite-plus-global",
+      env: context.env,
     });
   }
   if (commandPaths.some(isBunGlobalCommandPath)) {
@@ -392,6 +394,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
       updateExecutable: "bun",
       updateArgs: ["i", "-g", `${packageName}@latest`],
       updateLockKey: "bun-global",
+      env: context.env,
     });
   }
   if (commandPaths.some(isPnpmGlobalCommandPath)) {
@@ -401,6 +404,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
       updateExecutable: "pnpm",
       updateArgs: ["add", "-g", `${packageName}@latest`],
       updateLockKey: "pnpm-global",
+      env: context.env,
     });
   }
 
@@ -427,6 +431,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
         `${packageName}@latest`,
       ],
       updateLockKey: `npm-global:${normalizeCommandPath(npmPrefix)}`,
+      env: context.env,
     });
   }
 
@@ -466,6 +471,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
       updateExecutable: brewPath,
       updateArgs: args,
       updateLockKey: "homebrew",
+      env: context.env,
       updateCommand: ["brew", ...args].join(" "),
       latestVersion: info ? parseHomebrewLatestVersion(info, homebrew) : null,
     });

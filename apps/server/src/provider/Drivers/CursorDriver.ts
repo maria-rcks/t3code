@@ -70,6 +70,7 @@ const UPDATE: ProviderMaintenanceCapabilitiesResolver = {
             updateArgs: ["update"],
             updateLockKey: "cursor-agent",
             platform: context.platform,
+            env: context.env,
           })
         : makeManualOnlyProviderMaintenanceCapabilities({
             provider: DRIVER_KIND,

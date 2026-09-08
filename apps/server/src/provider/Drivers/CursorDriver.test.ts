@@ -55,7 +55,7 @@ it.layer(testLayer)("CursorDriver", (it) => {
           instanceId: ProviderInstanceId.make("cursor-copy-command"),
           displayName: "Cursor test",
           enabled: false,
-          environment: [],
+          environment: [{ name: "HOME", value: tempDir, sensitive: false }],
           config: { ...CursorDriver.defaultConfig(), binaryPath },
         });
 
@@ -64,6 +64,7 @@ it.layer(testLayer)("CursorDriver", (it) => {
           command: `'${binaryPath}' update`,
           executable: binaryPath,
           args: ["update"],
+          env: expect.objectContaining({ HOME: tempDir }),
         });
         expect((yield* instance.snapshot.refresh).status).toBe("disabled");
       }).pipe(

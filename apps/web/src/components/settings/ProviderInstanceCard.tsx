@@ -438,6 +438,7 @@ export function ProviderInstanceCard({
   const versionLabel = getProviderVersionLabel(liveProvider?.version);
   const versionAdvisory = getProviderVersionAdvisoryPresentation(liveProvider?.versionAdvisory);
   const updateCommand = versionAdvisory?.updateCommand ?? null;
+  const updateState = liveProvider?.updateState;
   const FallbackIconComponent = driverOption?.icon;
   const displayName =
     instance.displayName?.trim() || driverOption?.label || String(instance.driver);
@@ -836,6 +837,24 @@ export function ProviderInstanceCard({
           }
         />
       </SettingsSection>
+
+      {updateState?.status === "failed" || updateState?.status === "unchanged" ? (
+        <SettingsSection
+          title={updateState.status === "failed" ? "Update failed" : "Update not verified"}
+        >
+          <div role="status" className="grid gap-2 px-3 py-3 text-xs sm:px-4">
+            <p className="text-warning">{updateState.message}</p>
+            {updateState.output ? (
+              <details className="min-w-0 text-muted-foreground">
+                <summary className="cursor-pointer">View update output</summary>
+                <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/50 p-3 text-[11px]">
+                  {updateState.output}
+                </pre>
+              </details>
+            ) : null}
+          </div>
+        </SettingsSection>
+      ) : null}
 
       {setup ? (
         <SettingsSection title="Setup">
