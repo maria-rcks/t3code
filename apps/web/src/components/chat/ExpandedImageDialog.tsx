@@ -166,13 +166,13 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
       {preview.images.length > 1 && (
         <Button
           type="button"
-          size="icon"
+          size="icon-xl"
           variant="overlay"
           className="absolute left-2 top-1/2 z-20 -translate-y-1/2 sm:left-6"
           aria-label="Previous image"
           onClick={() => navigateImage(-1)}
         >
-          <ChevronLeftIcon className="size-5" />
+          <ChevronLeftIcon className="size-7" />
         </Button>
       )}
       <MediaActions source={actionsSource}>
@@ -252,13 +252,13 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
       {preview.images.length > 1 && (
         <Button
           type="button"
-          size="icon"
+          size="icon-xl"
           variant="overlay"
           className="absolute right-2 top-1/2 z-20 -translate-y-1/2 sm:right-6"
           aria-label="Next image"
           onClick={() => navigateImage(1)}
         >
-          <ChevronRightIcon className="size-5" />
+          <ChevronRightIcon className="size-7" />
         </Button>
       )}
     </div>,
