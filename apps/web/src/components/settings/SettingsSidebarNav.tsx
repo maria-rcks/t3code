@@ -183,12 +183,8 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
     return observeSettingsSectionVisibility({
       container,
       targetIds: observedVisibilityScope.pageSections.map((section) => section.targetId),
-      onChange(targetIds, activeTargetId) {
-        setSectionVisibility({
-          scope: observedVisibilityScope,
-          targetIds: new Set(targetIds),
-          activeTargetId,
-        });
+      onChange(targetIds) {
+        setSectionVisibility({ scope: observedVisibilityScope, targetIds: new Set(targetIds) });
       },
     });
   }, [observedVisibilityScope]);
@@ -443,9 +439,6 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                                 className={cn(
                                   "w-full text-sidebar-muted-foreground/65",
                                   visiblePageSectionIds.has(section.targetId) &&
-                                    "text-sidebar-foreground/65",
-                                  visiblePageSectionIds.has(section.targetId) &&
-                                    sectionVisibility?.activeTargetId === section.targetId &&
                                     "font-medium text-sidebar-foreground",
                                 )}
                                 onClick={() => handlePageSectionClick(item.to, section.targetId)}
