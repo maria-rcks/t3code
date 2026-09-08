@@ -7,7 +7,10 @@ import {
   useUpdatePrimarySettings,
 } from "../../hooks/useSettings";
 import { compressImageForStash, MAX_COMPRESSIBLE_SOURCE_BYTES } from "../../lib/imageCompression";
-import { TimelineBackgroundImage } from "../chat/ChatTimelineBackground";
+import {
+  TimelineBackgroundImage,
+  CHAT_BACKGROUND_TEXT_SHADOW_CLASSES,
+} from "../chat/ChatTimelineBackground";
 import ChatMarkdown from "../ChatMarkdown";
 import {
   AssistantMessageSurface,
@@ -210,7 +213,7 @@ function TimelineBackgroundEditor() {
           <div
             className={cn(
               "mx-auto max-w-xl space-y-5 text-sm leading-relaxed",
-              image && "chat-background-text-shadow",
+              image && CHAT_BACKGROUND_TEXT_SHADOW_CLASSES,
             )}
           >
             <div className="flex justify-end">

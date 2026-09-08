@@ -6,7 +6,10 @@ import {
   isUsageLimitsCommand,
 } from "@t3tools/shared/usageLimits";
 import { feedbackBannerItem } from "./chat/ComposerFeedback";
-import { ChatTimelineBackground } from "./chat/ChatTimelineBackground";
+import {
+  ChatTimelineBackground,
+  CHAT_BACKGROUND_TEXT_SHADOW_CLASSES,
+} from "./chat/ChatTimelineBackground";
 import { usageLimitsBannerItem } from "./chat/ComposerUsageLimits";
 import { derivePendingRequests } from "@t3tools/client-runtime/pending-requests";
 import {
@@ -7864,8 +7867,8 @@ export default function ChatView(props: ChatViewProps) {
             <div
               className={cn(
                 "relative isolate flex min-h-0 flex-1 flex-col",
-                hasTimelineBackground &&
-                  "chat-background-text-shadow -mt-[var(--workspace-topbar-height)]",
+                hasTimelineBackground && "-mt-[var(--workspace-topbar-height)]",
+                hasTimelineBackground && CHAT_BACKGROUND_TEXT_SHADOW_CLASSES,
               )}
             >
               {/* Messages — LegendList handles virtualization and scrolling internally */}

@@ -1,6 +1,9 @@
 import { cn } from "../../lib/utils";
 import { useClientSettings } from "../../hooks/useSettings";
 
+export const CHAT_BACKGROUND_TEXT_SHADOW_CLASSES =
+  "[text-shadow:0_1px_3px_var(--background),0_0_1px_var(--background)] [&_.live-tool-shine]:[text-shadow:none] [&_.live-tool-shine]:drop-shadow-[0_1px_2px_var(--background)]";
+
 export function TimelineBackgroundImage({
   image,
   opacity,
