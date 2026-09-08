@@ -231,7 +231,6 @@ export const ClientSettingsSchema = Schema.Struct({
   timelineBackgroundBlur: TimelineBackgroundBlur.pipe(
     Schema.withDecodingDefault(Effect.succeed(0)),
   ),
-  messageGlassEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Panel motion defaults to zero because width and height transitions cause
   // layout work on every frame, which is noticeable on lower-power clients.
   panelAnimationDurationMs: PanelAnimationDurationMs.pipe(
@@ -1240,7 +1239,6 @@ export const ClientSettingsPatch = Schema.Struct({
   timelineBackgroundImage: Schema.optionalKey(TimelineBackgroundImage),
   timelineBackgroundOpacity: Schema.optionalKey(TimelineBackgroundOpacity),
   timelineBackgroundBlur: Schema.optionalKey(TimelineBackgroundBlur),
-  messageGlassEnabled: Schema.optionalKey(Schema.Boolean),
   panelAnimationDurationMs: Schema.optionalKey(PanelAnimationDurationMs),
   browserDefaultViewport: Schema.optionalKey(PreviewViewportSetting),
   browserDefaultZoomFactor: Schema.optionalKey(PreviewZoomFactor),
