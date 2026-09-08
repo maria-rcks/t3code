@@ -30,6 +30,7 @@ export function TimelineBackgroundSettings() {
     <SettingsSection id="timeline-background" title="Chat background">
       <SettingsRow
         title="Background image"
+        description="Personalize your chat background with an image, opacity, and blur."
         control={
           <Popover open={open} onOpenChange={setOpen}>
             <div className="flex items-center gap-3">
