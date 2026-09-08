@@ -44,6 +44,10 @@ export interface ServerUpdateTarget {
   readonly continueThreadsAfterServerUpdate?: boolean;
 }
 
+type UpdateButtonProps = Pick<ComponentProps<typeof Button>, "variant" | "size"> & {
+  readonly label?: string;
+};
+
 function useServerUpdate() {
   const updateServer = useAtomCommand(serverEnvironment.updateServer, { reportFailure: false });
   return async (target: ServerUpdateTarget, failureTitle = "Server update failed") => {
@@ -62,12 +66,7 @@ function useServerUpdate() {
       });
       if (result._tag === "Failure") {
         if (isAtomCommandInterrupted(result)) return;
-        toastManager.add({
-          type: "error",
-          title: failureTitle,
-          description: updateFailureMessage(squashAtomCommandFailure(result)),
-        });
-        return;
+        throw squashAtomCommandFailure(result);
       }
       toastManager.add({
         type: "success",
@@ -95,11 +94,8 @@ export function ServerUpdatesAction({
   label = "Update all",
   variant = "outline",
   size = "xs",
-}: {
+}: UpdateButtonProps & {
   readonly targets: ReadonlyArray<ServerUpdateTarget>;
-  readonly label?: string;
-  readonly variant?: ComponentProps<typeof Button>["variant"];
-  readonly size?: ComponentProps<typeof Button>["size"];
 }) {
   const update = useServerUpdate();
   const pending = useRef(false);
@@ -195,20 +191,7 @@ export function ServerUpdateAction({
   label = "Update",
   variant = "outline",
   size = "xs",
-}: {
-  readonly environmentId: EnvironmentId;
-  readonly serverLabel: string;
-  readonly selfUpdate: ServerSelfUpdateCapability | null;
-  /** The desktop app supervising this server accepts remote update
-      requests (capabilities.desktopAppUpdate). */
-  readonly desktopAppUpdate?: boolean;
-  /** The server can durably continue running provider turns after updating. */
-  readonly threadContinuation?: boolean;
-  readonly targetVersion: string;
-  readonly label?: string;
-  readonly variant?: ComponentProps<typeof Button>["variant"];
-  readonly size?: ComponentProps<typeof Button>["size"];
-}) {
+}: Omit<ServerUpdateTarget, "continueThreadsAfterServerUpdate"> & UpdateButtonProps) {
   const isDesktopAppUpdate = selfUpdate === "desktop-managed";
   const continueThreadsAfterServerUpdate = useEnvironmentSettings(
     environmentId,

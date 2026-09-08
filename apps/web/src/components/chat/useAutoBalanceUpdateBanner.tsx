@@ -77,27 +77,21 @@ export function useAutoBalanceUpdateBanner(
   });
   if (machines.length === 0) return null;
 
-  const running = machines.filter((machine) => machine.state.status === "running");
-  const failed = machines.filter((machine) => machine.state.status === "failed");
-  const manual = machines.filter((machine) => !machine.remoteUpdate);
+  const running = machines.filter((machine) => machine.state.status === "running").length;
+  const failed = machines.filter((machine) => machine.state.status === "failed").length;
+  const manual = machines.filter((machine) => !machine.remoteUpdate).length;
   const targets = machines.filter(
     (machine) => machine.connected && machine.remoteUpdate && machine.state.status !== "running",
   );
-  const title =
-    running.length > 0
-      ? `Updating ${running.length} ${running.length === 1 ? "machine" : "machines"}`
-      : failed.length > 0
-        ? `Could not update ${failed.length} ${failed.length === 1 ? "machine" : "machines"}`
-        : `Update available for ${machines.length} ${machines.length === 1 ? "machine" : "machines"}`;
+  const count = running || failed || machines.length;
+  const status = running ? "running" : failed ? "failed" : "idle";
+  const prefix = running ? "Updating" : failed ? "Could not update" : "Update available for";
+  const title = `${prefix} ${count} ${count === 1 ? "machine" : "machines"}`;
   return {
     id: `auto-balance-server-updates-${dismissedNotices.size}`,
-    variant: failed.length > 0 ? "error" : "default",
-    priority: running.length > 0 ? "urgent" : "notice",
-    icon: (
-      <ComposerServerUpdateIcon
-        status={running.length > 0 ? "running" : failed.length > 0 ? "failed" : "idle"}
-      />
-    ),
+    variant: failed ? "error" : "default",
+    priority: running ? "urgent" : "notice",
+    icon: <ComposerServerUpdateIcon status={status} />,
     title: (
       <Popover>
         <PopoverTrigger
@@ -132,16 +126,14 @@ export function useAutoBalanceUpdateBanner(
       </Popover>
     ),
     description:
-      manual.length > 0
-        ? `${manual.length} ${manual.length === 1 ? "needs" : "need"} a manual update`
-        : undefined,
+      manual > 0 ? `${manual} ${manual === 1 ? "needs" : "need"} a manual update` : undefined,
     actions:
-      running.length === 0 && targets.length > 0 ? (
+      running === 0 && targets.length > 0 ? (
         <ServerUpdatesAction
           targets={targets}
           variant="ghost"
           label={
-            failed.length > 0
+            failed > 0
               ? "Retry"
               : targets.length === machines.length
                 ? "Update all"
@@ -149,23 +141,19 @@ export function useAutoBalanceUpdateBanner(
           }
         />
       ) : undefined,
-    ...(running.length > 0
+    dismissLabel: "Dismiss update notice",
+    ...(running
       ? {}
       : {
-          dismissLabel: "Dismiss update notice",
           onDismiss: () => {
-            for (const machine of machines) {
-              dismissServerUpdateFailure(machine.state);
-              dismissVersionMismatch(machine.dismissKey);
+            const next = new Set(dismissedNotices);
+            for (const { state, dismissKey } of machines) {
+              dismissServerUpdateFailure(state);
+              dismissVersionMismatch(dismissKey);
+              if (dismissKey) next.add(dismissKey);
+              if (state.status === "failed") next.add(state);
             }
-            setDismissedNotices((current) => {
-              const next = new Set(current);
-              for (const machine of machines) {
-                if (machine.dismissKey) next.add(machine.dismissKey);
-                if (machine.state.status === "failed") next.add(machine.state);
-              }
-              return next;
-            });
+            setDismissedNotices(next);
           },
         }),
   };
