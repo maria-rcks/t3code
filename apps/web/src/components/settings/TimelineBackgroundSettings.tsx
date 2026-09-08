@@ -175,6 +175,7 @@ function TimelineBackgroundEditor() {
         );
         if (!file) return;
         event.preventDefault();
+        if (busy) return;
         void applyImage(file);
       }}
     >
