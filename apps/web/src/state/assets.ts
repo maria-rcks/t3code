@@ -7,7 +7,6 @@ import { Atom } from "effect/unstable/reactivity";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { projectFaviconCache } from "../assets/projectFaviconCache";
 import { isElectron } from "../env";
-import { appAtomRegistry } from "../rpc/atomRegistry";
 import { primaryEnvironmentIdAtom } from "./primaryEnvironment";
 import { environmentSession } from "./session";
 
@@ -23,10 +22,10 @@ const localMediaEnvironment = Atom.make((get) => {
     : { environmentId, httpBaseUrl: connection.value.httpBaseUrl };
 });
 
-export const assetEnvironment = createAssetEnvironmentAtoms(connectionAtomRuntime, {
-  localMediaEnvironment: () => appAtomRegistry.get(localMediaEnvironment),
-  localMediaRefreshTrigger: localMediaEnvironment,
-});
+export const assetEnvironment = createAssetEnvironmentAtoms(
+  connectionAtomRuntime,
+  localMediaEnvironment,
+);
 
 export const projectFaviconUrlAtom = createProjectFaviconUrlAtomFamily({
   imageCache: projectFaviconCache,

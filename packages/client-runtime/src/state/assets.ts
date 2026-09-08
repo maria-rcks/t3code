@@ -1,8 +1,5 @@
 import {
   type AssetCreateUrlInput,
-  type AssetWorkspaceAssetNotFoundError,
-  type AssetWorkspaceAssetInspectionError,
-  type AssetWorkspaceContextNotFoundError,
   type AssetCreateUrlResult,
   type AssetImageDimensions,
   AssetResource,
@@ -17,8 +14,9 @@ import {
 } from "@t3tools/shared/projectFavicon";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
 
 import * as EnvironmentRegistry from "../connection/registry.ts";
 import * as EnvironmentSupervisor from "../connection/supervisor.ts";
@@ -100,48 +98,40 @@ export function assetUrlStateFromResult(
 
 export function createAssetEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry.EnvironmentRegistry | R, E>,
-  options?: {
-    readonly localMediaEnvironment?: () => {
-      readonly environmentId: EnvironmentId;
-      readonly httpBaseUrl: string;
-    } | null;
-    readonly localMediaRefreshTrigger?: Atom.Atom<unknown>;
-  },
+  localMediaEnvironment?: Atom.Atom<{
+    readonly environmentId: EnvironmentId;
+    readonly httpBaseUrl: string;
+  } | null>,
 ) {
   const execute = Effect.fn("assets.createUrl")(function* (input: AssetCreateUrlInput) {
-    const localFallback = Effect.fn(function* (
-      error:
-        | AssetWorkspaceAssetNotFoundError
-        | AssetWorkspaceAssetInspectionError
-        | AssetWorkspaceContextNotFoundError,
-    ) {
-      const resource = input.resource;
-      if (resource._tag !== "media-file") return yield* error;
-      const basename = resource.path.split(/[\\/]/).at(-1) ?? "";
-      const extension = basename.slice(basename.lastIndexOf("."));
-      if (
-        mediaMimeTypeFromExtension(extension) === null ||
-        !(resource.path.startsWith("/") || isWindowsAbsolutePath(resource.path))
-      )
-        return yield* error;
-      const local = options?.localMediaEnvironment?.();
-      const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
-      if (!local || local.environmentId === supervisor.target.environmentId) return yield* error;
-      const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-      const result = yield* registry.run(
-        local.environmentId,
-        request(WS_METHODS.assetsCreateUrl, input),
-      );
-      // Callers resolve against the thread's server, so preserve the local server's origin.
-      return { ...result, relativeUrl: new URL(result.relativeUrl, local.httpBaseUrl).href };
-    });
-    return yield* request(WS_METHODS.assetsCreateUrl, input).pipe(
-      Effect.catchTags({
-        AssetWorkspaceAssetNotFoundError: localFallback,
-        AssetWorkspaceAssetInspectionError: localFallback,
-        AssetWorkspaceContextNotFoundError: localFallback,
-      }),
+    const result = yield* request(WS_METHODS.assetsCreateUrl, input).pipe(Effect.result);
+    if (Result.isSuccess(result)) return result.success;
+    const error = result.failure;
+    const resource = input.resource;
+    const local = localMediaEnvironment
+      ? (yield* AtomRegistry.AtomRegistry).get(localMediaEnvironment)
+      : null;
+    const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
+    if (
+      !local ||
+      local.environmentId === supervisor.target.environmentId ||
+      !(
+        error._tag === "AssetWorkspaceAssetNotFoundError" ||
+        error._tag === "AssetWorkspaceAssetInspectionError" ||
+        error._tag === "AssetWorkspaceContextNotFoundError"
+      ) ||
+      resource._tag !== "media-file" ||
+      !(resource.path.startsWith("/") || isWindowsAbsolutePath(resource.path)) ||
+      mediaMimeTypeFromExtension(resource.path.slice(resource.path.lastIndexOf("."))) === null
+    )
+      return yield* error;
+    const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+    const asset = yield* registry.run(
+      local.environmentId,
+      request(WS_METHODS.assetsCreateUrl, input),
     );
+    // Callers resolve against the thread's server, so preserve the local server's origin.
+    return { ...asset, relativeUrl: new URL(asset.relativeUrl, local.httpBaseUrl).href };
   });
   const createUrl = createEnvironmentQueryAtomFamily(runtime, {
     label: "environment-data:assets:create-url",
@@ -150,7 +140,7 @@ export function createAssetEnvironmentAtoms<R, E>(
     idleTtlMs: ASSET_URL_IDLE_TTL_MS,
     refreshIntervalMs: ASSET_URL_REFRESH_INTERVAL_MS,
     refreshTrigger: ({ input }) =>
-      input.resource._tag === "media-file" ? options?.localMediaRefreshTrigger : undefined,
+      input.resource._tag === "media-file" ? localMediaEnvironment : undefined,
   });
   const createUrlsFamily = Atom.family((key: string) => {
     const [environmentId, resources] = parseAssetCollectionKey(key);

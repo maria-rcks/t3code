@@ -486,7 +486,7 @@ export function createEnvironmentQueryAtomFamily<R, ER, Input, A, E>(
     Input,
     A,
     E,
-    EnvironmentSupervisor | EnvironmentRegistry | R
+    EnvironmentSupervisor | EnvironmentRegistry | AtomRegistry.AtomRegistry | R
   >,
 ): (target: {
   readonly environmentId: EnvironmentIdType;

@@ -145,10 +145,7 @@ describe("createAssetEnvironmentAtoms", () => {
         );
         const assets = createAssetEnvironmentAtoms(
           Atom.runtime(Layer.succeed(EnvironmentRegistry, environments)),
-          {
-            localMediaEnvironment: () => registry.get(localEnvironment),
-            localMediaRefreshTrigger: localEnvironment,
-          },
+          localEnvironment,
         );
         const query = assets.createUrl({ environmentId: remoteId, input: { resource } });
         const result = AtomRegistry.getResult(registry, query, { suspendOnWaiting: true });
