@@ -809,8 +809,7 @@ export function PullRequestSummaryTab({
               {completedCheckCount > 0 ? (
                 <Button
                   size="xs"
-                  variant="ghost"
-                  className="text-muted-foreground"
+                  variant="ghost-muted"
                   aria-expanded={showCompletedChecks}
                   aria-controls={checksId}
                   onClick={() => setExpandedChecksUrl(showCompletedChecks ? null : detail.url)}
