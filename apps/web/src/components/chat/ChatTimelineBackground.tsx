@@ -23,11 +23,8 @@ export function TimelineBackgroundImage({
         src={image}
         alt=""
         draggable={false}
-        className="absolute size-full max-w-none object-cover"
+        className="absolute inset-0 size-full object-cover"
         style={{
-          inset: -blur * 2,
-          width: `calc(100% + ${blur * 4}px)`,
-          height: `calc(100% + ${blur * 4}px)`,
           opacity: opacity / 100,
           filter: blur > 0 ? `blur(${blur}px)` : undefined,
         }}
