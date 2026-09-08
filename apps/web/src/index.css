@@ -7,6 +7,11 @@
 
 /* On mobile, morph the expanded hero composer into the compact docked
    composer while it moves; the rest of the app remains visually stationary. */
+/* A persistent transition name prevents the composer glass from sampling its backdrop. */
+html[data-mobile-composer-route-transition="true"] [data-mobile-composer-transition] {
+  view-transition-name: t3-mobile-composer;
+}
+
 html[data-mobile-composer-route-transition="true"]::view-transition-old(root),
 html[data-mobile-composer-route-transition="true"]::view-transition-new(root) {
   animation: none;

@@ -31,9 +31,9 @@ export function TimelineBackgroundSettings() {
   const blur = useClientSettings((settings) => settings.timelineBackgroundBlur);
 
   return (
-    <SettingsSection id="timeline-background" title="Chat background">
+    <SettingsSection id="timeline-background" title="Wallpaper">
       <SettingsRow
-        title="Background image"
+        title="Wallpaper"
         description="Personalize your chat background with an image, opacity, and blur."
         control={
           <Popover open={open} onOpenChange={setOpen}>
@@ -178,7 +178,7 @@ function TimelineBackgroundEditor() {
       }}
     >
       <div className="flex items-center gap-2 px-4 py-3">
-        <PopoverTitle className="mr-auto text-sm">Chat background</PopoverTitle>
+        <PopoverTitle className="mr-auto text-sm">Wallpaper</PopoverTitle>
         <Button
           variant="ghost"
           size="xs"
@@ -206,7 +206,7 @@ function TimelineBackgroundEditor() {
       <div className="overflow-hidden rounded-b-lg">
         <div
           className="relative isolate overflow-hidden bg-background p-5 sm:p-6"
-          aria-label="Chat background preview"
+          aria-label="Wallpaper preview"
         >
           <TimelineBackgroundImage image={image} opacity={previewOpacity} blur={previewBlur} />
           <div

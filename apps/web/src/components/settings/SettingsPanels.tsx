@@ -516,7 +516,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.timelineBackgroundImage !== DEFAULT_UNIFIED_SETTINGS.timelineBackgroundImage ||
       settings.timelineBackgroundOpacity !== DEFAULT_UNIFIED_SETTINGS.timelineBackgroundOpacity ||
       settings.timelineBackgroundBlur !== DEFAULT_UNIFIED_SETTINGS.timelineBackgroundBlur
-        ? ["Chat background"]
+        ? ["Wallpaper"]
         : []),
       ...(settings.panelAnimationDurationMs !== DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs
         ? ["Panel animations"]
@@ -1121,8 +1121,6 @@ export function AppearanceSettingsPanel() {
         </div>
       </SettingsSection>
 
-      <TimelineBackgroundSettings />
-
       <SettingsSection id="appearance-interface" title="Interface">
         <SettingsRow
           {...searchableSetting("setting-appearance-contrast")}
@@ -1318,6 +1316,8 @@ export function AppearanceSettingsPanel() {
           }
         />
       </SettingsSection>
+
+      <TimelineBackgroundSettings />
 
       <TypographySection />
     </SettingsPageContainer>

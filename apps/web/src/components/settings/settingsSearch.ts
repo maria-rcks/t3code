@@ -92,9 +92,9 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "timeline-background",
-    title: "Chat background",
+    title: "Wallpaper",
     to: "/settings/appearance",
-    searchTerms: ["timeline wallpaper image url file clipboard paste opacity blur"],
+    searchTerms: ["chat background timeline image url file clipboard paste opacity blur"],
   },
   {
     // Prefixed because the slider control already owns the `appearance-contrast` id.
