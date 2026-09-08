@@ -121,6 +121,7 @@ const SETTINGS_PAGE_SECTIONS: Partial<
   "/settings/appearance": [
     { label: "Colors & themes", targetId: "appearance" },
     { label: "Interface", targetId: "appearance-interface" },
+    { label: "Diffs", targetId: "diff-colors" },
     { label: "Motion", targetId: "motion" },
     { label: "Typography", targetId: "typography" },
   ],

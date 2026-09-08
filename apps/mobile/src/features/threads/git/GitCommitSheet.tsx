@@ -1,3 +1,4 @@
+import { useAppearancePreferences } from "../../settings/appearance/AppearancePreferencesProvider";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { useCallback, useState } from "react";
 import { Platform, Pressable, ScrollView, View } from "react-native";
@@ -20,6 +21,7 @@ type GitCommitSheetProps = StaticScreenProps<{
 }>;
 
 export function GitCommitSheet(_props: GitCommitSheetProps) {
+  const { diffColors } = useAppearancePreferences();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { selectedThread } = useThreadSelection();
@@ -130,8 +132,12 @@ export function GitCommitSheet(_props: GitCommitSheetProps) {
                   <Text className="text-foreground flex-1 text-sm font-medium" numberOfLines={1}>
                     {file.path}
                   </Text>
-                  <Text className="text-xs font-t3-bold text-emerald-500">+{file.insertions}</Text>
-                  <Text className="text-xs font-t3-bold text-rose-500">-{file.deletions}</Text>
+                  <Text className="text-xs font-t3-bold" style={{ color: diffColors.addText }}>
+                    +{file.insertions}
+                  </Text>
+                  <Text className="text-xs font-t3-bold" style={{ color: diffColors.deleteText }}>
+                    -{file.deletions}
+                  </Text>
                 </View>
               ))}
               {selectedFiles.length > selectedFilePreview.length ? (
@@ -181,10 +187,16 @@ export function GitCommitSheet(_props: GitCommitSheetProps) {
                         ) : null}
                       </View>
                       <View className="items-end gap-1">
-                        <Text className="text-xs font-t3-bold text-emerald-500">
+                        <Text
+                          className="text-xs font-t3-bold"
+                          style={{ color: diffColors.addText }}
+                        >
                           +{file.insertions}
                         </Text>
-                        <Text className="text-xs font-t3-bold text-rose-500">
+                        <Text
+                          className="text-xs font-t3-bold"
+                          style={{ color: diffColors.deleteText }}
+                        >
                           -{file.deletions}
                         </Text>
                       </View>

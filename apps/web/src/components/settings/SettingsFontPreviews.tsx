@@ -4,7 +4,12 @@ import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "../Compos
 import { terminalThemeFromApp } from "../ThreadTerminalDrawer";
 import { useTheme } from "../../hooks/useTheme";
 import { DISCONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
-import { resolveDiffThemeName, type DiffThemeName } from "../../lib/diffRendering";
+import {
+  getRenderablePatch,
+  resolveDiffThemeName,
+  type DiffThemeName,
+} from "../../lib/diffRendering";
+import { StyledDiffCodeView } from "../diffs/StyledDiffCodeView";
 import { PREFERRED_HIGHLIGHTER } from "../../lib/syntaxHighlighting";
 import { GhosttyTerminalSurface } from "~/terminal/ghostty/surface";
 
@@ -16,6 +21,36 @@ import { GhosttyTerminalSurface } from "~/terminal/ghostty/surface";
 
 const EMPTY_TERMINAL_CONTEXTS: ReadonlyArray<never> = [];
 const EMPTY_SKILLS: ReadonlyArray<never> = [];
+
+const colorPreviewPatch = getRenderablePatch(
+  "diff --git a/greeting.ts b/greeting.ts\n--- a/greeting.ts\n+++ b/greeting.ts\n@@ -1 +1 @@\n-const hello = 'Hi';\n+const hello = 'Hello';\n",
+  "diff-colors-preview",
+);
+const colorPreviewItems =
+  colorPreviewPatch?.kind === "files"
+    ? colorPreviewPatch.files.map((fileDiff) => ({
+        id: fileDiff.name,
+        type: "diff" as const,
+        fileDiff,
+      }))
+    : [];
+
+/** Use the right panel's renderer so this preview follows every diff color token. */
+export function DiffColorsPreview() {
+  const { resolvedTheme } = useTheme();
+  return (
+    <StyledDiffCodeView
+      aria-label="Diff color preview"
+      className="h-24 w-full overflow-hidden rounded-md border border-border/60"
+      items={colorPreviewItems}
+      options={{
+        diffStyle: "unified",
+        theme: resolveDiffThemeName(resolvedTheme),
+        preferredHighlighter: PREFERRED_HIGHLIGHTER,
+      }}
+    />
+  );
+}
 
 // Serialized the way the composer stores inline tokens: the $skill and the
 // markdown-style file links render as chips, so the preview shows prompt

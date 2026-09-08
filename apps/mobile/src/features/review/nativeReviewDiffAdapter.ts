@@ -1,3 +1,5 @@
+import type { DiffColorScheme } from "@t3tools/contracts/settings";
+import { getDiffColors } from "../../lib/diffColors";
 import type { NativeReviewDiffRow, NativeReviewDiffTheme } from "../diffs/nativeReviewDiffSurface";
 import type {
   NativeReviewDiffFile,
@@ -143,6 +145,7 @@ export function createNativeReviewDiffTheme(
   scheme: TerminalAppearanceScheme,
   themeId: MobileThemeId,
   appTheme: MobileThemeVariables,
+  diffColorScheme: DiffColorScheme = "red-green",
 ): NativeReviewDiffTheme {
   const terminalTheme = getMobileTerminalTheme(themeId, scheme);
   const [, terminalRed] = terminalTheme.palette;
@@ -169,6 +172,7 @@ export function createNativeReviewDiffTheme(
       deleteBar: terminalRed ?? "#ff2e3f",
       addText: "#5ECC71",
       deleteText: "#FF6762",
+      ...(diffColorScheme === "blue-orange" ? getDiffColors(diffColorScheme, scheme) : {}),
     };
   }
 
@@ -188,6 +192,7 @@ export function createNativeReviewDiffTheme(
     deleteBar: terminalRed ?? "#ff2e3f",
     addText: "#199F43",
     deleteText: "#D52C36",
+    ...(diffColorScheme === "blue-orange" ? getDiffColors(diffColorScheme, scheme) : {}),
   };
 }
 
