@@ -1,5 +1,5 @@
 import { type CSSProperties, useEffect, useRef, useState } from "react";
-import { ArrowRightIcon, ImagePlusIcon, LinkIcon } from "lucide-react";
+import { ArrowRightIcon, ImageIcon, ImagePlusIcon, LinkIcon, XIcon } from "lucide-react";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import {
   persistClientSettingsUpdate,
@@ -17,9 +17,51 @@ import {
 } from "../chat/MessagesTimeline";
 import { Button } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
-import { SettingsSection } from "./settingsLayout";
+import { Popover, PopoverClose, PopoverPopup, PopoverTitle, PopoverTrigger } from "../ui/popover";
+import { SettingsRow, SettingsSection } from "./settingsLayout";
 
 export function TimelineBackgroundSettings() {
+  const [open, setOpen] = useState(false);
+  const image = useClientSettings((settings) => settings.timelineBackgroundImage);
+  const opacity = useClientSettings((settings) => settings.timelineBackgroundOpacity);
+  const blur = useClientSettings((settings) => settings.timelineBackgroundBlur);
+
+  return (
+    <SettingsSection id="timeline-background" title="Chat background">
+      <SettingsRow
+        title="Background image"
+        control={
+          <Popover open={open} onOpenChange={setOpen}>
+            <div className="flex items-center gap-3">
+              <div
+                className="relative isolate flex h-10 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background"
+                aria-hidden="true"
+              >
+                {image ? (
+                  <TimelineBackgroundImage image={image} opacity={opacity} blur={blur} />
+                ) : (
+                  <ImageIcon className="size-4 text-muted-foreground" />
+                )}
+              </div>
+              <PopoverTrigger render={<Button variant="outline" size="sm" />}>
+                Customize
+              </PopoverTrigger>
+            </div>
+            <PopoverPopup
+              align="end"
+              className="w-[min(30rem,calc(100vw-2rem))]"
+              viewportClassName="p-0 [--viewport-inline-padding:0px]"
+            >
+              {open && <TimelineBackgroundEditor />}
+            </PopoverPopup>
+          </Popover>
+        }
+      />
+    </SettingsSection>
+  );
+}
+
+function TimelineBackgroundEditor() {
   const image = useClientSettings((settings) => settings.timelineBackgroundImage);
   const opacity = useClientSettings((settings) => settings.timelineBackgroundOpacity);
   const blur = useClientSettings((settings) => settings.timelineBackgroundBlur);
@@ -119,11 +161,18 @@ export function TimelineBackgroundSettings() {
   }
 
   return (
-    <SettingsSection
-      id="timeline-background"
-      title="Chat background"
-      variant="plain"
-      headerAction={
+    <div
+      onPaste={(event) => {
+        const file = Array.from(event.clipboardData.files).find((item) =>
+          item.type.startsWith("image/"),
+        );
+        if (!file) return;
+        event.preventDefault();
+        void applyImage(file);
+      }}
+    >
+      <div className="flex items-center gap-2 px-4 py-3">
+        <PopoverTitle className="mr-auto text-sm">Chat background</PopoverTitle>
         <Button
           variant="ghost"
           size="xs"
@@ -142,17 +191,13 @@ export function TimelineBackgroundSettings() {
         >
           Remove image
         </Button>
-      }
-      onPaste={(event) => {
-        const file = Array.from(event.clipboardData.files).find((item) =>
-          item.type.startsWith("image/"),
-        );
-        if (!file) return;
-        event.preventDefault();
-        void applyImage(file);
-      }}
-    >
-      <div className="overflow-hidden rounded-xl border border-border/60 bg-card/40">
+        <PopoverClose
+          render={<Button variant="ghost" size="icon-xs" aria-label="Close background settings" />}
+        >
+          <XIcon />
+        </PopoverClose>
+      </div>
+      <div className="overflow-hidden rounded-b-lg">
         <div
           className="relative isolate overflow-hidden bg-background p-5 sm:p-6"
           aria-label="Chat background preview"
@@ -305,6 +350,6 @@ export function TimelineBackgroundSettings() {
           </div>
         </div>
       </div>
-    </SettingsSection>
+    </div>
   );
 }
