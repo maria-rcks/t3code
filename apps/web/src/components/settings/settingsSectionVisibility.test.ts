@@ -9,7 +9,7 @@ import {
 type VisibilityEntry = Pick<
   IntersectionObserverEntry,
   "intersectionRatio" | "isIntersecting" | "target"
->;
+> & { readonly active?: boolean };
 
 function createHarness(
   targetIds: ReadonlyArray<string>,
@@ -75,11 +75,34 @@ function visibleEntry(
 }
 
 describe("settings section visibility", () => {
+  it("moves the centered highlight while keeping other visible sections", () => {
+    const harness = createHarness(["one", "two"]);
+    const onChange = vi.fn();
+    observeSettingsSectionVisibility({
+      container: {} as Element,
+      targetIds: ["one", "two"],
+      onChange,
+      environment: harness.environment,
+    });
+    const one = harness.targets.get("one")!;
+    const two = harness.targets.get("two")!;
+    harness.intersect([{ ...visibleEntry(one), active: true }, visibleEntry(two)]);
+    expect(onChange).toHaveBeenLastCalledWith(["one", "two"], "one");
+    harness.intersect([visibleEntry(one), { ...visibleEntry(two), active: true }]);
+    expect(onChange).toHaveBeenLastCalledWith(["one", "two"], "two");
+    harness.intersect([visibleEntry(one), { ...visibleEntry(two), active: true }]);
+    expect(onChange).toHaveBeenCalledTimes(3);
+    harness.targets.delete("two");
+    harness.mutate();
+    expect(onChange).toHaveBeenLastCalledWith(["one"], null);
+  });
+
   it("does not reuse visibility when returning to the same sectioned route", () => {
     const firstGeneralVisit = { path: "/settings/general" };
     const firstVisibility = {
       scope: firstGeneralVisit,
       targetIds: new Set(["text-generation"]),
+      activeTargetId: "text-generation",
     };
 
     expect(
@@ -240,6 +263,6 @@ describe("settings section visibility", () => {
     expect(harness.disconnectIntersections).toHaveBeenCalledOnce();
     expect(harness.disconnectMutations).toHaveBeenCalledOnce();
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenLastCalledWith([]);
+    expect(onChange).toHaveBeenLastCalledWith([], null);
   });
 });

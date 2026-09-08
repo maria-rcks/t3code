@@ -1,7 +1,7 @@
 type VisibilityEntry = Pick<
   IntersectionObserverEntry,
   "intersectionRatio" | "isIntersecting" | "target"
->;
+> & { readonly active?: boolean };
 
 export type SettingsSectionVisibilityScope = {
   readonly path: string;
@@ -10,6 +10,7 @@ export type SettingsSectionVisibilityScope = {
 export type SettingsSectionVisibilityState = {
   readonly scope: SettingsSectionVisibilityScope;
   readonly targetIds: ReadonlySet<string>;
+  readonly activeTargetId: string | null;
 };
 
 const EMPTY_VISIBLE_SETTINGS_SECTION_IDS: ReadonlySet<string> = new Set();
@@ -69,9 +70,12 @@ function createBrowserEnvironment(): SettingsSectionVisibilityEnvironment {
         const center = (top + bottom) / 2;
         let activeTarget: Element | null = null;
         let nearestDistance = Infinity;
+        const visibleRatios = new Map<Element, number>();
         for (const target of targets) {
           const bounds = target.getBoundingClientRect();
-          if (Math.min(bounds.bottom, bottom) <= Math.max(bounds.top, top)) continue;
+          const overlap = Math.min(bounds.bottom, bottom) - Math.max(bounds.top, top);
+          if (overlap <= 0) continue;
+          visibleRatios.set(target, overlap / bounds.height);
           const distance = Math.max(bounds.top - center, center - bounds.bottom, 0);
           if (distance < nearestDistance) {
             activeTarget = target;
@@ -81,8 +85,9 @@ function createBrowserEnvironment(): SettingsSectionVisibilityEnvironment {
         onEntries(
           [...targets].map((target) => ({
             target,
-            intersectionRatio: target === activeTarget ? 1 : 0,
-            isIntersecting: target === activeTarget,
+            intersectionRatio: visibleRatios.get(target) ?? 0,
+            isIntersecting: visibleRatios.has(target),
+            active: target === activeTarget,
           })),
         );
       };
@@ -128,13 +133,17 @@ export function observeSettingsSectionVisibility({
 }: {
   readonly container: Element;
   readonly targetIds: ReadonlyArray<string>;
-  readonly onChange: (visibleTargetIds: ReadonlyArray<string>) => void;
+  readonly onChange: (
+    visibleTargetIds: ReadonlyArray<string>,
+    activeTargetId: string | null,
+  ) => void;
   readonly environment?: SettingsSectionVisibilityEnvironment;
 }): () => void {
   const orderedTargetIds = [...new Set(targetIds)];
   const targetsById = new Map<string, Element>();
   const targetIdsByElement = new Map<Element, string>();
   const visibleTargetIds = new Set<string>();
+  let activeTargetId: string | null = null;
   let lastEmission: string | null = null;
   let stopped = false;
   let root: Element | null = null;
@@ -143,10 +152,10 @@ export function observeSettingsSectionVisibility({
 
   const emit = () => {
     const visibleInOrder = orderedTargetIds.filter((targetId) => visibleTargetIds.has(targetId));
-    const emissionKey = visibleInOrder.join("\0");
+    const emissionKey = JSON.stringify([visibleInOrder, activeTargetId]);
     if (emissionKey === lastEmission) return;
     lastEmission = emissionKey;
-    onChange(visibleInOrder);
+    onChange(visibleInOrder, activeTargetId);
   };
 
   const handleEntries = (entries: ReadonlyArray<VisibilityEntry>, generation: number) => {
@@ -156,6 +165,13 @@ export function observeSettingsSectionVisibility({
       const targetId = targetIdsByElement.get(entry.target);
       if (!targetId || targetsById.get(targetId) !== entry.target) continue;
       const visible = entry.isIntersecting && entry.intersectionRatio > 0;
+      if (visible && entry.active) {
+        changed = activeTargetId !== targetId || changed;
+        activeTargetId = targetId;
+      } else if (activeTargetId === targetId) {
+        activeTargetId = null;
+        changed = true;
+      }
       if (visible === visibleTargetIds.has(targetId)) continue;
       changed = true;
       if (visible) {
@@ -181,6 +197,7 @@ export function observeSettingsSectionVisibility({
       targetIdsByElement.clear();
       changed = visibleTargetIds.size > 0;
       visibleTargetIds.clear();
+      activeTargetId = null;
 
       if (root) {
         const generation = observerGeneration;
@@ -206,6 +223,10 @@ export function observeSettingsSectionVisibility({
         targetsById.delete(targetId);
         targetIdsByElement.delete(previousTarget);
         changed = visibleTargetIds.delete(targetId) || changed;
+        if (activeTargetId === targetId) {
+          activeTargetId = null;
+          changed = true;
+        }
       }
       if (nextTarget) {
         targetsById.set(targetId, nextTarget);
@@ -229,5 +250,6 @@ export function observeSettingsSectionVisibility({
     targetsById.clear();
     targetIdsByElement.clear();
     visibleTargetIds.clear();
+    activeTargetId = null;
   };
 }
