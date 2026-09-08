@@ -191,6 +191,30 @@ describe("getCachedNativeReviewDiffData", () => {
 });
 
 describe("createNativeReviewDiffTheme", () => {
+  it.each(["light", "dark"] as const)(
+    "changes only diff colors for the blue-orange palette in %s mode",
+    (appearance) => {
+      const variables = appTheme("t3-code", appearance);
+      const baseline = createNativeReviewDiffTheme(appearance, "t3-code", variables, "red-green");
+      const alternate = createNativeReviewDiffTheme(
+        appearance,
+        "t3-code",
+        variables,
+        "blue-orange",
+      );
+
+      expect(alternate).toEqual({
+        ...baseline,
+        addBackground: appearance === "dark" ? "#142a45" : "#e7f0ff",
+        deleteBackground: appearance === "dark" ? "#3e2718" : "#fff0e3",
+        addBar: "#60a5fa",
+        deleteBar: "#fb923c",
+        addText: appearance === "dark" ? "#60a5fa" : "#2563eb",
+        deleteText: appearance === "dark" ? "#fb923c" : "#c2410c",
+      });
+    },
+  );
+
   it("serializes every native color as cross-platform opaque hex", () => {
     for (const themeId of MOBILE_THEME_IDS) {
       for (const appearance of ["light", "dark"] as const) {
