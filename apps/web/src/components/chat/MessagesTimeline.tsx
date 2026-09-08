@@ -30,6 +30,7 @@ import { toolActivityFaviconUrl } from "@t3tools/shared/favicon";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { getProjectFaviconCacheKey } from "@t3tools/shared/projectFavicon";
 import { observeVisibleAnimation } from "../../lib/visibleAnimation";
+import { useClientSettings } from "../../hooks/useSettings";
 import {
   createContext,
   Fragment,
@@ -1302,8 +1303,14 @@ function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
 }
 
 export function UserMessageBubble({ children }: { children: ReactNode }) {
+  const glassEnabled = useClientSettings((settings) => settings.messageGlassEnabled);
   return (
-    <div className="surface-glass relative max-w-[80%] rounded-2xl p-3 text-message-foreground [--surface-glass-color:var(--message-surface)]">
+    <div
+      className={cn(
+        "relative max-w-[80%] rounded-2xl p-3 text-message-foreground [text-shadow:none] [--surface-glass-color:var(--message-surface)]",
+        glassEnabled ? "surface-glass" : "bg-message",
+      )}
+    >
       {children}
     </div>
   );

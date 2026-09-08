@@ -257,6 +257,17 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 }
 
+@utility chat-background-text-shadow {
+  text-shadow:
+    0 1px 3px var(--background),
+    0 0 1px var(--background);
+
+  & .live-tool-shine {
+    text-shadow: none;
+    filter: drop-shadow(0 1px 2px var(--background));
+  }
+}
+
 @utility surface-glass {
   background: color-mix(
     in srgb,

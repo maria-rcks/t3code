@@ -7864,7 +7864,8 @@ export default function ChatView(props: ChatViewProps) {
             <div
               className={cn(
                 "relative isolate flex min-h-0 flex-1 flex-col",
-                hasTimelineBackground && "-mt-[var(--workspace-topbar-height)]",
+                hasTimelineBackground &&
+                  "chat-background-text-shadow -mt-[var(--workspace-topbar-height)]",
               )}
             >
               {/* Messages — LegendList handles virtualization and scrolling internally */}

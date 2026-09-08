@@ -16,6 +16,8 @@ import {
   LiveActivityRow,
 } from "../chat/MessagesTimeline";
 import { Button } from "../ui/button";
+import { Switch } from "../ui/switch";
+import { cn } from "../../lib/utils";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Popover, PopoverClose, PopoverPopup, PopoverTitle, PopoverTrigger } from "../ui/popover";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
@@ -66,6 +68,7 @@ function TimelineBackgroundEditor() {
   const image = useClientSettings((settings) => settings.timelineBackgroundImage);
   const opacity = useClientSettings((settings) => settings.timelineBackgroundOpacity);
   const blur = useClientSettings((settings) => settings.timelineBackgroundBlur);
+  const glassEnabled = useClientSettings((settings) => settings.messageGlassEnabled);
   const updateSettings = useUpdatePrimarySettings();
   const [draft, setDraft] = useState({ image, url: image.startsWith("http") ? image : "" });
   const url = draft.image === image ? draft.url : image.startsWith("http") ? image : "";
@@ -204,7 +207,12 @@ function TimelineBackgroundEditor() {
           aria-label="Chat background preview"
         >
           <TimelineBackgroundImage image={image} opacity={previewOpacity} blur={previewBlur} />
-          <div className="mx-auto max-w-xl space-y-5 text-sm leading-relaxed">
+          <div
+            className={cn(
+              "mx-auto max-w-xl space-y-5 text-sm leading-relaxed",
+              image && "chat-background-text-shadow",
+            )}
+          >
             <div className="flex justify-end">
               <UserMessageBubble>Can you give this page a softer look?</UserMessageBubble>
             </div>
@@ -348,6 +356,17 @@ function TimelineBackgroundEditor() {
                 onBlur={(event) => saveBlur(Number(event.currentTarget.value))}
               />
             </div>
+          </div>
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <label htmlFor="message-glass-enabled" className="text-muted-foreground">
+              Glass message backgrounds
+            </label>
+            <Switch
+              id="message-glass-enabled"
+              size="sm"
+              checked={glassEnabled}
+              onCheckedChange={(messageGlassEnabled) => updateSettings({ messageGlassEnabled })}
+            />
           </div>
         </div>
       </div>

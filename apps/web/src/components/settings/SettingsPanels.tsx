@@ -513,6 +513,9 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Contrast"]
         : []),
       ...(settings.glassOpacity !== DEFAULT_UNIFIED_SETTINGS.glassOpacity ? ["Glass opacity"] : []),
+      ...(settings.messageGlassEnabled !== DEFAULT_UNIFIED_SETTINGS.messageGlassEnabled
+        ? ["Message glass"]
+        : []),
       ...(settings.timelineBackgroundImage !== DEFAULT_UNIFIED_SETTINGS.timelineBackgroundImage ||
       settings.timelineBackgroundOpacity !== DEFAULT_UNIFIED_SETTINGS.timelineBackgroundOpacity ||
       settings.timelineBackgroundBlur !== DEFAULT_UNIFIED_SETTINGS.timelineBackgroundBlur
@@ -613,6 +616,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.timelineBackgroundImage,
       settings.timelineBackgroundOpacity,
       settings.timelineBackgroundBlur,
+      settings.messageGlassEnabled,
       settings.enableAgentBrowserAccess,
       settings.confirmQuit,
       settings.confirmThreadArchive,
@@ -721,6 +725,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       timelineBackgroundImage: DEFAULT_UNIFIED_SETTINGS.timelineBackgroundImage,
       timelineBackgroundOpacity: DEFAULT_UNIFIED_SETTINGS.timelineBackgroundOpacity,
       timelineBackgroundBlur: DEFAULT_UNIFIED_SETTINGS.timelineBackgroundBlur,
+      messageGlassEnabled: DEFAULT_UNIFIED_SETTINGS.messageGlassEnabled,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
