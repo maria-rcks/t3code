@@ -23,7 +23,7 @@ const EMPTY_TERMINAL_CONTEXTS: ReadonlyArray<never> = [];
 const EMPTY_SKILLS: ReadonlyArray<never> = [];
 
 const colorPreviewPatch = getRenderablePatch(
-  "diff --git a/greeting.ts b/greeting.ts\n--- a/greeting.ts\n+++ b/greeting.ts\n@@ -1 +1 @@\n-const hello = 'Hi';\n+const hello = 'Hello';\n",
+  "diff --git a/greeting.ts b/greeting.ts\n--- a/greeting.ts\n+++ b/greeting.ts\n@@ -1 +1 @@\n-\n+\n",
   "diff-colors-preview",
 );
 const colorPreviewItems =
@@ -42,7 +42,7 @@ export function DiffColorsPreview() {
     <StyledDiffCodeView
       aria-label="Diff color preview"
       // This two-row sample stays still; CodeView's sticky offsets otherwise clip the last row.
-      className="h-10 w-full overflow-hidden rounded-md ring-1 ring-border/60 [--diffs-gap-block:0px] [&_div:has(>diffs-container)]:static!"
+      className="h-10 w-full min-w-0 overflow-hidden rounded-md ring-1 ring-border/60 [--diffs-gap-block:0px] [&_div:has(>diffs-container)]:static!"
       items={colorPreviewItems}
       options={{
         diffStyle: "unified",

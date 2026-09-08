@@ -1276,7 +1276,7 @@ export function AppearanceSettingsPanel() {
                     updateSettings({ diffColorScheme: value });
                 }}
               >
-                <SelectTrigger size="sm" className="w-full" aria-label="Diff colors">
+                <SelectTrigger size="sm" className="w-fit min-w-0" aria-label="Diff colors">
                   <SelectValue>
                     {settings.diffColorScheme === "blue-orange" ? "Blue & orange" : "Red & green"}
                   </SelectValue>
