@@ -2826,7 +2826,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
             ) {
               event.preventDefault();
               event.stopPropagation();
-              openMarkdownMedia(href, undefined, event.currentTarget.querySelector("img"));
+              openMarkdownMedia(
+                href,
+                undefined,
+                event.target instanceof HTMLImageElement
+                  ? event.target
+                  : event.currentTarget.querySelector("img"),
+              );
               return;
             }
             // A link to a change request in a workspace project opens beside the
