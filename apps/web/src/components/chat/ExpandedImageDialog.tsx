@@ -76,9 +76,14 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
       }
     : source;
 
-  const navigateImage = useCallback((direction: -1 | 1) => {
-    setImageOffset((current) => current + direction);
-  }, []);
+  const navigateImage = useCallback(
+    (direction: -1 | 1) => {
+      setImageOffset(
+        (current) => (current + direction + preview.images.length) % preview.images.length,
+      );
+    },
+    [preview.images.length],
+  );
 
   // The element that opened the preview gets focus back on close. Without
   // this a close button click leaves focus on the unmounted dialog, and the
@@ -147,7 +152,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           type="button"
           size="icon"
           variant="ghost"
-          className="absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6"
+          className="absolute left-2 top-1/2 z-20 -translate-y-1/2 bg-black/70 text-white [--control-icon-color:white] hover:bg-black/90 sm:left-6"
           aria-label="Previous image"
           onClick={() => navigateImage(-1)}
         >
@@ -186,7 +191,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
               onError={() => setFailedImageSrc(item.src)}
             />
           )}
-          <p className="mt-2 max-w-[92vw] truncate text-center text-xs text-muted-foreground/80">
+          <p className="mt-2 max-w-[92vw] truncate text-center text-xs text-white/80">
             {item.name}
             {preview.images.length > 1 ? ` (${index + 1}/${preview.images.length})` : ""}
           </p>
@@ -197,7 +202,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           type="button"
           size="icon"
           variant="ghost"
-          className="absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6"
+          className="absolute right-2 top-1/2 z-20 -translate-y-1/2 bg-black/70 text-white [--control-icon-color:white] hover:bg-black/90 sm:right-6"
           aria-label="Next image"
           onClick={() => navigateImage(1)}
         >

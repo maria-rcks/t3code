@@ -88,6 +88,7 @@ import {
   type ExpandedImagePreview,
 } from "./chat/ExpandedImagePreview";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
+import { markdownImageGallery, registerMarkdownImage } from "./chat/markdownImageGallery";
 import { MediaVideoPlayer } from "./media/MediaVideoPlayer";
 import { MediaActions, type MediaActionSource } from "./media/MediaActions";
 import { resolveProtocolRelativeMediaUrl } from "./media/mediaContent";
@@ -1292,17 +1293,14 @@ function expandableMarkdownImageProps(
     if (event.currentTarget.closest("a")) return;
     event.preventDefault();
     event.stopPropagation();
-    onImageExpand({
-      images: [
-        {
-          src,
-          name: previewName,
-          ...(originalUrl ? { originalUrl } : {}),
-          ...(actionsSource ? { actionsSource } : {}),
-        },
-      ],
-      index: 0,
-    });
+    onImageExpand(
+      markdownImageGallery(event.currentTarget, {
+        src,
+        name: previewName,
+        ...(originalUrl ? { originalUrl } : {}),
+        ...(actionsSource ? { actionsSource } : {}),
+      }),
+    );
   };
   return {
     role: "button" as const,
@@ -1396,9 +1394,19 @@ function ChatMarkdownImage(props: {
   // A failure forgets the decoded image so the next URL loads behind the slot.
   const settled = src !== null && !failed && (!props.standalone || loadedSrc !== null);
   // Cached images are complete before `onLoad` can fire.
-  const markLoadedIfComplete = useCallback((image: HTMLImageElement | null) => {
-    if (image?.complete && image.naturalWidth > 0) setLoadedSrc(image.currentSrc || image.src);
-  }, []);
+  const markLoadedIfComplete = useCallback(
+    (image: HTMLImageElement | null) => {
+      if (!image) return;
+      if (image.complete && image.naturalWidth > 0) setLoadedSrc(image.currentSrc || image.src);
+      return registerMarkdownImage(image, {
+        src,
+        name: props.alt.trim() || "image",
+        actionsSource: props.actionsSource,
+        ...(props.originalUrl ? { originalUrl: props.originalUrl } : {}),
+      });
+    },
+    [props.actionsSource, props.alt, props.originalUrl, src],
+  );
   const imageEvents = (loadingSrc: string) => ({
     onLoad: () => {
       setLoadedSrc(loadingSrc);
@@ -2170,6 +2178,7 @@ function useChatMarkdownState({
 }: ChatMarkdownProps) {
   const { resolvedTheme } = useTheme();
   const [localMediaPreview, setLocalMediaPreview] = useState<ExpandedImagePreview | null>(null);
+  const markdownRef = useRef<HTMLDivElement>(null);
   const expandMedia = onImageExpand ?? setLocalMediaPreview;
   const mediaRequestId = useRef(0);
   useEffect(() => {
@@ -2215,7 +2224,14 @@ function useChatMarkdownState({
           : undefined,
       }).then(
         (preview) => {
-          if (preview && mediaRequestId.current === requestId) expandMedia(preview);
+          if (preview && mediaRequestId.current === requestId) {
+            const selected = preview.images[preview.index];
+            expandMedia(
+              selected && selected.type !== "video" && markdownRef.current
+                ? markdownImageGallery(markdownRef.current, selected)
+                : preview,
+            );
+          }
         },
         (error: unknown) => {
           if (mediaRequestId.current !== requestId) return;
@@ -2622,6 +2638,7 @@ function useChatMarkdownState({
   return {
     componentState,
     handleCopy,
+    markdownRef,
     markdownUrlTransform,
     localMediaPreview,
     setLocalMediaPreview,
@@ -3108,6 +3125,7 @@ function ChatMarkdown({
   const {
     componentState,
     handleCopy,
+    markdownRef,
     markdownUrlTransform,
     localMediaPreview,
     setLocalMediaPreview,
@@ -3125,6 +3143,7 @@ function ChatMarkdown({
   // complete source token instead of dropping it from the rendered message.
   return (
     <div
+      ref={markdownRef}
       className={cn(
         "chat-markdown w-full min-w-0 text-sm leading-relaxed text-foreground/80 [overflow-wrap:anywhere] [word-break:break-word]",
         className,
