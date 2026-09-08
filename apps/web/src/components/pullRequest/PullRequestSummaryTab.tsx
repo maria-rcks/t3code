@@ -172,7 +172,7 @@ function CollapsedComment({
   const [open, setOpen] = useState(false);
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <article className="group rounded-lg border border-border/60 [contain-intrinsic-block-size:44px] [content-visibility:auto]">
+      <article className="group rounded-lg [contain-intrinsic-block-size:44px] [content-visibility:auto]">
         <CollapsibleTrigger
           className={cn(
             "flex w-full items-center gap-2 p-3 text-left transition-opacity hover:opacity-100",
@@ -187,7 +187,7 @@ function CollapsedComment({
           <ChevronDownIcon
             aria-hidden
             className={cn(
-              "size-3.5 shrink-0 text-muted-foreground transition-transform",
+              "size-3.5 shrink-0 text-muted-foreground/60 transition-transform",
               open && "rotate-180",
             )}
           />
@@ -230,10 +230,15 @@ function MetaRow({
 }) {
   return (
     <div className="flex min-w-0 max-w-full items-center gap-2 text-xs">
-      <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
-        {icon}
-        {label}
-      </span>
+      <Tooltip>
+        <TooltipTrigger
+          render={<span className="flex shrink-0 items-center text-muted-foreground" />}
+        >
+          {icon}
+          <span className="sr-only">{label}</span>
+        </TooltipTrigger>
+        <TooltipPopup side="bottom">{label}</TooltipPopup>
+      </Tooltip>
       <span className="min-w-0 text-foreground">{children}</span>
     </div>
   );
@@ -243,12 +248,14 @@ function Section({
   title,
   count,
   defaultOpen = true,
+  hideOpenTitle = false,
   actions,
   children,
 }: {
   title: string;
   count?: number;
   defaultOpen?: boolean;
+  hideOpenTitle?: boolean;
   /** Controls riding on the heading row itself. A sibling of the trigger, not a child of it —
       a button cannot hold a button — and only while open, since they act on what is shown. */
   actions?: ReactNode;
@@ -286,16 +293,24 @@ function Section({
           where it started. Opaque, because the rows it covers scroll beneath it. */}
       <div
         ref={headingRef}
-        className="sticky top-0 z-10 flex w-full items-center border-t border-border/60 bg-background pr-4"
+        className="sticky top-0 z-10 flex w-full items-center bg-background pr-4"
       >
         {/* Title first, chevron riding to its right, count last: the row reads as a heading
             with an affordance rather than a tree node. */}
-        <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-1.5 px-4 py-3 text-left text-sm font-medium">
-          <span>{title}</span>
+        <CollapsibleTrigger
+          aria-label={
+            hideOpenTitle ? `${open ? "Collapse" : "Expand"} ${title.toLowerCase()}` : undefined
+          }
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-1.5 px-4 py-3 text-left text-xs font-medium text-muted-foreground hover:text-foreground",
+            hideOpenTitle && open && "ml-auto min-h-7 flex-none px-1 py-1",
+          )}
+        >
+          <span className={hideOpenTitle && open ? "sr-only" : undefined}>{title}</span>
           <ChevronRightIcon
             aria-hidden
             className={cn(
-              "size-3.5 text-muted-foreground transition-transform",
+              "size-3.5 text-muted-foreground/60 transition-transform",
               open && "rotate-90",
             )}
           />
@@ -707,7 +722,7 @@ export function PullRequestSummaryTab({
                     return (
                       <span
                         key={label.name}
-                        className="inline-flex max-w-48 items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 py-0.5 pl-1.5 pr-2 text-xs"
+                        className="inline-flex max-w-48 items-center gap-1.5 rounded-full bg-muted/40 py-0.5 pl-1.5 pr-2 text-xs"
                       >
                         <span
                           aria-hidden
@@ -733,7 +748,7 @@ export function PullRequestSummaryTab({
         </div>
       </section>
 
-      <Section title="Description">
+      <Section title="Description" hideOpenTitle>
         <div className="group">
           {bodyScope === detail.url ? (
             <PullRequestMarkdownEditor
@@ -782,7 +797,7 @@ export function PullRequestSummaryTab({
         </div>
       </Section>
 
-      <Section title="Checks" count={detail.checks.length}>
+      <Section title="Checks">
         {detail.checks.length === 0 ? (
           <p className="text-xs text-muted-foreground">No checks reported.</p>
         ) : (
@@ -795,18 +810,22 @@ export function PullRequestSummaryTab({
                 <Button
                   size="xs"
                   variant="ghost"
+                  className="text-muted-foreground"
                   aria-expanded={showCompletedChecks}
                   aria-controls={checksId}
                   onClick={() => setExpandedChecksUrl(showCompletedChecks ? null : detail.url)}
                 >
                   <ChevronRightIcon
-                    className={cn("size-3.5", showCompletedChecks && "rotate-90")}
+                    className={cn(
+                      "size-3.5 text-muted-foreground/60",
+                      showCompletedChecks && "rotate-90",
+                    )}
                   />
                   {showCompletedChecks ? "Hide" : "Show"} {completedCheckCount} completed
                 </Button>
               ) : null}
             </div>
-            <div id={checksId} className="mt-2 divide-y divide-border/50">
+            <div id={checksId} className="mt-2">
               {detail.checks.map((check, index) => {
                 if (
                   !showCompletedChecks &&
@@ -959,7 +978,7 @@ export function PullRequestSummaryTab({
                       key={comment.id}
                       // Offscreen comments skip style, layout and paint. Bot comments carry pages of
                       // highlighted code, and the conversation is below the description either way.
-                      className="group rounded-lg border border-border/60 p-3 [contain-intrinsic-block-size:120px] [content-visibility:auto]"
+                      className="group rounded-lg py-3 [contain-intrinsic-block-size:120px] [content-visibility:auto]"
                     >
                       <div className="flex items-start gap-2">
                         <span className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground">
