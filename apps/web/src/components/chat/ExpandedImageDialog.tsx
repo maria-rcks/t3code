@@ -151,8 +151,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         <Button
           type="button"
           size="icon"
-          variant="ghost"
-          className="absolute left-2 top-1/2 z-20 -translate-y-1/2 bg-black/70 text-white [--control-icon-color:white] hover:bg-black/90 sm:left-6"
+          variant="overlay"
+          className="absolute left-2 top-1/2 z-20 -translate-y-1/2 sm:left-6"
           aria-label="Previous image"
           onClick={() => navigateImage(-1)}
         >
@@ -201,8 +201,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         <Button
           type="button"
           size="icon"
-          variant="ghost"
-          className="absolute right-2 top-1/2 z-20 -translate-y-1/2 bg-black/70 text-white [--control-icon-color:white] hover:bg-black/90 sm:right-6"
+          variant="overlay"
+          className="absolute right-2 top-1/2 z-20 -translate-y-1/2 sm:right-6"
           aria-label="Next image"
           onClick={() => navigateImage(1)}
         >

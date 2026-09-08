@@ -2209,7 +2209,7 @@ function useChatMarkdownState({
   );
   const preparedConnection = usePreparedConnection(environmentId);
   const openMarkdownMedia = useCallback(
-    (source: string, resolvedFilePath?: string) => {
+    (source: string, resolvedFilePath?: string, clickedImage?: HTMLImageElement | null) => {
       const requestId = ++mediaRequestId.current;
       void resolveMarkdownMediaPreview({
         source,
@@ -2228,7 +2228,7 @@ function useChatMarkdownState({
             const selected = preview.images[preview.index];
             expandMedia(
               selected && selected.type !== "video" && markdownRef.current
-                ? markdownImageGallery(markdownRef.current, selected)
+                ? markdownImageGallery(clickedImage ?? markdownRef.current, selected)
                 : preview,
             );
           }
@@ -2826,7 +2826,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
             ) {
               event.preventDefault();
               event.stopPropagation();
-              openMarkdownMedia(href);
+              openMarkdownMedia(href, undefined, event.currentTarget.querySelector("img"));
               return;
             }
             // A link to a change request in a workspace project opens beside the

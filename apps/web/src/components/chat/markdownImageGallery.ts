@@ -44,7 +44,7 @@ export function markdownImageGallery(
           },
         }
       : registered;
-    if (image === element || (index < 0 && item.src === selected.src)) {
+    if (image === element || (!imageItems.has(element) && index < 0 && item.src === selected.src)) {
       index = images.length;
       images.push(selected);
     } else {
