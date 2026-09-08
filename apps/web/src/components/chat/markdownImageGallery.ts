@@ -4,15 +4,8 @@ import type { ExpandedImageItem, ExpandedImagePreview } from "./ExpandedImagePre
 import { resolveExternalWebLinkHost } from "./externalLinkContextMenu";
 import { resolveProtocolRelativeMediaUrl } from "../media/mediaContent";
 
-const imageItems = new WeakMap<Element, ExpandedImageItem>();
-
-/** Keep the resolved source and actions with the rendered image, without extra subscriptions. */
-export function registerMarkdownImage(element: Element, item: ExpandedImageItem) {
-  imageItems.set(element, item);
-  return () => {
-    imageItems.delete(element);
-  };
-}
+// Weak keys retain resolved media actions only while the rendered image is reachable.
+export const markdownImageItems = new WeakMap<Element, ExpandedImageItem>();
 
 /** Collect in document order only when opened, including PR sections separated by videos. */
 export function markdownImageGallery(
@@ -23,7 +16,7 @@ export function markdownImageGallery(
   const images: ExpandedImageItem[] = [];
   let index = -1;
   for (const image of scope?.querySelectorAll("img") ?? []) {
-    const registered = imageItems.get(image);
+    const registered = markdownImageItems.get(image);
     if (!registered) continue;
     const link = image.closest("a");
     const href = link?.getAttribute("href") ?? "";
@@ -44,7 +37,10 @@ export function markdownImageGallery(
           },
         }
       : registered;
-    if (image === element || (!imageItems.has(element) && index < 0 && item.src === selected.src)) {
+    if (
+      image === element ||
+      (!markdownImageItems.has(element) && index < 0 && item.src === selected.src)
+    ) {
       index = images.length;
       images.push(selected);
     } else {

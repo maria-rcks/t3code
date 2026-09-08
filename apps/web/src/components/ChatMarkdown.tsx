@@ -88,7 +88,7 @@ import {
   type ExpandedImagePreview,
 } from "./chat/ExpandedImagePreview";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
-import { markdownImageGallery, registerMarkdownImage } from "./chat/markdownImageGallery";
+import { markdownImageGallery, markdownImageItems } from "./chat/markdownImageGallery";
 import { MediaVideoPlayer } from "./media/MediaVideoPlayer";
 import { MediaActions, type MediaActionSource } from "./media/MediaActions";
 import { resolveProtocolRelativeMediaUrl } from "./media/mediaContent";
@@ -1284,10 +1284,7 @@ const MarkdownLinkContext = React.createContext(false);
 
 function expandableMarkdownImageProps(
   onImageExpand: ((preview: ExpandedImagePreview) => void) | undefined,
-  src: string,
   alt: string,
-  originalUrl?: string,
-  actionsSource?: MediaActionSource,
 ) {
   if (!onImageExpand) return {};
   const previewName = alt.trim() || "image";
@@ -1295,14 +1292,8 @@ function expandableMarkdownImageProps(
     if (event.currentTarget.closest("a")) return;
     event.preventDefault();
     event.stopPropagation();
-    onImageExpand(
-      markdownImageGallery(event.currentTarget, {
-        src,
-        name: previewName,
-        ...(originalUrl ? { originalUrl } : {}),
-        ...(actionsSource ? { actionsSource } : {}),
-      }),
-    );
+    const item = markdownImageItems.get(event.currentTarget);
+    if (item) onImageExpand(markdownImageGallery(event.currentTarget, item));
   };
   return {
     role: "button" as const,
@@ -1400,7 +1391,7 @@ function ChatMarkdownImage(props: {
     (image: HTMLImageElement | null) => {
       if (!image) return;
       if (image.complete && image.naturalWidth > 0) setLoadedSrc(image.currentSrc || image.src);
-      return registerMarkdownImage(image, {
+      markdownImageItems.set(image, {
         src,
         name: props.alt.trim() || "image",
         actionsSource: props.actionsSource,
@@ -1437,13 +1428,7 @@ function ChatMarkdownImage(props: {
             props.onImageExpand && "cursor-zoom-in",
           )}
           style={props.style}
-          {...expandableMarkdownImageProps(
-            props.onImageExpand,
-            src,
-            props.alt,
-            props.originalUrl,
-            props.actionsSource,
-          )}
+          {...expandableMarkdownImageProps(props.onImageExpand, props.alt)}
           {...imageEvents(src)}
         />
       </MediaActions>
