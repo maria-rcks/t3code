@@ -118,7 +118,7 @@ describe("claimPreviewRecording", () => {
         } else {
           expect(result._tag).toBe("Failure");
           if (result._tag !== "Failure") return;
-          expect(result.failure).toMatchObject({ reason: "size-mismatch" });
+          expect(result.failure._tag).toBe("PreviewAutomationRecordingTransferError");
           expect(yield* fileSystem.exists(pendingPath)).toBe(true);
         }
       }).pipe(

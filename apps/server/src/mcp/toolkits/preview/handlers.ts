@@ -87,7 +87,6 @@ const UploadedRecordingArtifact = Schema.Struct({
   uploadedAttachmentId: Schema.optional(Schema.String),
 });
 const decodeUploadedRecordingArtifact = Schema.decodeUnknownEffect(UploadedRecordingArtifact);
-const isRecordingTransferError = Schema.is(PreviewAutomationRecordingTransferError);
 
 export const claimPreviewRecording = Effect.fn("PreviewToolkit.claimRecording")(function* (
   threadId: ThreadId,
@@ -98,7 +97,6 @@ export const claimPreviewRecording = Effect.fn("PreviewToolkit.claimRecording")(
       (cause) =>
         new PreviewAutomationRecordingTransferError({
           threadId,
-          reason: "invalid-metadata",
           cause,
         }),
     ),
@@ -114,7 +112,6 @@ export const claimPreviewRecording = Effect.fn("PreviewToolkit.claimRecording")(
   if (!uuid || !extension || !threadSegment || artifact.uploadedAttachmentId !== pendingId) {
     return yield* new PreviewAutomationRecordingTransferError({
       threadId,
-      reason: "invalid-upload",
     });
   }
   // The same completed upload can be returned to overlapping stop requests.
@@ -128,57 +125,31 @@ export const claimPreviewRecording = Effect.fn("PreviewToolkit.claimRecording")(
     relativePath: `${finalId}.${extension}`,
   });
   if (!currentPath || !finalPath) {
-    return yield* new PreviewAutomationRecordingTransferError({
-      threadId,
-      reason: "invalid-upload",
-    });
+    return yield* new PreviewAutomationRecordingTransferError({ threadId });
   }
   const fileSystem = yield* FileSystem.FileSystem;
-  const matchesRecording = (stat: FileSystem.File.Info) =>
-    stat.type === "File" &&
-    Number(stat.size) === artifact.sizeBytes &&
-    artifact.sizeBytes > 0 &&
-    artifact.sizeBytes <= PROVIDER_SEND_TURN_MAX_FILE_BYTES;
+  const validateFile = (filePath: string) =>
+    fileSystem.stat(filePath).pipe(
+      Effect.filterOrFail(
+        (stat) =>
+          stat.type === "File" &&
+          Number(stat.size) === artifact.sizeBytes &&
+          artifact.sizeBytes > 0 &&
+          artifact.sizeBytes <= PROVIDER_SEND_TURN_MAX_FILE_BYTES,
+        () => new PreviewAutomationRecordingTransferError({ threadId }),
+      ),
+    );
   yield* Effect.gen(function* () {
-    const pendingStat = yield* fileSystem
-      .stat(currentPath)
-      .pipe(
-        Effect.catch((cause) =>
-          cause.reason._tag === "NotFound" ? Effect.succeed(null) : Effect.fail(cause),
-        ),
-      );
-    const stat = pendingStat ?? (yield* fileSystem.stat(finalPath));
-    if (!matchesRecording(stat)) {
-      return yield* new PreviewAutomationRecordingTransferError({
-        threadId,
-        reason: "size-mismatch",
-      });
-    }
-    if (pendingStat) {
-      yield* fileSystem
-        .rename(currentPath, finalPath)
-        .pipe(
-          Effect.catch((cause) =>
-            cause.reason._tag === "NotFound" ? Effect.void : Effect.fail(cause),
-          ),
-        );
-      if (!matchesRecording(yield* fileSystem.stat(finalPath))) {
-        return yield* new PreviewAutomationRecordingTransferError({
-          threadId,
-          reason: "size-mismatch",
-        });
-      }
-    }
+    yield* validateFile(currentPath);
+    yield* fileSystem.rename(currentPath, finalPath);
   }).pipe(
-    Effect.mapError((cause) =>
-      isRecordingTransferError(cause)
-        ? cause
-        : new PreviewAutomationRecordingTransferError({
-            threadId,
-            reason: "retain-failed",
-            cause,
-          }),
+    // Another stop may already have claimed this exact upload for this thread.
+    Effect.catch((cause) =>
+      cause._tag !== "PreviewAutomationRecordingTransferError" && cause.reason._tag === "NotFound"
+        ? validateFile(finalPath)
+        : Effect.fail(cause),
     ),
+    Effect.mapError((cause) => new PreviewAutomationRecordingTransferError({ threadId, cause })),
   );
   const { uploadedAttachmentId: _uploadedAttachmentId, ...recording } = artifact;
   return { ...recording, id: finalId, path: finalPath };

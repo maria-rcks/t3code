@@ -405,23 +405,18 @@ it.effect("classifies a remote non-editable target without collapsing it to exec
 });
 
 it.effect.each([
-  ["PreviewAutomationRecordingTransferError", "invalid-metadata"],
-  ["PreviewAutomationRecordingTransferError", "invalid-upload"],
-  ["PreviewAutomationRecordingTransferError", "size-mismatch"],
-  ["PreviewAutomationRecordingTransferError", "retain-failed"],
-  ["PreviewAutomationRecordingTransferError", "upload-failed"],
-  ["PreviewAutomationRecordingTransferError", "unknown-reason"],
-  ["PreviewAutomationRecordingDesktopUpdateRequiredError", undefined],
-  ["PreviewAutomationRecordingTooLargeError", undefined],
-  ["PreviewAutomationRecordingDeadlineExpiredError", undefined],
-] as const)("preserves recording failure %s", ([tag, reason]) =>
+  "PreviewAutomationRecordingTransferError",
+  "PreviewAutomationRecordingDesktopUpdateRequiredError",
+  "PreviewAutomationRecordingTooLargeError",
+  "PreviewAutomationRecordingDeadlineExpiredError",
+] as const)("preserves recording failure %s", (tag) =>
   Effect.scoped(
     Effect.gen(function* () {
       const broker = yield* makeBroker;
       const remoteError = {
         _tag: tag,
         message: "remote recording details",
-        detail: { reason, threadId: "untrusted-thread" },
+        detail: { reason: "untrusted-reason", threadId: "untrusted-thread" },
       };
       const requests = requestsFrom(yield* broker.connect(makeHost()));
       yield* Stream.runForEach(requests, (request) =>
@@ -444,9 +439,6 @@ it.effect.each([
       expect(error).toMatchObject({
         _tag: tag,
         threadId: scope.threadId,
-        ...(reason === undefined
-          ? {}
-          : { reason: reason === "unknown-reason" ? "upload-failed" : reason }),
       });
       expect(error.cause).toBe(remoteError);
       expect(error.message).toContain("remains on the desktop");

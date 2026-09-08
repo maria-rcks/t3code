@@ -77,7 +77,6 @@ export async function uploadBrowserRecording(
     }
     throw new PreviewAutomationRecordingTransferError({
       threadId,
-      reason: "upload-failed",
       cause,
     });
   }

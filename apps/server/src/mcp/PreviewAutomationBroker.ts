@@ -187,8 +187,6 @@ function remoteDetailKind(detail: unknown): RemoteDetailKind {
   }
 }
 
-const isRecordingTransferReason = Schema.is(PreviewAutomationRecordingTransferError.fields.reason);
-
 const classifyResponseError = (
   context: PreviewAutomationRequestErrorContext,
   error: NonNullable<PreviewAutomationResponse["error"]>,
@@ -215,17 +213,11 @@ const classifyResponseError = (
         threadId: context.threadId,
         cause: error,
       });
-    case "PreviewAutomationRecordingTransferError": {
-      const reason =
-        typeof error.detail === "object" && error.detail !== null && "reason" in error.detail
-          ? error.detail.reason
-          : undefined;
+    case "PreviewAutomationRecordingTransferError":
       return new PreviewAutomationRecordingTransferError({
         threadId: context.threadId,
-        reason: isRecordingTransferReason(reason) ? reason : "upload-failed",
         cause: error,
       });
-    }
     case "PreviewAutomationNoAvailableHostError":
       return new PreviewAutomationNoAvailableHostError({
         ...context,

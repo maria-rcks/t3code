@@ -862,13 +862,6 @@ export class PreviewAutomationRecordingTransferError extends Schema.TaggedErrorC
   "PreviewAutomationRecordingTransferError",
   {
     threadId: ThreadId,
-    reason: Schema.Literals([
-      "invalid-metadata",
-      "invalid-upload",
-      "size-mismatch",
-      "retain-failed",
-      "upload-failed",
-    ]),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
