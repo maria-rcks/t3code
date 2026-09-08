@@ -48,7 +48,7 @@ export function DiffColorsPreview() {
         diffStyle: "unified",
         disableFileHeader: true,
         stickyHeaders: false,
-        overflow: "wrap",
+        overflow: "scroll",
         theme: resolveDiffThemeName(resolvedTheme),
         preferredHighlighter: PREFERRED_HIGHLIGHTER,
       }}
