@@ -198,6 +198,7 @@ describe("createNativeReviewDiffTheme", () => {
           appearance,
           themeId,
           appTheme(themeId, appearance),
+          "red-green",
         );
         for (const color of Object.values(theme)) {
           expect(color, `${themeId}/${appearance}`).toMatch(/^#[\da-f]{6}$/i);
@@ -207,8 +208,13 @@ describe("createNativeReviewDiffTheme", () => {
   });
 
   it("uses the selected app palette for native code surfaces", () => {
-    const standard = createNativeReviewDiffTheme("dark", "t3-code", appTheme("t3-code", "dark"));
-    const iris = createNativeReviewDiffTheme("dark", "iris", appTheme("iris", "dark"));
+    const standard = createNativeReviewDiffTheme(
+      "dark",
+      "t3-code",
+      appTheme("t3-code", "dark"),
+      "red-green",
+    );
+    const iris = createNativeReviewDiffTheme("dark", "iris", appTheme("iris", "dark"), "red-green");
 
     expect(iris.background).not.toBe(standard.background);
     expect(iris.hunkText).not.toBe(standard.hunkText);

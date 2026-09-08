@@ -41,10 +41,14 @@ export function DiffColorsPreview() {
   return (
     <StyledDiffCodeView
       aria-label="Diff color preview"
-      className="h-24 w-full overflow-hidden rounded-md border border-border/60"
+      // This two-row sample stays still; CodeView's sticky offsets otherwise clip the last row.
+      className="h-10 w-full overflow-hidden rounded-md ring-1 ring-border/60 [--diffs-gap-block:0px] [&_div:has(>diffs-container)]:static!"
       items={colorPreviewItems}
       options={{
         diffStyle: "unified",
+        disableFileHeader: true,
+        stickyHeaders: false,
+        overflow: "wrap",
         theme: resolveDiffThemeName(resolvedTheme),
         preferredHighlighter: PREFERRED_HIGHLIGHTER,
       }}

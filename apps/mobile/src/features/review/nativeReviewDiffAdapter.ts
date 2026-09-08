@@ -145,7 +145,7 @@ export function createNativeReviewDiffTheme(
   scheme: TerminalAppearanceScheme,
   themeId: MobileThemeId,
   appTheme: MobileThemeVariables,
-  diffColorScheme: DiffColorScheme = "red-green",
+  diffColorScheme: DiffColorScheme,
 ): NativeReviewDiffTheme {
   const terminalTheme = getMobileTerminalTheme(themeId, scheme);
   const [, terminalRed] = terminalTheme.palette;
