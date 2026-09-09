@@ -20,9 +20,7 @@ export function ZoomableImage({
   }));
   const [zoom, setZoom] = useState(1);
   const zoomRef = useRef(1);
-  const anchorRef = useRef<{ x: number; y: number; viewportX: number; viewportY: number } | null>(
-    null,
-  );
+  const anchorRef = useRef<{ x: number; y: number; clientX: number; clientY: number } | null>(null);
   const dragRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const suppressClickRef = useRef(false);
   const [dragging, setDragging] = useState(false);
@@ -46,8 +44,8 @@ export function ZoomableImage({
     anchorRef.current = {
       x: (viewport.scrollLeft + x) / previous,
       y: (viewport.scrollTop + y) / previous,
-      viewportX: x / viewport.clientWidth,
-      viewportY: y / viewport.clientHeight,
+      clientX: bounds.left + x,
+      clientY: bounds.top + y,
     };
     zoomRef.current = clamped;
     setZoom(clamped);
@@ -57,8 +55,9 @@ export function ZoomableImage({
     const viewport = viewportRef.current;
     const anchor = anchorRef.current;
     if (!viewport || !anchor) return;
-    viewport.scrollLeft = anchor.x * zoom - anchor.viewportX * viewport.clientWidth;
-    viewport.scrollTop = anchor.y * zoom - anchor.viewportY * viewport.clientHeight;
+    const bounds = viewport.getBoundingClientRect();
+    viewport.scrollLeft = anchor.x * zoom - (anchor.clientX - bounds.left);
+    viewport.scrollTop = anchor.y * zoom - (anchor.clientY - bounds.top);
     anchorRef.current = null;
   }, [zoom]);
 
