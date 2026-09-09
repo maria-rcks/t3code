@@ -1,6 +1,4 @@
-import { MinusIcon, PlusIcon, RotateCcwIcon } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Button } from "../ui/button";
 
 const MAX_ZOOM = 8;
 
@@ -26,8 +24,9 @@ export function ZoomableImage({
     null,
   );
   const dragRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const suppressClickRef = useRef(false);
   const [dragging, setDragging] = useState(false);
-  const maxHeight = Math.max(1, Math.min(windowSize.height * 0.8, windowSize.height - 120));
+  const maxHeight = Math.max(1, Math.min(windowSize.height * 0.86, windowSize.height - 80));
   const fit = Math.min(
     1,
     (windowSize.width * 0.92) / (naturalSize.width || 1),
@@ -76,12 +75,12 @@ export function ZoomableImage({
     const viewport = viewportRef.current;
     if (!viewport) return;
     const wheel = (event: WheelEvent) => {
-      if (!event.ctrlKey && !event.metaKey) return;
+      if (event.deltaY === 0) return;
       event.preventDefault();
       const delta =
         event.deltaY *
         (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientHeight : 1);
-      changeZoom(zoomRef.current * Math.exp(-delta * 0.01), {
+      changeZoom(zoomRef.current * Math.exp(-delta * (event.ctrlKey ? 0.01 : 0.002)), {
         x: event.clientX,
         y: event.clientY,
       });
@@ -91,25 +90,31 @@ export function ZoomableImage({
   }, [changeZoom]);
 
   return (
-    <div className="flex min-w-0 flex-col items-center gap-2">
+    <div className="min-w-0">
       <div
         ref={viewportRef}
         role="region"
         aria-label={`${name}, zoomable image`}
+        aria-description="Click to zoom in or return to fit. Scroll to zoom, drag to pan. Use Enter to toggle zoom, plus or minus to zoom, and 0 to fit."
         tabIndex={0}
         className="max-w-[92vw] overflow-auto overscroll-contain rounded-lg bg-background shadow-2xl ring-1 ring-border/70 outline-none focus-visible:ring-2 focus-visible:ring-ring"
         style={{
           width: width || undefined,
           height: height || undefined,
           maxHeight,
-          cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "default",
+          cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in",
         }}
-        onDoubleClick={(event) => {
+        onClick={(event) => {
+          // Pointer capture also produces a click after dragging; leave the image zoomed.
+          if (suppressClickRef.current || event.detail > 1) return;
           changeZoom(zoomRef.current > 1 ? 1 : 2, { x: event.clientX, y: event.clientY });
         }}
         onKeyDown={(event) => {
           if (event.ctrlKey || event.metaKey || event.altKey) return;
-          if (event.key === "+" || event.key === "=") {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            if (!event.repeat) changeZoom(zoomRef.current > 1 ? 1 : 2);
+          } else if (event.key === "+" || event.key === "=") {
             event.preventDefault();
             changeZoom(zoomRef.current * 1.5);
           } else if (event.key === "-") {
@@ -124,6 +129,7 @@ export function ZoomableImage({
           }
         }}
         onPointerDown={(event) => {
+          suppressClickRef.current = false;
           if (event.pointerType !== "mouse" || event.button !== 0 || zoomRef.current <= 1) return;
           const viewport = event.currentTarget;
           const bounds = viewport.getBoundingClientRect();
@@ -144,6 +150,9 @@ export function ZoomableImage({
         onPointerMove={(event) => {
           const drag = dragRef.current;
           if (!drag) return;
+          if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 4) {
+            suppressClickRef.current = true;
+          }
           event.currentTarget.scrollLeft = drag.left - (event.clientX - drag.x);
           event.currentTarget.scrollTop = drag.top - (event.clientY - drag.y);
         }}
@@ -174,42 +183,9 @@ export function ZoomableImage({
           onError={onError}
         />
       </div>
-      <div
-        role="group"
-        aria-label="Image zoom"
-        className="flex items-center gap-1 rounded-full bg-black/70 p-1 text-white"
-      >
-        <Button
-          size="icon-xs"
-          variant="overlay"
-          aria-label="Zoom out"
-          disabled={zoom <= 1 || !naturalSize.width}
-          onClick={() => changeZoom(zoomRef.current / 1.5)}
-        >
-          <MinusIcon />
-        </Button>
-        <span className="min-w-12 text-center text-xs tabular-nums" aria-live="polite">
-          {Math.round(zoom * 100)}%
-        </span>
-        <Button
-          size="icon-xs"
-          variant="overlay"
-          aria-label="Zoom in"
-          disabled={zoom >= MAX_ZOOM || !naturalSize.width}
-          onClick={() => changeZoom(zoomRef.current * 1.5)}
-        >
-          <PlusIcon />
-        </Button>
-        <Button
-          size="icon-xs"
-          variant="overlay"
-          aria-label="Reset zoom to fit"
-          disabled={zoom <= 1}
-          onClick={() => changeZoom(1)}
-        >
-          <RotateCcwIcon />
-        </Button>
-      </div>
+      <span className="sr-only" aria-live="polite">
+        {Math.round(zoom * 100)}% zoom
+      </span>
     </div>
   );
 }
