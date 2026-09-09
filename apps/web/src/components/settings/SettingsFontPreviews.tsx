@@ -1,15 +1,11 @@
 import { preloadPatchFile } from "@pierre/diffs/ssr";
+import colorPreviewHtml from "virtual:diff-colors-preview";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "../ComposerPromptEditor";
 import { terminalThemeFromApp } from "../ThreadTerminalDrawer";
 import { useTheme } from "../../hooks/useTheme";
 import { DISCONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
-import {
-  getRenderablePatch,
-  resolveDiffThemeName,
-  type DiffThemeName,
-} from "../../lib/diffRendering";
-import { StyledDiffCodeView } from "../diffs/StyledDiffCodeView";
+import { resolveDiffThemeName, type DiffThemeName } from "../../lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "../../lib/syntaxHighlighting";
 import { GhosttyTerminalSurface } from "~/terminal/ghostty/surface";
 
@@ -22,36 +18,19 @@ import { GhosttyTerminalSurface } from "~/terminal/ghostty/surface";
 const EMPTY_TERMINAL_CONTEXTS: ReadonlyArray<never> = [];
 const EMPTY_SKILLS: ReadonlyArray<never> = [];
 
-const colorPreviewPatch = getRenderablePatch(
-  "diff --git a/greeting.ts b/greeting.ts\n--- a/greeting.ts\n+++ b/greeting.ts\n@@ -1 +1 @@\n-console.log('Hi');\n+console.log('Hello');\n",
-  "diff-colors-preview",
-);
-const colorPreviewItems =
-  colorPreviewPatch?.kind === "files"
-    ? colorPreviewPatch.files.map((fileDiff) => ({
-        id: fileDiff.name,
-        type: "diff" as const,
-        fileDiff,
-      }))
-    : [];
+function mountColorPreview(host: HTMLDivElement | null) {
+  if (host === null) return;
+  const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+  shadow.innerHTML = colorPreviewHtml;
+}
 
 /** Use the right panel's renderer so this preview follows every diff color token. */
 export function DiffColorsPreview() {
-  const { resolvedTheme } = useTheme();
   return (
-    <StyledDiffCodeView
+    <div
+      ref={mountColorPreview}
       aria-label="Diff color preview"
-      // This two-row sample stays still; CodeView's sticky offsets otherwise clip the last row.
-      className="h-10 w-full min-w-0 overflow-hidden rounded-lg border border-border bg-background shadow-xs/5 [--diffs-gap-block:0px] [&_div:has(>diffs-container)]:static!"
-      items={colorPreviewItems}
-      options={{
-        diffStyle: "unified",
-        disableFileHeader: true,
-        stickyHeaders: false,
-        overflow: "scroll",
-        theme: resolveDiffThemeName(resolvedTheme),
-        preferredHighlighter: PREFERRED_HIGHLIGHTER,
-      }}
+      className="diff-render-surface h-10 w-full min-w-0 overflow-hidden rounded-lg border border-border bg-background shadow-xs/5 [--code-background:var(--background)] [--diffs-gap-block:0px] [color-scheme:inherit]"
     />
   );
 }
