@@ -42,7 +42,7 @@ export function DiffColorsPreview() {
     <StyledDiffCodeView
       aria-label="Diff color preview"
       // This two-row sample stays still; CodeView's sticky offsets otherwise clip the last row.
-      className="h-10 w-full min-w-0 overflow-hidden rounded-md border border-border/70 [--diffs-gap-block:0px] [&_div:has(>diffs-container)]:static!"
+      className="h-10 w-full min-w-0 overflow-hidden rounded-lg border border-border bg-background shadow-xs/5 [--diffs-gap-block:0px] [&_div:has(>diffs-container)]:static!"
       items={colorPreviewItems}
       options={{
         diffStyle: "unified",

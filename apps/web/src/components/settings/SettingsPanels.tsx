@@ -1267,7 +1267,7 @@ export function AppearanceSettingsPanel() {
             ) : null
           }
           control={
-            <div className="grid w-full grid-cols-[5rem_minmax(0,1fr)] items-center gap-3 sm:w-auto sm:grid-cols-[7rem_13rem] sm:gap-4">
+            <div className="ml-auto grid w-fit grid-cols-[5rem_max-content] items-center gap-3 sm:grid-cols-[7rem_max-content] sm:gap-4">
               <DiffColorsPreview />
               <Select
                 value={settings.diffColorScheme}
