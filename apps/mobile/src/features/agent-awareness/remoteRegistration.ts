@@ -54,7 +54,7 @@ const AgentAwarenessOperation = Schema.Literals([
   "prime-live-activity",
 ]);
 
-export class AgentAwarenessOperationError extends Schema.TaggedErrorClass<AgentAwarenessOperationError>()(
+export class AgentAwarenessOperationError extends Schema.TaggedError<AgentAwarenessOperationError>()(
   "AgentAwarenessOperationError",
   {
     operation: AgentAwarenessOperation,
@@ -245,9 +245,6 @@ function nativePushTokenRegistration(observedPushToken?: string) {
     if (!canRegisterRemoteLiveActivities() || !supportsAgentAwarenessPush()) {
       return { notificationsEnabled: false, pushToken: null };
     }
-    if (observedPushToken) {
-      return { notificationsEnabled: true, pushToken: observedPushToken };
-    }
     const permissions = yield* Effect.tryPromise({
       try: () => Notifications.getPermissionsAsync(),
       catch: (cause) =>
@@ -258,6 +255,9 @@ function nativePushTokenRegistration(observedPushToken?: string) {
     });
     if (!permissions.granted) {
       return { notificationsEnabled: false, pushToken: null };
+    }
+    if (observedPushToken) {
+      return { notificationsEnabled: true, pushToken: observedPushToken };
     }
     const token = yield* Effect.tryPromise({
       try: () => Notifications.getDevicePushTokenAsync(),
