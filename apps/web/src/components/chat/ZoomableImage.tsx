@@ -108,6 +108,7 @@ export function ZoomableImage({
           changeZoom(zoomRef.current > 1 ? 1 : 2, { x: event.clientX, y: event.clientY });
         }}
         onKeyDown={(event) => {
+          if (event.ctrlKey || event.metaKey || event.altKey) return;
           if (event.key === "+" || event.key === "=") {
             event.preventDefault();
             changeZoom(zoomRef.current * 1.5);
