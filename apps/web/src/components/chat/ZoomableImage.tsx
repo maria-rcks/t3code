@@ -1,16 +1,30 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 
 const MAX_ZOOM = 8;
+
+export interface ZoomableImageHandle {
+  pan: (key: string) => boolean;
+}
 
 /** Zooms around the pointer and keeps the whole image accessible by dragging or scrolling. */
 export function ZoomableImage({
   src,
   name,
   onError,
+  ref,
 }: {
   src: string;
   name: string;
   onError: () => void;
+  ref?: Ref<ZoomableImageHandle>;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
@@ -38,6 +52,34 @@ export function ZoomableImage({
   );
   const width = naturalSize.width * fit * zoom;
   const height = naturalSize.height * fit * zoom;
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      pan(key) {
+        const viewport = viewportRef.current;
+        if (!viewport || zoomRef.current <= 1) return false;
+        switch (key) {
+          case "ArrowLeft":
+            viewport.scrollLeft -= 40;
+            break;
+          case "ArrowRight":
+            viewport.scrollLeft += 40;
+            break;
+          case "ArrowUp":
+            viewport.scrollTop -= 40;
+            break;
+          case "ArrowDown":
+            viewport.scrollTop += 40;
+            break;
+          default:
+            return false;
+        }
+        return true;
+      },
+    }),
+    [],
+  );
 
   const changeZoom = useCallback((next: number, point?: { x: number; y: number }) => {
     const viewport = viewportRef.current;
@@ -128,9 +170,6 @@ export function ZoomableImage({
           } else if (event.key === "0") {
             event.preventDefault();
             changeZoom(1);
-          } else if (zoomRef.current > 1 && event.key.startsWith("Arrow")) {
-            // Leave native keyboard scrolling enabled without navigating the gallery.
-            event.stopPropagation();
           }
         }}
         onPointerDown={(event) => {

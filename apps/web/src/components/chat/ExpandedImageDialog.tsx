@@ -16,7 +16,7 @@ import {
 } from "./SnapShotAttachmentDetails";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { composerFloatingLayerProps } from "./composerEventScope";
-import { ZoomableImage } from "./ZoomableImage";
+import { ZoomableImage, type ZoomableImageHandle } from "./ZoomableImage";
 
 interface ExpandedImageDialogProps {
   preview: ExpandedImagePreview;
@@ -64,6 +64,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   onClose,
 }: ExpandedImageDialogProps) {
   const [imageOffset, setImageOffset] = useState(0);
+  const zoomableImageRef = useRef<ZoomableImageHandle>(null);
   const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null);
   const [accessibilityDetailsSrc, setAccessibilityDetailsSrc] = useState<string | null>(null);
   const index = (preview.index + imageOffset + preview.images.length) % preview.images.length;
@@ -116,6 +117,11 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         event.preventDefault();
         event.stopPropagation();
         onClose();
+        return;
+      }
+      if (zoomableImageRef.current?.pan(event.key)) {
+        event.preventDefault();
+        event.stopPropagation();
         return;
       }
       if (preview.images.length <= 1) return;
@@ -208,6 +214,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             </ExpandedMediaFailure>
           ) : (
             <ZoomableImage
+              ref={zoomableImageRef}
               key={`${index}:${item.src}`}
               src={item.src}
               name={item.name}
