@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 
 const MAX_ZOOM = 8;
 
-/** Keeps zoomed pixels in a native scroll area so wheels and touch can explore the whole image. */
+/** Zooms around the pointer and keeps the whole image accessible by dragging or scrolling. */
 export function ZoomableImage({
   src,
   name,
@@ -21,7 +21,13 @@ export function ZoomableImage({
   const [zoom, setZoom] = useState(1);
   const zoomRef = useRef(1);
   const anchorRef = useRef<{ x: number; y: number; clientX: number; clientY: number } | null>(null);
-  const dragRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+    left: number;
+    top: number;
+  } | null>(null);
   const suppressClickRef = useRef(false);
   const [dragging, setDragging] = useState(false);
   const maxHeight = Math.max(1, Math.min(windowSize.height * 0.86, windowSize.height - 80));
@@ -128,6 +134,7 @@ export function ZoomableImage({
           }
         }}
         onPointerDown={(event) => {
+          if (dragRef.current) return;
           suppressClickRef.current = false;
           if (event.pointerType !== "mouse" || event.button !== 0 || zoomRef.current <= 1) return;
           const viewport = event.currentTarget;
@@ -138,6 +145,7 @@ export function ZoomableImage({
           )
             return;
           dragRef.current = {
+            pointerId: event.pointerId,
             x: event.clientX,
             y: event.clientY,
             left: viewport.scrollLeft,
@@ -148,7 +156,7 @@ export function ZoomableImage({
         }}
         onPointerMove={(event) => {
           const drag = dragRef.current;
-          if (!drag) return;
+          if (!drag || drag.pointerId !== event.pointerId) return;
           if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 4) {
             suppressClickRef.current = true;
           }
@@ -156,13 +164,15 @@ export function ZoomableImage({
           event.currentTarget.scrollTop = drag.top - (event.clientY - drag.y);
         }}
         onPointerUp={(event) => {
+          if (dragRef.current?.pointerId !== event.pointerId) return;
           if (event.currentTarget.hasPointerCapture(event.pointerId)) {
             event.currentTarget.releasePointerCapture(event.pointerId);
           }
           dragRef.current = null;
           setDragging(false);
         }}
-        onLostPointerCapture={() => {
+        onLostPointerCapture={(event) => {
+          if (dragRef.current?.pointerId !== event.pointerId) return;
           dragRef.current = null;
           setDragging(false);
         }}
