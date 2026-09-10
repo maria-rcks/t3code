@@ -75,6 +75,50 @@ describe("desktop app activation", () => {
     expect(response).toMatchObject({ ok: true, projectId: createdProjectId });
   });
 
+  it("creates one project when two activations race for the same workspace root", async () => {
+    let release = () => {};
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const deps = dependencies({
+      findProject: () => null,
+      createProject: vi.fn(async () => {
+        await pending;
+        return createdProjectId;
+      }),
+    });
+
+    const first = handleDesktopAppActivationRequest(request, deps);
+    const second = handleDesktopAppActivationRequest({ ...request, requestId: "request-2" }, deps);
+    release();
+    const responses = await Promise.all([first, second]);
+
+    expect(deps.createProject).toHaveBeenCalledTimes(1);
+    expect(responses).toMatchObject([
+      { ok: true, projectId: createdProjectId },
+      { ok: true, projectId: createdProjectId },
+    ]);
+  });
+
+  it("reuses a project that appeared while the duplicate create was rejected", async () => {
+    let created = false;
+    const deps = dependencies({
+      findProject: () =>
+        created
+          ? { id: existingProjectId, environmentId, workspaceRoot: request.workspaceRoot }
+          : null,
+      createProject: vi.fn(async () => {
+        created = true;
+        throw new Error("Active project 'project-existing' already exists for workspace root.");
+      }),
+    });
+
+    const response = await handleDesktopAppActivationRequest(request, deps);
+
+    expect(response).toMatchObject({ ok: true, projectId: existingProjectId });
+    expect(deps.openThread).toHaveBeenCalledWith({ environmentId, projectId: existingProjectId });
+  });
+
   it("rejects a Windows path when the primary environment is WSL", async () => {
     const response = await handleDesktopAppActivationRequest(
       { ...request, platform: "win32" },

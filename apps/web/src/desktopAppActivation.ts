@@ -8,6 +8,7 @@ import type {
   ScopedProjectRef,
   ThreadId,
 } from "@t3tools/contracts";
+import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
 
 export interface DesktopAppActivationProject {
   readonly id: ProjectId;
@@ -54,6 +55,30 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
 }
 
+/**
+ * Activation requests can overlap: the broker re-dispatches after a renderer
+ * blip and the coordinator's queue restarts with the component, so two requests
+ * for one workspace root can reach here before the projection shows the first
+ * create. Sharing the in-flight create keeps the server from rejecting the
+ * second one with its "already exists" invariant.
+ */
+const inFlightCreates = new Map<string, Promise<ProjectId>>();
+
+function createProjectOnce(
+  dependencies: DesktopAppActivationDependencies,
+  environmentId: EnvironmentId,
+  workspaceRoot: string,
+): Promise<ProjectId> {
+  const key = JSON.stringify([environmentId, normalizeProjectPathForComparison(workspaceRoot)]);
+  const inFlight = inFlightCreates.get(key);
+  if (inFlight !== undefined) return inFlight;
+  const created = dependencies
+    .createProject(environmentId, workspaceRoot)
+    .finally(() => inFlightCreates.delete(key));
+  inFlightCreates.set(key, created);
+  return created;
+}
+
 export async function handleDesktopAppActivationRequest(
   request: DesktopAppActivationRequest,
   dependencies: DesktopAppActivationDependencies,
@@ -79,14 +104,24 @@ export async function handleDesktopAppActivationRequest(
   let projectId = dependencies.findProject(target.environmentId, request.workspaceRoot)?.id ?? null;
   if (projectId === null) {
     try {
-      projectId = await dependencies.createProject(target.environmentId, request.workspaceRoot);
+      projectId = await createProjectOnce(
+        dependencies,
+        target.environmentId,
+        request.workspaceRoot,
+      );
       await dependencies.waitForProject({ environmentId: target.environmentId, projectId });
     } catch (error) {
-      return failure(
-        request.requestId,
-        "project-create-failed",
-        errorMessage(error, "T3 Code could not add the project."),
-      );
+      // An earlier activation for this root may have created the project already.
+      const existing =
+        dependencies.findProject(target.environmentId, request.workspaceRoot)?.id ?? null;
+      if (existing === null) {
+        return failure(
+          request.requestId,
+          "project-create-failed",
+          errorMessage(error, "T3 Code could not add the project."),
+        );
+      }
+      projectId = existing;
     }
   }
 
