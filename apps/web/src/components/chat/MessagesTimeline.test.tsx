@@ -1764,4 +1764,69 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("lucide-circle-alert");
     expect(markup).toContain("text-destructive");
   });
+
+  it("collapses a standalone tool call from its expanded label unless text is selected", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    let renderer: ReactTestRenderer | undefined;
+    try {
+      await act(() => {
+        renderer = create(
+          <MessagesTimeline
+            {...buildProps()}
+            timelineEntries={[
+              {
+                id: "entry-standalone",
+                kind: "work",
+                createdAt: MESSAGE_CREATED_AT,
+                entry: {
+                  id: "work-standalone",
+                  createdAt: MESSAGE_CREATED_AT,
+                  toolCallId: "call-standalone",
+                  label: "Run lint",
+                  tone: "tool",
+                  itemType: "command_execution",
+                  command: "pnpm lint",
+                  toolLifecycleStatus: "completed",
+                },
+              },
+            ]}
+          />,
+        );
+      });
+      const row = () => renderer!.root.findByProps({ "aria-label": "pnpm lint" });
+      // The label is nested inside the row, so a browser click runs the label
+      // handler first and then reaches the row unless the label stops it.
+      const clickLabel = async (isCollapsed: boolean) => {
+        const label = row().findAll(
+          (node) =>
+            node.type === "span" &&
+            typeof node.props.className === "string" &&
+            node.props.className.includes("select-text"),
+        )[0];
+        let reachedRow = true;
+        await act(() =>
+          label!.props.onClick({
+            currentTarget: { ownerDocument: { getSelection: () => ({ isCollapsed }) } },
+            stopPropagation: () => {
+              reachedRow = false;
+            },
+          }),
+        );
+        if (reachedRow) await act(() => row().props.onClick());
+      };
+
+      await act(() => row().props.onClick());
+      expect(row().props["aria-expanded"]).toBe(true);
+
+      await clickLabel(false);
+      expect(row().props["aria-expanded"]).toBe(true);
+
+      await clickLabel(true);
+      expect(row().props["aria-expanded"]).toBe(false);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
 });
