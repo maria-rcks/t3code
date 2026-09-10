@@ -240,13 +240,11 @@ function MetaRow({
 
 function Section({
   title,
-  count,
   defaultOpen = true,
   actions,
   children,
 }: {
   title: string;
-  count?: number;
   defaultOpen?: boolean;
   /** Controls riding on the heading row itself. A sibling of the trigger, not a child of it —
       a button cannot hold a button — and only while open, since they act on what is shown. */
@@ -287,9 +285,8 @@ function Section({
         ref={headingRef}
         className="sticky top-0 z-10 flex w-full items-center bg-background pr-4"
       >
-        {/* Title first, chevron riding to its right, count last: the row reads as a heading
-            with an affordance rather than a tree node. */}
         <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-1.5 px-4 py-3 text-left text-xs font-medium text-muted-foreground hover:text-foreground">
+          <span aria-hidden className="h-px flex-1 bg-border/40" />
           <span>{title}</span>
           <ChevronRightIcon
             aria-hidden
@@ -298,9 +295,6 @@ function Section({
               open && "rotate-90",
             )}
           />
-          {count === undefined ? null : (
-            <span className="text-xs tabular-nums text-muted-foreground">{count}</span>
-          )}
         </CollapsibleTrigger>
         {open ? actions : null}
       </div>
@@ -783,7 +777,8 @@ export function PullRequestSummaryTab({
           <p className="text-xs text-muted-foreground">No checks reported.</p>
         ) : (
           <div>
-            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xs">
+            <div className="flex items-center gap-1 text-xs">
+              <span aria-hidden className="h-px flex-1 bg-border/40" />
               <span className="font-medium text-muted-foreground">Checks</span>
               <Button
                 size="icon-xs"
@@ -851,7 +846,6 @@ export function PullRequestSummaryTab({
 
       <Section
         title="Comments"
-        {...(activityPending || activityError ? {} : { count: detail.commentCount })}
         actions={
           !activityPending && !activityError && detail.comments.length > 0 ? (
             <Button
