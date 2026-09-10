@@ -119,6 +119,7 @@ describe("question work log", () => {
         requestId: "question-1",
         answers: { scope: "Use the spec" },
         attachmentsByQuestionId,
+        detail: "spec.txt",
       }),
       activity("user-input.resolved", {
         requestId: "question-1",
@@ -126,10 +127,46 @@ describe("question work log", () => {
       }),
     ]);
     expect(folded).toHaveLength(1);
+    expect(folded[0]?.payload).not.toHaveProperty("detail");
     const answer = decodeAnswer(folded[0]?.payload);
     expect(answer.attachmentsByQuestionId).toEqual(attachmentsByQuestionId);
     expect(getQuestionAnswerPreview(answer)).toBe("Use the spec");
   });
+
+  it.each([
+    { value: "1", expected: "Verified" },
+    { value: ["1", "custom text"], expected: ["Verified", "custom text"] },
+    { value: { answers: ["1"] }, expected: { answers: ["Verified"] } },
+    { value: "2", expected: "1" },
+  ])(
+    "displays opaque option labels without changing provider answers: $value",
+    ({ value, expected }) => {
+      const question = activity("user-input.requested", {
+        requestId: "question-1",
+        questions: [
+          {
+            id: "scope",
+            question: "Which scope?",
+            options: [
+              { value: "1", label: "Verified" },
+              { value: "2", label: "1" },
+            ],
+          },
+        ],
+      });
+      const resolved = activity("user-input.resolved", {
+        requestId: "question-1",
+        answers: { scope: value },
+      });
+      const original = structuredClone([question, resolved]);
+      const folded = foldUserInputActivities([question, resolved, question]);
+      expect(decodeAnswer(folded[0]?.payload).answers.scope).toEqual(expected);
+      expect(getQuestionAnswerPreview(decodeAnswer(folded[0]?.payload))).toBe(
+        getQuestionAnswerText(expected),
+      );
+      expect([question, resolved]).toEqual(original);
+    },
+  );
 
   it("shows the question while pending and preserves dismissal without an answer", () => {
     const pending = foldUserInputActivities([requested]);

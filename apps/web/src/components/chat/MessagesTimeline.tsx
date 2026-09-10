@@ -3532,9 +3532,11 @@ function QuestionAnswerHistory({
               {answer.questionTextById[questionId]}
             </p>
           ) : null}
-          <p className="whitespace-pre-wrap text-sm">
-            {getQuestionAnswerText(answer.answers[questionId])}
-          </p>
+          {getQuestionAnswerText(answer.answers[questionId]) ? (
+            <p className="whitespace-pre-wrap text-sm">
+              {getQuestionAnswerText(answer.answers[questionId])}
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             {(answer.attachmentsByQuestionId[questionId] ?? []).map((attachment) => {
               const url = urls[attachments.indexOf(attachment)];

@@ -12,6 +12,15 @@ function record(value: unknown): Record<string, unknown> | undefined {
 
 const isQuestionAnswer = Schema.is(UserInputAttachmentAnswerPayload);
 
+function displayOptionAnswer(value: unknown, labels: ReadonlyMap<string, string>): unknown {
+  if (typeof value === "string") return labels.get(value) ?? value;
+  if (Array.isArray(value)) return value.map((answer) => displayOptionAnswer(answer, labels));
+  const nested = record(value);
+  return nested && "answers" in nested
+    ? { ...nested, answers: displayOptionAnswer(nested.answers, labels) }
+    : value;
+}
+
 function questionFingerprint(
   turnId: string,
   questions: ReadonlyArray<unknown>,
@@ -158,6 +167,29 @@ export function foldUserInputActivities(
     } else {
       result[position] = folded;
     }
+  }
+  for (const position of positions.values()) {
+    const activity = result[position]!;
+    const payload = { ...record(activity.payload) };
+    delete payload.detail;
+    const answers = { ...record(payload.answers) };
+    if (Array.isArray(payload.questions)) {
+      for (const value of payload.questions) {
+        const question = record(value);
+        if (typeof question?.id !== "string" || !Array.isArray(question.options)) continue;
+        const labels = new Map<string, string>();
+        for (const value of question.options) {
+          const option = record(value);
+          if (typeof option?.value === "string" && typeof option.label === "string") {
+            labels.set(option.value, option.label);
+          }
+        }
+        if (question.id in answers) {
+          answers[question.id] = displayOptionAnswer(answers[question.id], labels);
+        }
+      }
+    }
+    result[position] = { ...activity, payload: { ...payload, answers } };
   }
   return withoutDuplicateQuestionTools(result);
 }

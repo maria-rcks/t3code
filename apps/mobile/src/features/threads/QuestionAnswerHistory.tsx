@@ -53,9 +53,11 @@ export function QuestionAnswerHistory(props: {
               {props.answer.questionTextById[questionId]}
             </Text>
           ) : null}
-          <Text className="text-sm text-foreground">
-            {getQuestionAnswerText(props.answer.answers[questionId])}
-          </Text>
+          {getQuestionAnswerText(props.answer.answers[questionId]) ? (
+            <Text className="text-sm text-foreground">
+              {getQuestionAnswerText(props.answer.answers[questionId])}
+            </Text>
+          ) : null}
           {(props.answer.attachmentsByQuestionId[questionId] ?? []).map((attachment) => (
             <AnswerFile
               key={attachment.id}
