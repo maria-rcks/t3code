@@ -437,9 +437,8 @@ function RightPanelEmptyState(props: {
       return;
     }
     if (event.key === "Enter") {
-      // A focused row button owns its own activation; only open from the
-      // highlight when the container itself has focus.
-      if (event.target instanceof HTMLElement && event.target.closest("button")) return;
+      // Only activate the highlight when the launcher itself has focus.
+      if (event.target !== event.currentTarget) return;
       const action = availableActions[highlightIndex];
       if (!action) return;
       event.preventDefault();
