@@ -246,8 +246,7 @@ function Section({
 }: {
   title: string;
   defaultOpen?: boolean;
-  /** Controls riding on the heading row itself. A sibling of the trigger, not a child of it —
-      a button cannot hold a button — and only while open, since they act on what is shown. */
+  /** Heading controls stay separate from the collapse trigger so they remain independently usable. */
   actions?: ReactNode;
   children: ReactNode;
 }) {
@@ -294,9 +293,8 @@ function Section({
               open && "rotate-90",
             )}
           />
-          <span aria-hidden className="h-px flex-1 bg-border/40" />
         </CollapsibleTrigger>
-        {open ? actions : null}
+        {actions}
       </div>
       <CollapsiblePanel>
         <div className="px-4 pb-4">{children}</div>
@@ -792,7 +790,6 @@ export function PullRequestSummaryTab({
                   className={cn("size-3.5 text-muted-foreground/60", showChecks && "rotate-90")}
                 />
               </Button>
-              <span aria-hidden className="h-px flex-1 bg-border/40" />
             </div>
             <div id={checksId} className={showChecks ? "mt-2" : "hidden"}>
               {(showChecks ? detail.checks : []).map((check, index) => {
@@ -847,22 +844,20 @@ export function PullRequestSummaryTab({
       <Section
         title="Comments"
         actions={
-          !activityPending && !activityError && detail.comments.length > 0 ? (
-            <Button
-              size="xs"
-              variant="ghost"
-              className="h-7 shrink-0 px-2 text-[10px] text-muted-foreground"
-              aria-label={
-                commentOrder === "newest"
-                  ? "Show oldest comments first"
-                  : "Show newest comments first"
-              }
-              onClick={() => setCommentOrder((value) => (value === "newest" ? "oldest" : "newest"))}
-            >
-              <ArrowDownUpIcon aria-hidden className="size-3" />
-              {commentOrder === "newest" ? "Newest first" : "Oldest first"}
-            </Button>
-          ) : null
+          <Button
+            size="xs"
+            variant="ghost"
+            className="h-7 shrink-0 px-2 text-[10px] text-muted-foreground"
+            aria-label={
+              commentOrder === "newest"
+                ? "Show oldest comments first"
+                : "Show newest comments first"
+            }
+            onClick={() => setCommentOrder((value) => (value === "newest" ? "oldest" : "newest"))}
+          >
+            <ArrowDownUpIcon aria-hidden className="size-3" />
+            {commentOrder === "newest" ? "Newest first" : "Oldest first"}
+          </Button>
         }
       >
         {activityPending ? (
