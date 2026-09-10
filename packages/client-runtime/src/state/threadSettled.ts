@@ -23,7 +23,7 @@ export const QUEUED_TURN_START_GRACE_MS = 2 * 60 * 1_000;
  * (180s for most, unbounded for OpenCode), so a batch legitimately leaves
  * later threads pending for several minutes.
  */
-export const TITLE_REGENERATION_GRACE_MS = 15 * 60 * 1_000;
+const TITLE_REGENERATION_GRACE_MS = 15 * 60 * 1_000;
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
 /**
