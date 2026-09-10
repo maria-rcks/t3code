@@ -568,13 +568,12 @@ function RightPanelEmptyState(props: {
                 trigger={
                   <div
                     tabIndex={0}
+                    aria-disabled="true"
                     className="flex h-8 w-full cursor-default items-center gap-2.5 rounded-[var(--control-radius)] px-2.5 text-left text-sm opacity-50"
                   >
                     {actionIcon(action, "size-4")}
-                    <span className="shrink-0">{action.label}</span>
-                    <span className="ml-auto min-w-0 truncate text-muted-foreground text-xs">
-                      {action.disabledReason}
-                    </span>
+                    <span className="min-w-0 flex-1 truncate">{action.label}</span>
+                    <Kbd>{action.shortcut}</Kbd>
                   </div>
                 }
               />
