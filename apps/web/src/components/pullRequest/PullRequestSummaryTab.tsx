@@ -286,7 +286,6 @@ function Section({
         className="sticky top-0 z-10 flex w-full items-center bg-background pr-4"
       >
         <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-1.5 px-4 py-3 text-left text-xs font-medium text-muted-foreground hover:text-foreground">
-          <span aria-hidden className="h-px flex-1 bg-border/40" />
           <span>{title}</span>
           <ChevronRightIcon
             aria-hidden
@@ -295,6 +294,7 @@ function Section({
               open && "rotate-90",
             )}
           />
+          <span aria-hidden className="h-px flex-1 bg-border/40" />
         </CollapsibleTrigger>
         {open ? actions : null}
       </div>
@@ -778,7 +778,6 @@ export function PullRequestSummaryTab({
         ) : (
           <div>
             <div className="flex items-center gap-1 text-xs">
-              <span aria-hidden className="h-px flex-1 bg-border/40" />
               <span className="font-medium text-muted-foreground">Checks</span>
               <Button
                 size="icon-xs"
@@ -793,6 +792,7 @@ export function PullRequestSummaryTab({
                   className={cn("size-3.5 text-muted-foreground/60", showChecks && "rotate-90")}
                 />
               </Button>
+              <span aria-hidden className="h-px flex-1 bg-border/40" />
             </div>
             <div id={checksId} className={showChecks ? "mt-2" : "hidden"}>
               {(showChecks ? detail.checks : []).map((check, index) => {
