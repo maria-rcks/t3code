@@ -249,185 +249,50 @@ describe("projectActivityPayload", () => {
     expect(JSON.stringify(projected.payload).length).toBeLessThan(500);
   });
 
-  it("preserves preview website metadata through result slimming and repeated projection", () => {
-    const toolIcon = {
-      _tag: "website",
-      pageUrl: "https://example.com/page",
-      faviconUrl: "https://example.com/icon.png",
-    };
-    const projected = projectActivityPayload(
-      activity({
-        itemType: "mcp_tool_call",
-        data: {
-          item: {
-            server: "t3-code",
-            tool: "preview_click",
-            result: {
-              structuredContent: { toolIcon },
-              content: [
-                {
-                  type: "text",
-                  text: JSON.stringify({
-                    toolIcon: {
-                      _tag: "website",
-                      pageUrl: "https://other.example/",
-                    },
-                  }),
-                },
-              ],
-            },
-          },
-        },
-      }),
-    );
-    expect(projected.payload).toMatchObject({ toolSurface: "browser", toolIcon });
-    expect(projectActivityPayload(projected).payload).toMatchObject({
-      toolSurface: "browser",
-      toolIcon,
-    });
-    expect(projected.payload).not.toMatchObject({
-      data: { item: { result: { structuredContent: expect.anything() } } },
-    });
-  });
-
   it.each([
     {
-      toolName: "mcp__t3-code__preview_snapshot",
-      result: {
-        type: "tool_result",
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              toolIcon: { _tag: "website", pageUrl: "https://example.com/" },
-            }),
-          },
-        ],
+      item: {
+        server: "t3-code",
+        tool: "preview_open",
+        result: { structuredContent: { url: "https://example.com/" } },
       },
     },
     {
-      tool: "t3-code_preview_snapshot",
-      state: {
-        status: "completed",
-        output: JSON.stringify({
-          toolIcon: { _tag: "website", pageUrl: "https://example.com/" },
-        }),
-      },
+      toolName: "mcp__t3-code__preview_navigate",
+      result: { content: '{"url":"https://example.com/"}' },
     },
-  ])("reads preview metadata from provider-preserved JSON output", (data) => {
-    const projected = projectActivityPayload(activity({ itemType: "dynamic_tool_call", data }));
-    expect(projected.payload).toMatchObject({
-      toolSurface: "browser",
-      toolIcon: { _tag: "website", pageUrl: "https://example.com/" },
-    });
-  });
-
-  it.each(["t3-code", "t3_code", "t3code"])("recognizes the %s preview server alias", (server) => {
-    const result = { content: JSON.stringify({ url: "https://example.com/" }) };
-    for (const data of [
-      { item: { server, tool: "preview_open", result } },
-      { toolName: `mcp__${server}__preview_open`, result },
-      { tool: `${server}_preview_open`, state: { output: result.content } },
-    ]) {
-      const projected = projectActivityPayload(activity({ itemType: "mcp_tool_call", data }));
-      expect(projected.payload).toMatchObject({
-        toolSurface: "browser",
-        toolIcon: { _tag: "website", pageUrl: "https://example.com/" },
-      });
-    }
-  });
-
-  it("infers legacy preview URLs and prefers the returned page after redirects", () => {
-    const projected = projectActivityPayload(
-      activity({
-        itemType: "mcp_tool_call",
-        data: {
-          toolName: "mcp__t3-code__preview_navigate",
-          input: { url: "https://before.example/" },
-          result: { content: JSON.stringify({ url: "https://after.example/" }) },
-        },
-      }),
-    );
-    expect(projected.payload).toMatchObject({
-      toolIcon: { _tag: "website", pageUrl: "https://after.example/" },
-    });
-    const started = projectActivityPayload(
-      activity({
-        itemType: "mcp_tool_call",
-        data: {
-          toolName: "mcp__t3-code__preview_navigate",
-          input: { target: { kind: "url", url: "https://before.example/" } },
-        },
-      }),
-    );
-    expect(started.payload).toMatchObject({
-      toolIcon: { _tag: "website", pageUrl: "https://before.example/" },
-    });
-  });
-
-  it.each([
-    { toolName: "mcp__other__preview_click" },
-    { item: { server: "other", tool: "preview_click" } },
-    { toolName: "preview_click" },
-  ])("ignores preview metadata from unrelated tools", (identity) => {
-    const result = {
-      structuredContent: { toolIcon: { _tag: "website", pageUrl: "https://example.com/" } },
-    };
-    const projected = projectActivityPayload(
-      activity({
-        itemType: "mcp_tool_call",
-        data: {
-          ...identity,
-          result,
-          ...("item" in identity ? { item: { ...identity.item, result } } : {}),
-        },
-      }),
-    );
-    expect(projected.payload).not.toHaveProperty("toolIcon");
-    expect(projected.payload).not.toHaveProperty("toolSurface");
-  });
-
-  it.each([
-    { result: { isError: true, content: JSON.stringify({ url: "https://stale.example/" }) } },
-    { result: { is_error: true, content: "navigation failed" } },
-    { result: { structuredContent: { toolIcon: { _tag: "website", pageUrl: 42 } } } },
+    { tool: "t3-code_preview_status", state: { output: '{"url":"https://example.com/"}' } },
     {
-      result: {
-        structuredContent: {
-          toolIcon: { _tag: "themed-logo", logoUrl: "https://example.com/icon.png" },
-        },
-      },
+      toolName: "mcp__t3_code__preview_snapshot",
+      result: { content: [{ type: "text", text: '{"url":"https://example.com/"}' }] },
     },
-    { result: { content: "malformed JSON" } },
-    { result: { content: JSON.stringify({ url: "about:blank" }) } },
-  ])("does not invent a page icon for failures or invalid results", (output) => {
-    const projected = projectActivityPayload(
-      activity({
-        itemType: "mcp_tool_call",
-        data: {
-          toolName: "mcp__t3-code__preview_navigate",
-          input: { url: "https://attempted.example/" },
-          ...output,
-        },
-      }),
-    );
-    expect(projected.payload).toMatchObject({ toolSurface: "browser" });
-    expect(projected.payload).not.toHaveProperty("toolIcon");
+    {
+      toolName: "mcp__t3-code__preview_click",
+      result: { content: '{"toolIcon":{"_tag":"website","pageUrl":"https://example.com/"}}' },
+    },
+  ])("preserves the preview page favicon through result slimming", (data) => {
+    const projected = projectActivityPayload(activity({ itemType: "mcp_tool_call", data }));
+    const icon = { _tag: "website", pageUrl: "https://example.com/" };
+    expect(projected.payload).toMatchObject({ toolIcon: icon });
+    expect(projectActivityPayload(projected).payload).toMatchObject({ toolIcon: icon });
   });
 
-  it("preserves explicit activity icons", () => {
-    const toolIcon = { _tag: "website", pageUrl: "https://explicit.example/" };
-    const projected = projectActivityPayload(
-      activity({
-        itemType: "mcp_tool_call",
-        toolIcon,
-        data: {
-          toolName: "mcp__t3-code__preview_status",
-          result: { content: JSON.stringify({ url: "https://inferred.example/" }) },
-        },
-      }),
-    );
-    expect(projected.payload).toMatchObject({ toolIcon });
+  it.each([
+    { toolName: "mcp__other__preview_open", result: { content: '{"url":"https://example.com/"}' } },
+    {
+      toolName: "mcp__t3-code__preview_evaluate",
+      result: { content: '{"url":"https://example.com/"}' },
+    },
+    {
+      toolName: "mcp__t3-code__preview_open",
+      result: { isError: true, content: '{"url":"https://example.com/"}' },
+    },
+    { toolName: "mcp__t3-code__preview_open", result: { content: "malformed JSON" } },
+    { toolName: "mcp__t3-code__preview_open", result: { content: '{"url":"about:blank"}' } },
+  ])("keeps the fallback for unrelated tools, failed navigation, and missing page URLs", (data) => {
+    expect(
+      projectActivityPayload(activity({ itemType: "mcp_tool_call", data })).payload,
+    ).not.toHaveProperty("toolIcon");
   });
 
   it("passes task lifecycle payloads (no data field) through untouched", () => {

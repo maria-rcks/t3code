@@ -618,7 +618,6 @@ it.effect("registers annotated tools and preserves authenticated request context
       const toolIcon = {
         _tag: "website" as const,
         pageUrl: "http://example.test/",
-        faviconUrl: "data:image/png;base64,aWNvbg==",
       };
       const routedRequests: Array<{
         readonly operation: string;
@@ -636,7 +635,6 @@ it.effect("registers annotated tools and preserves authenticated request context
           connectionId: event.connectionId,
           requestId: event.request.requestId,
           ok: true,
-          toolIcon,
           result:
             event.request.operation === "snapshot"
               ? snapshotResult
@@ -690,7 +688,6 @@ it.effect("registers annotated tools and preserves authenticated request context
       expect(status.structuredContent).toMatchObject({
         available: true,
         tabId,
-        toolIcon,
       });
 
       const malformed = yield* server
@@ -711,7 +708,6 @@ it.effect("registers annotated tools and preserves authenticated request context
       expect(snapshot.isError).toBe(false);
       expect(snapshot.content.some((content) => content.type === "image")).toBe(true);
       expect(snapshot.structuredContent).toMatchObject({
-        toolIcon,
         screenshot: { mimeType: "image/png", width: 10, height: 5 },
       });
       expect(routedRequests.find(({ operation }) => operation === "snapshot")?.tabId).toBe(
@@ -752,6 +748,7 @@ it.effect("registers annotated tools and preserves authenticated request context
           );
         expect(result.isError).toBe(false);
         expect(result.structuredContent).toEqual({ toolIcon });
+        expect(routedRequests.at(-1)?.operation).toBe("status");
         const text = result.content[0];
         expect(text?.type === "text" ? decodeJsonText(text.text) : null).toEqual({ toolIcon });
       }

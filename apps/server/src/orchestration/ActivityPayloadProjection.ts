@@ -1,11 +1,9 @@
-import {
-  ToolActivityIcon,
-  type OrchestrationEvent,
-  type OrchestrationThreadActivity,
-  type OrchestrationThreadDetailSnapshot,
+import type {
+  OrchestrationEvent,
+  OrchestrationThreadActivity,
+  OrchestrationThreadDetailSnapshot,
 } from "@t3tools/contracts";
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
-import * as Schema from "effect/Schema";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -242,86 +240,52 @@ function summarizeMcpResult(result: unknown): Record<string, unknown> | undefine
   return summary ? { content: summary } : undefined;
 }
 
-const decodeToolActivityIcon = Schema.decodeUnknownOption(ToolActivityIcon);
-const PREVIEW_TOOL_NAME =
-  /^preview_(?:status|open|navigate|resize|set_appearance|snapshot|click|type|press|scroll|evaluate|wait_for|recording_start|recording_stop)$/u;
-
-function parsePreviewResult(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== "string") return asRecord(value);
-  // Snapshot text can be large; never parse arbitrary unbounded tool output.
-  if (value.length > 2 * 1024 * 1024) return null;
-  try {
-    return asRecord(JSON.parse(value));
-  } catch {
-    return null;
-  }
-}
-
+/** Reuse the page URL already returned by preview tools before slimming their output. */
 function projectPreviewToolMetadata(data: Record<string, unknown>, status: unknown) {
   const item = asRecord(data.item);
-  const qualifiedName = asTrimmedString(data.toolName) ?? asTrimmedString(data.tool);
-  const tool = item
-    ? /^(?:t3-code|t3_code|t3code)$/u.test(asTrimmedString(item.server) ?? "")
-      ? asTrimmedString(item.tool)
-      : null
-    : qualifiedName?.replace(
-        /^(?:mcp__(?:t3-code|t3_code|t3code)__|(?:t3-code|t3_code|t3code)_)/u,
-        "",
-      );
-  if (!tool || !PREVIEW_TOOL_NAME.test(tool) || (!item && tool === qualifiedName)) {
+  const name = item ? `mcp__${item.server}__${item.tool}` : (data.toolName ?? data.tool);
+  if (
+    typeof name !== "string" ||
+    !/^(?:mcp__)?(?:t3-code|t3_code|t3code)_{1,2}preview_(?:open|navigate|status|snapshot|click|type|press|scroll|resize|set_appearance|evaluate|wait_for|recording_start|recording_stop)$/.test(
+      name,
+    )
+  )
     return {};
-  }
-
   const state = asRecord(data.state);
   const result = item?.result ?? data.result ?? state?.output;
-  const resultRecord = asRecord(result);
-  const failed =
+  const record = asRecord(result);
+  if (
     status === "failed" ||
     status === "declined" ||
     state?.status === "error" ||
     item?.error != null ||
-    resultRecord?.isError === true ||
-    resultRecord?.is_error === true;
-  if (failed) return { toolSurface: "browser" };
+    record?.isError === true ||
+    record?.is_error === true
+  )
+    return {};
 
-  // Prefer MCP structured content, then the JSON text preserved by Claude/OpenCode.
-  const structuredContent = asRecord(resultRecord?.structuredContent);
-  const structuredIcon = decodeToolActivityIcon(structuredContent?.toolIcon);
-  if (structuredIcon._tag === "Some" && structuredIcon.value._tag === "website") {
-    return { toolSurface: "browser", toolIcon: structuredIcon.value };
-  }
-  const candidates = [structuredContent, parsePreviewResult(result)];
-  if (typeof resultRecord?.content === "string") {
-    candidates.push(parsePreviewResult(resultRecord.content));
-  } else if (Array.isArray(resultRecord?.content)) {
-    for (const entry of resultRecord.content.slice(0, 32)) {
-      const block = asRecord(entry);
-      if (block?.type === "text") candidates.push(parsePreviewResult(block.text));
+  let page = asRecord(record?.structuredContent);
+  if (!page) {
+    const text = extractMcpResultText(result);
+    if (!text || text.length > 2 * 1024 * 1024) return {};
+    try {
+      page = asRecord(JSON.parse(text));
+    } catch {
+      return {};
     }
   }
-  for (const candidate of candidates) {
-    const decoded = decodeToolActivityIcon(candidate?.toolIcon);
-    if (decoded._tag === "Some" && decoded.value._tag === "website") {
-      return { toolSurface: "browser", toolIcon: decoded.value };
-    }
+  const rawUrl = asTrimmedString(
+    asRecord(page?.toolIcon)?.pageUrl ??
+      (/preview_(?:open|navigate|status|snapshot)$/.test(name) ? page?.url : undefined),
+  );
+  if (!rawUrl || rawUrl.length > 4096) return {};
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return {};
+    return { toolIcon: { _tag: "website", pageUrl: url.href } };
+  } catch {
+    return {};
   }
-
-  // Older preview hosts return the page URL without icon metadata.
-  if (/^preview_(?:status|open|navigate|snapshot)$/u.test(tool)) {
-    const input = asRecord(item?.arguments ?? data.input ?? state?.input);
-    const pageUrl =
-      candidates.find((candidate) => typeof candidate?.url === "string")?.url ??
-      (result == null ? (input?.url ?? asRecord(input?.target)?.url) : undefined);
-    const decoded = decodeToolActivityIcon({ _tag: "website", pageUrl });
-    if (
-      decoded._tag === "Some" &&
-      decoded.value._tag === "website" &&
-      /^https?:\/\//iu.test(decoded.value.pageUrl)
-    ) {
-      return { toolSurface: "browser", toolIcon: decoded.value };
-    }
-  }
-  return { toolSurface: "browser" };
 }
 
 /**

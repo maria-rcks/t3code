@@ -54,7 +54,7 @@ const PreviewStatusTool = Tool.make("preview_status", {
   description:
     "Report whether a collaborative browser tab is automation-capable, including its URL, title, visibility, loading state, viewport mode, and measured CSS-pixel size. Pass tabId to inspect a specific tab; omit it to use this agent session's current tab.",
   parameters: PreviewAutomationTabTargetInput,
-  success: Schema.Struct({ ...PreviewAutomationStatus.fields, ...presentationFields }),
+  success: PreviewAutomationStatus,
   failure: PreviewAutomationError,
   dependencies,
 })
@@ -68,7 +68,7 @@ const PreviewOpenTool = browserTool(
     description:
       "Initialize a collaborative browser tab and open its thread-bound inline preview by default. Set open=false for background-only automation. Pass tabId to reuse a specific existing tab, set reuseExistingTab=false to create another tab, or omit both to use this agent session's current tab.",
     parameters: PreviewAutomationOpenInput,
-    success: Schema.Struct({ ...PreviewAutomationStatus.fields, ...presentationFields }),
+    success: PreviewAutomationStatus,
     failure: PreviewAutomationError,
     dependencies,
   })
@@ -81,7 +81,7 @@ const PreviewNavigateTool = safeBrowserTool(
     description:
       "Navigate a collaborative browser tab. Pass tabId to target a specific tab, plus {url:'https://t3.chat'} for a website or {target:{kind:'environment-port',port:5173}} for a dev server. Exactly one of url or target is required.",
     parameters: PreviewAutomationNavigateInput,
-    success: Schema.Struct({ ...PreviewAutomationStatus.fields, ...presentationFields }),
+    success: PreviewAutomationStatus,
     failure: PreviewAutomationError,
     dependencies,
   }).annotate(Tool.Title, "Navigate browser preview"),
@@ -135,7 +135,7 @@ export const PreviewSnapshotTool = readonlyBrowserTool(
         }),
       ),
     }),
-    success: Schema.Struct({ ...PreviewAutomationSnapshot.fields, ...presentationFields }),
+    success: PreviewAutomationSnapshot,
     failure: PreviewAutomationError,
     dependencies,
   }).annotate(Tool.Title, "Inspect browser page"),

@@ -7,6 +7,7 @@ import {
   PreviewAutomationRecordingTransferError,
   PreviewAutomationRecordingDesktopUpdateRequiredError,
   PreviewAutomationRecordingArtifact,
+  type ToolActivityIcon,
   type ThreadId,
   type PreviewAutomationOperation,
   type PreviewAutomationOpenInput,
@@ -55,19 +56,39 @@ const invoke = Effect.fn("PreviewToolkit.invoke")(function* <A>(
   timeoutMs?: number,
   tabId?: PreviewTabId,
 ): Effect.fn.Return<
-  PreviewAutomationBroker.PreviewAutomationResult<A>,
+  { result: A; toolIcon?: ToolActivityIcon },
   import("@t3tools/contracts").PreviewAutomationError,
   McpInvocationContext.McpInvocationContext | PreviewAutomationBroker.PreviewAutomationBroker
 > {
   const scope = yield* McpInvocationContext.requireMcpCapability("preview");
   const broker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
-  return yield* broker.invokeWithPresentation<A>({
+  const result = yield* broker.invoke<A>({
     scope,
     operation,
     input,
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
     ...(tabId === undefined ? {} : { tabId }),
   });
+  if (["status", "open", "navigate", "snapshot"].includes(operation)) return { result };
+  const statusTabId =
+    (operation !== "evaluate" && typeof result === "object" && result !== null
+      ? (result as { tabId?: PreviewTabId }).tabId
+      : undefined) ?? tabId;
+  const page = yield* broker
+    .invoke<PreviewAutomationStatus>({
+      scope,
+      operation: "status",
+      input: {},
+      timeoutMs: 500,
+      ...(statusTabId === undefined ? {} : { tabId: statusTabId }),
+    })
+    .pipe(Effect.catch(() => Effect.succeed(null)));
+  return {
+    result,
+    ...(page?.url && /^https?:\/\//i.test(page.url) && page.url.length <= 4096
+      ? { toolIcon: { _tag: "website" as const, pageUrl: page.url } }
+      : {}),
+  };
 });
 
 const invokeTargeted = <A extends object>(
