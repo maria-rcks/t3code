@@ -480,7 +480,7 @@ const make = Effect.gen(function* () {
         })
         .pipe(Effect.onError(() => Effect.sync(() => void resumedTurnStarts.delete(commandId))));
       yield* Deferred.await(sent);
-      queued.shift();
+      if (queued[0] === event) queued.shift();
       resumedTurnStarts.delete(commandId);
     }
     if (turnsAfterCompaction.get(threadId) === queued) turnsAfterCompaction.delete(threadId);
@@ -1575,11 +1575,13 @@ const make = Effect.gen(function* () {
     const send = providerService
       .sendTurn(sendTurnRequest.value)
       .pipe(Effect.asVoid, Effect.catchCause(recoverTurnStartFailure));
-    const sent =
-      event.commandId !== null ? resumedTurnStarts.get(event.commandId)?.sent : undefined;
-    if (sent && event.commandId !== null) {
+    if (resumed && event.commandId !== null) {
+      resumed.queued.shift();
       resumedTurnStarts.delete(event.commandId);
-      yield* send.pipe(Effect.ensuring(Deferred.succeed(sent, undefined)), Effect.forkScoped);
+      yield* send.pipe(
+        Effect.ensuring(Deferred.succeed(resumed.sent, undefined)),
+        Effect.forkScoped,
+      );
     } else {
       yield* Effect.forkScoped(send);
     }

@@ -986,10 +986,11 @@ describe("ProviderCommandReactor", () => {
     }),
   );
 
-  effectIt.effect.each([false, true])(
-    "queues messages until compaction restores the session (stop before resume: %s)",
-    (stopBeforeResume) =>
+  effectIt.effect.each(["resume", "stop before resume", "stop after send"])(
+    "queues messages until compaction restores the session (%s)",
+    (scenario) =>
       Effect.gen(function* () {
+        const stopBeforeResume = scenario === "stop before resume";
         const readyDispatchStarted = yield* Deferred.make<void>();
         const releaseReadyDispatch = yield* Deferred.make<void>();
         const firstSent = yield* Deferred.make<void>();
@@ -997,6 +998,8 @@ describe("ProviderCommandReactor", () => {
         const resumeStarted = yield* Deferred.make<void>();
         const releaseResume = yield* Deferred.make<void>();
         const resumeDispatched = yield* Deferred.make<void>();
+        const queuedSendStarted = yield* Deferred.make<void>();
+        const releaseQueuedSend = yield* Deferred.make<void>();
         let blockReadyDispatch = false;
         const harness = yield* Effect.promise(() =>
           createHarness({
@@ -1023,9 +1026,13 @@ describe("ProviderCommandReactor", () => {
               sentCount++;
               return sentCount === 1
                 ? Deferred.succeed(firstSent, undefined)
-                : sentCount === 3
-                  ? Deferred.succeed(queuedSent, undefined)
-                  : Effect.void;
+                : sentCount === 2 && scenario === "stop after send"
+                  ? Deferred.succeed(queuedSendStarted, undefined).pipe(
+                      Effect.andThen(Deferred.await(releaseQueuedSend)),
+                    )
+                  : sentCount === 3
+                    ? Deferred.succeed(queuedSent, undefined)
+                    : Effect.void;
             }),
           ),
         );
@@ -1104,6 +1111,35 @@ describe("ProviderCommandReactor", () => {
         ]);
 
         yield* Deferred.succeed(releaseReadyDispatch, undefined);
+        if (scenario === "stop after send") {
+          yield* Deferred.await(queuedSendStarted);
+          yield* harness.engine.dispatch({
+            type: "thread.session.stop",
+            commandId: CommandId.make("cmd-stop-after-queued-send"),
+            threadId,
+            createdAt: "2026-01-01T00:00:04.000Z",
+          });
+          yield* Effect.promise(() => harness.drain());
+          const stoppedThread = (yield* Effect.promise(() => harness.readModel())).threads.find(
+            (entry) => entry.id === threadId,
+          );
+          expect(stoppedThread?.session?.status).toBe("stopped");
+          expect(
+            stoppedThread?.activities.filter(
+              (activity) => activity.summary === "Queued message was not sent",
+            ),
+          ).toEqual([
+            expect.objectContaining({
+              payload: {
+                requestId: "user-message-during-compact-recovery-2",
+                detail: expect.any(String),
+              },
+            }),
+          ]);
+          expect(harness.sendTurn).toHaveBeenCalledTimes(2);
+          yield* Deferred.succeed(releaseQueuedSend, undefined);
+          return;
+        }
         if (stopBeforeResume) {
           yield* Deferred.await(resumeStarted);
           yield* dispatchTurn("compact-during-resume", "/compact", "2026-01-01T00:00:04.000Z");
