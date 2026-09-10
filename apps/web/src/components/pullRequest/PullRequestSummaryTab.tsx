@@ -172,7 +172,7 @@ function CollapsedComment({
   const [open, setOpen] = useState(false);
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <article className="group rounded-lg [contain-intrinsic-block-size:44px] [content-visibility:auto]">
+      <article className="group rounded-lg border border-border/60 [contain-intrinsic-block-size:44px] [content-visibility:auto]">
         <CollapsibleTrigger
           className={cn(
             "flex w-full items-center gap-2 p-3 text-left transition-opacity hover:opacity-100",
@@ -782,13 +782,14 @@ export function PullRequestSummaryTab({
         </div>
       </section>
 
-      <Section title="Checks">
+      <section aria-label="Checks" className="px-4 py-3">
         {detail.checks.length === 0 ? (
           <p className="text-xs text-muted-foreground">No checks reported.</p>
         ) : (
           <div>
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xs">
               <span className="text-muted-foreground">
+                <span className="mr-2 font-medium">Checks</span>{" "}
                 {summarizePullRequestChecks(detail.checks)}
               </span>
               {completedCheckCount > 0 ? (
@@ -863,7 +864,7 @@ export function PullRequestSummaryTab({
             </div>
           </div>
         )}
-      </Section>
+      </section>
 
       <Section
         title="Comments"
@@ -962,7 +963,7 @@ export function PullRequestSummaryTab({
                       key={comment.id}
                       // Offscreen comments skip style, layout and paint. Bot comments carry pages of
                       // highlighted code, and the conversation is below the description either way.
-                      className="group rounded-lg py-3 [contain-intrinsic-block-size:120px] [content-visibility:auto]"
+                      className="group rounded-lg border border-border/60 p-3 [contain-intrinsic-block-size:120px] [content-visibility:auto]"
                     >
                       <div className="flex items-start gap-2">
                         <span className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground">
