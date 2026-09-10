@@ -4,7 +4,7 @@ import type * as React from "react";
 
 import { cn } from "~/lib/utils";
 
-const alertVariants = cva("relative rounded-xl border px-3.5 py-3 text-card-foreground text-sm", {
+const alertVariants = cva("relative rounded-lg border px-3.5 py-3 text-card-foreground text-sm", {
   defaultVariants: {
     variant: "default",
   },

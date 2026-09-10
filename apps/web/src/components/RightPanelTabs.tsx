@@ -1076,7 +1076,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     >
       <div
         className={cn(
-          "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 pl-2",
+          "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 border-b border-border pl-2",
           // The sheet overlays from the viewport top, so its tab bar keeps
           // the titlebar's height: a compact row re-centers the layout
           // controls a few pixels higher and the cluster jumps on open.

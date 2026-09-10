@@ -203,7 +203,7 @@ export function SettingsSection({
         className={cn(
           "relative overflow-visible text-foreground",
           variant === "grouped"
-            ? "rounded-xl border border-border/60 bg-card/40 shadow-xs/5 [&>*+*]:border-t [&>*+*]:border-border/50 [&>[data-slot=settings-row]]:rounded-none"
+            ? "rounded-lg border border-border bg-card [&>*+*]:border-t [&>*+*]:border-border [&>[data-slot=settings-row]]:rounded-none"
             : "space-y-1",
         )}
       >

@@ -1730,8 +1730,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       {...sortableRootProps}
       {...(fileDropHandlers ?? {})}
       className={cn(
-        // Matches the h-[4.875rem] content box; the py-0.5 padding is added on top.
-        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
+        // Matches the h-[4.5rem] content box; the py-0.5 padding is added on top.
+        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_72px]",
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -1752,7 +1752,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             />
           }
         >
-          <div className="relative z-10 h-[4.875rem] px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]">
+          <div className="relative z-10 h-[4.5rem] px-[var(--sidebar-row-content-inset)] py-1.5">
             <div className="flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
               {props.project ? (
@@ -1899,7 +1899,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 </span>
               )}
             </div>
-            <div className="mt-1 flex min-w-0">
+            <div className="mt-0.5 flex min-w-0">
               {title}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
