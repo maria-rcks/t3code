@@ -1648,7 +1648,7 @@ export function PullRequestDetailPanel({
                           render={
                             <Button
                               size="xs"
-                              variant="ghost"
+                              variant="outline"
                               aria-label={
                                 handoff?.startsWith("checkout") ? "Checking out..." : "Check out"
                               }
@@ -1728,7 +1728,7 @@ export function PullRequestDetailPanel({
                       <span className="inline-flex shrink-0">
                         <Button
                           size="xs"
-                          variant="ghost"
+                          variant="destructive-outline"
                           disabled={handoff !== null}
                           onClick={startResolveConflicts}
                           aria-label={
@@ -1754,7 +1754,6 @@ export function PullRequestDetailPanel({
                       <span className="inline-flex shrink-0">
                         <Button
                           size="xs"
-                          variant="ghost"
                           disabled={actionPending}
                           onClick={() => void perform("ready")}
                           aria-label="Ready for review"
@@ -1777,7 +1776,6 @@ export function PullRequestDetailPanel({
                       <span className="inline-flex shrink-0">
                         <Button
                           size="xs"
-                          variant="ghost"
                           disabled={actionPending}
                           onClick={() =>
                             setConfirmation({ open: true, action: "enable-auto-merge" })
@@ -1829,7 +1827,6 @@ export function PullRequestDetailPanel({
                       <span className="inline-flex shrink-0">
                         <Button
                           size="xs"
-                          variant="ghost"
                           disabled={actionPending}
                           onClick={() => setConfirmation({ open: true, action: "merge" })}
                           aria-label={
