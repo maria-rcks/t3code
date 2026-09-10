@@ -1770,6 +1770,46 @@ describe("deriveTimelineEntries", () => {
       timeline.flatMap((entry) => (entry.kind === "message" ? [entry.message.id] : [])),
     ).toEqual(["real-user-message", "async-answer:unloaded"]);
     expect(deriveTimelineEntries(messages, [], [])).toHaveLength(3);
+    const responseMessages = [{ ...messages[0]!, turnId: null }];
+    const latestTurn = {
+      turnId: TurnId.make("answer-turn"),
+      requestedAt: messages[0]!.createdAt,
+      startedAt: messages[0]!.createdAt,
+      completedAt: null,
+      state: "running" as const,
+      assistantMessageId: null,
+    };
+    const awaiting = deriveTimelineEntriesWithState(
+      responseMessages,
+      [],
+      work,
+      null,
+      activities,
+      latestTurn,
+    );
+    expect(awaiting.entries.find((entry) => entry.kind === "work")).toMatchObject({
+      entry: { turnId: "answer-turn", questionAnswerSubmittedAt: messages[0]!.createdAt },
+    });
+    const resumedActivities = [
+      ...activities,
+      makeActivity({
+        kind: "tool.started",
+        turnId: "answer-turn",
+        createdAt: "2026-02-23T00:00:04.000Z",
+      }),
+    ];
+    const resumed = deriveTimelineEntriesWithState(
+      responseMessages,
+      [],
+      work,
+      awaiting,
+      resumedActivities,
+      latestTurn,
+    );
+    const resumedWork = resumed.entries.find((entry) => entry.kind === "work");
+    expect(
+      resumedWork?.kind === "work" && resumedWork.entry.questionAnswerSubmittedAt,
+    ).toBeUndefined();
   });
 
   const streamingMessage = {

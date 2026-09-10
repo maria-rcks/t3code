@@ -1,5 +1,7 @@
 import {
   type OrchestrationThreadActivity,
+  type OrchestrationLatestTurn,
+  type TurnId,
   UserInputAttachmentAnswerPayload,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -11,6 +13,55 @@ function record(value: unknown): Record<string, unknown> | undefined {
 }
 
 const isQuestionAnswer = Schema.is(UserInputAttachmentAnswerPayload);
+
+/** User messages have no turn id; associate async answers with the response they started or steered. */
+export function resolveAsyncAnswerTurnId(
+  response: { turnId?: TurnId | null; createdAt: string },
+  messages: ReadonlyArray<{
+    role: string;
+    turnId?: TurnId | null;
+    createdAt: string;
+    updatedAt?: string;
+  }>,
+  activities: ReadonlyArray<{ kind: string; turnId?: TurnId | null; createdAt: string }>,
+  latestTurn?: Pick<OrchestrationLatestTurn, "turnId" | "requestedAt" | "completedAt"> | null,
+): TurnId | null {
+  if (response.turnId) return response.turnId;
+  if (
+    latestTurn &&
+    latestTurn.requestedAt <= response.createdAt &&
+    (latestTurn.completedAt === null || latestTurn.completedAt >= response.createdAt)
+  )
+    return latestTurn.turnId;
+  let boundary: string | undefined;
+  for (const message of messages) {
+    if (
+      message.role === "user" &&
+      message.createdAt > response.createdAt &&
+      (!boundary || message.createdAt < boundary)
+    )
+      boundary = message.createdAt;
+  }
+  let earliest: { turnId: TurnId; createdAt: string } | undefined;
+  for (const entry of [
+    ...messages
+      .filter((message) => message.role === "assistant")
+      .map((message) => ({ ...message, createdAt: message.updatedAt ?? message.createdAt })),
+    ...activities.filter(
+      (activity) => activity.kind.startsWith("tool.") || activity.kind.startsWith("task."),
+    ),
+  ]) {
+    if (
+      entry.turnId &&
+      entry.createdAt >= response.createdAt &&
+      (!boundary || entry.createdAt < boundary) &&
+      (!earliest || entry.createdAt < earliest.createdAt)
+    ) {
+      earliest = { turnId: entry.turnId, createdAt: entry.createdAt };
+    }
+  }
+  return earliest?.turnId ?? null;
+}
 
 function displayOptionAnswer(value: unknown, labels: ReadonlyMap<string, string>): unknown {
   if (typeof value === "string") return labels.get(value) ?? value;

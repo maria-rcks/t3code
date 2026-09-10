@@ -3222,6 +3222,8 @@ export default function ChatView(props: ChatViewProps) {
       activeThread?.proposedPlans ?? [],
       workLogEntries,
       previous?.threadKey === activeThreadKey ? previous.projection : null,
+      threadActivities,
+      activeThread?.latestTurn,
     );
     timelineProjectionRef.current = { threadKey: activeThreadKey, projection };
     return projection.entries;
@@ -3231,6 +3233,8 @@ export default function ChatView(props: ChatViewProps) {
     activeThread?.proposedPlans,
     timelineMessages,
     workLogEntries,
+    threadActivities,
+    activeThread?.latestTurn,
   ]);
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =

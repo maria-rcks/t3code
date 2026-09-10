@@ -3,7 +3,10 @@ import {
   type PendingApproval,
 } from "@t3tools/client-runtime/pending-requests";
 import { UserInputAttachmentAnswerPayload } from "@t3tools/contracts";
-import { foldUserInputActivities } from "@t3tools/client-runtime/work-log/user-input";
+import {
+  foldUserInputActivities,
+  resolveAsyncAnswerTurnId,
+} from "@t3tools/client-runtime/work-log/user-input";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Arr from "effect/Array";
@@ -154,6 +157,8 @@ export type TimelineEntry =
     };
 
 export interface TimelineEntriesProjection {
+  readonly latestTurn?: OrchestrationLatestTurn | null | undefined;
+  readonly activities?: ReadonlyArray<OrchestrationThreadActivity> | undefined;
   readonly messages: ReadonlyArray<ChatMessage>;
   readonly proposedPlans: ReadonlyArray<ProposedPlan>;
   readonly workEntries: ReadonlyArray<WorkLogEntry>;
@@ -1615,16 +1620,21 @@ export function deriveTimelineEntriesWithState(
   proposedPlans: ReadonlyArray<ProposedPlan>,
   workEntries: ReadonlyArray<WorkLogEntry>,
   previous: TimelineEntriesProjection | null = null,
+  activities?: ReadonlyArray<OrchestrationThreadActivity>,
+  latestTurn?: OrchestrationLatestTurn | null,
 ): TimelineEntriesProjection {
   if (
     previous !== null &&
+    previous.activities === activities &&
+    previous.latestTurn === latestTurn &&
     previous.proposedPlans.length === proposedPlans.length &&
     previous.workEntries.length === workEntries.length &&
     hasExactArrayPrefix(previous.proposedPlans, proposedPlans) &&
     hasExactArrayPrefix(previous.workEntries, workEntries)
   ) {
     const entries = replaceStreamingTimelineMessages(messages, previous);
-    if (entries !== null) return { messages, proposedPlans, workEntries, entries };
+    if (entries !== null)
+      return { messages, proposedPlans, workEntries, entries, activities, latestTurn };
   }
   const foldedAnswerMessageIds = new Set(
     workEntries.flatMap((entry) =>
@@ -1635,19 +1645,16 @@ export function deriveTimelineEntriesWithState(
     message.role !== "user" || !foldedAnswerMessageIds.has(message.id);
   const asyncAnswers = new Map<string, ChatMessage>(
     messages
-      .filter(
-        (message) =>
-          message.role === "user" && message.turnId && foldedAnswerMessageIds.has(message.id),
-      )
+      .filter((message) => message.role === "user" && foldedAnswerMessageIds.has(message.id))
       .map((message) => [message.id, message]),
   );
   const latestProviderActivity = new Map<TurnId, string>();
   if (asyncAnswers.size > 0) {
-    for (const entry of workEntries) {
+    for (const entry of activities ?? workEntries) {
+      const kind = "kind" in entry ? entry.kind : entry.sourceActivityKind;
       if (
         entry.turnId &&
-        (entry.sourceActivityKind?.startsWith("tool.") ||
-          entry.sourceActivityKind?.startsWith("task.")) &&
+        (kind?.startsWith("tool.") || kind?.startsWith("task.")) &&
         entry.createdAt > (latestProviderActivity.get(entry.turnId) ?? "")
       )
         latestProviderActivity.set(entry.turnId, entry.createdAt);
@@ -1656,18 +1663,28 @@ export function deriveTimelineEntriesWithState(
   const workRow = (entry: WorkLogEntry) => {
     const response =
       entry.questionAnswer && asyncAnswers.get(`async-answer:${entry.questionAnswer.requestId}`);
-    if (!response?.turnId) return timelineEntryFromWork(entry);
-    const resumed = (latestProviderActivity.get(response.turnId) ?? "") > response.createdAt;
+    if (!response) return timelineEntryFromWork(entry);
+    const responseTurnId = resolveAsyncAnswerTurnId(
+      response,
+      messages,
+      activities ?? [],
+      latestTurn,
+    );
+    const resumed =
+      responseTurnId !== null &&
+      (latestProviderActivity.get(responseTurnId) ?? "") > response.createdAt;
     const { questionAnswerSubmittedAt: _submittedAt, ...rest } = entry;
     return timelineEntryFromWork({
       ...rest,
-      turnId: response.turnId,
+      turnId: responseTurnId,
       createdAt: response.createdAt,
       ...(!resumed ? { questionAnswerSubmittedAt: response.createdAt } : {}),
     });
   };
   const canAppend =
     previous !== null &&
+    previous.activities === activities &&
+    previous.latestTurn === latestTurn &&
     asyncAnswers.size === 0 &&
     !previous.entries.some((entry) => entry.kind === "message" && !showMessage(entry.message)) &&
     hasExactArrayPrefix(previous.messages, messages) &&
@@ -1691,6 +1708,8 @@ export function deriveTimelineEntriesWithState(
       proposedPlans,
       workEntries,
       entries: mergeTimelineEntrySuffix(previous.entries, suffix),
+      activities,
+      latestTurn,
     };
   }
 
@@ -1704,6 +1723,8 @@ export function deriveTimelineEntriesWithState(
     entries: [...messageRows, ...proposedPlanRows, ...workRows].toSorted(
       compareTimelineEntriesByCreatedAt,
     ),
+    activities,
+    latestTurn,
   };
 }
 

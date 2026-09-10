@@ -1,5 +1,8 @@
 import * as Option from "effect/Option";
-import { foldUserInputActivities } from "@t3tools/client-runtime/work-log/user-input";
+import {
+  foldUserInputActivities,
+  resolveAsyncAnswerTurnId,
+} from "@t3tools/client-runtime/work-log/user-input";
 import * as Schema from "effect/Schema";
 import {
   requestKindFromRequestType,
@@ -2215,7 +2218,8 @@ export function buildPendingUserInputAnswers(
 }
 
 export function buildThreadFeed(
-  thread: Pick<OrchestrationThread, "messages" | "activities">,
+  thread: Pick<OrchestrationThread, "messages" | "activities"> &
+    Partial<Pick<OrchestrationThread, "latestTurn">>,
   options?: {
     readonly loadedMessages?: ReadonlyArray<OrchestrationThread["messages"][number]>;
     readonly localMessages?: ReadonlyArray<OrchestrationThread["messages"][number]>;
@@ -2229,10 +2233,7 @@ export function buildThreadFeed(
     options?.loadedMessages !== undefined ? (loadedMessages[0]?.createdAt ?? null) : null;
   const asyncAnswerMessages = new Map(
     messages
-      .filter(
-        (message) =>
-          message.role === "user" && message.id.startsWith("async-answer:") && message.turnId,
-      )
+      .filter((message) => message.role === "user" && message.id.startsWith("async-answer:"))
       .map((message) => [message.id as string, message]),
   );
   const latestProviderActivityAt = new Map<TurnId, string>();
@@ -2254,32 +2255,39 @@ export function buildThreadFeed(
       const message = answer
         ? asyncAnswerMessages.get(`async-answer:${answer.requestId}`)
         : undefined;
-      if (!message?.turnId) return entry;
-      const resumedAt = latestProviderActivityAt.get(message.turnId);
+      if (!message) return entry;
+      const responseTurnId = resolveAsyncAnswerTurnId(
+        message,
+        messages,
+        thread.activities,
+        thread.latestTurn,
+      );
+      if (!responseTurnId) return entry;
+      const resumedAt = latestProviderActivityAt.get(responseTurnId);
       const submittedAt =
         resumedAt && resumedAt > message.createdAt ? undefined : message.createdAt;
       const cached = asyncAnswerEntriesCache.get(entry.activity);
       if (
         cached &&
-        cached.turnId === message.turnId &&
+        cached.turnId === responseTurnId &&
         cached.createdAt === message.createdAt &&
         cached.activity.workEntry.questionAnswerSubmittedAt === submittedAt
       )
         return cached;
       const workEntry = {
         ...entry.activity.workEntry,
-        turnId: message.turnId,
+        turnId: responseTurnId,
         createdAt: message.createdAt,
       };
       if (submittedAt) workEntry.questionAnswerSubmittedAt = submittedAt;
       else delete workEntry.questionAnswerSubmittedAt;
       const relocated = {
         ...entry,
-        turnId: message.turnId,
+        turnId: responseTurnId,
         createdAt: message.createdAt,
         activity: {
           ...entry.activity,
-          turnId: message.turnId,
+          turnId: responseTurnId,
           createdAt: message.createdAt,
           workEntry,
         },

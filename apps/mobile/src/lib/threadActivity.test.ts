@@ -283,11 +283,19 @@ describe("buildThreadFeed", () => {
       const questionTurnId = async ? TurnId.make("original-question-turn") : turnId;
       const startedAt = "2026-04-01T00:00:00.000Z";
       const submittedAt = "2026-04-01T00:00:03.000Z";
-      const latestTurn = { turnId, state: "running" as const, startedAt, completedAt: null };
+      const latestTurn = {
+        turnId,
+        state: "running" as const,
+        startedAt,
+        requestedAt: async ? submittedAt : startedAt,
+        completedAt: null,
+        assistantMessageId: null,
+      };
       const thread = makeThread({
         id: ThreadId.make("answer-thread"),
         projectId: ProjectId.make("project-1"),
         title: "Answer visibility",
+        latestTurn,
         messages: [
           {
             id: MessageId.make("assistant-question"),
@@ -304,7 +312,7 @@ describe("buildThreadFeed", () => {
                   id: MessageId.make("async-answer:runtime-question"),
                   role: "user" as const,
                   text: "Node.js",
-                  turnId,
+                  turnId: null,
                   streaming: false,
                   createdAt: submittedAt,
                   updatedAt: submittedAt,

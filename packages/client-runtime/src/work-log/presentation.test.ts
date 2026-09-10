@@ -12,7 +12,61 @@ import {
   foldUserInputActivities,
   getQuestionAnswerPreview,
   getQuestionAnswerText,
+  resolveAsyncAnswerTurnId,
 } from "./userInput.js";
+
+it("associates null-turn async replies with a new or steered turn", () => {
+  const turnId = TurnId.make("response-turn");
+  const response = { turnId: null, createdAt: "2026-04-01T00:00:03.000Z" };
+  expect(
+    resolveAsyncAnswerTurnId(response, [], [], {
+      turnId,
+      requestedAt: response.createdAt,
+      completedAt: null,
+    }),
+  ).toBe(turnId);
+  expect(
+    resolveAsyncAnswerTurnId(response, [], [], {
+      turnId,
+      requestedAt: "2026-04-01T00:00:01.000Z",
+      completedAt: null,
+    }),
+  ).toBe(turnId);
+  expect(
+    resolveAsyncAnswerTurnId(response, [], [], {
+      turnId,
+      requestedAt: "2026-04-01T00:00:01.000Z",
+      completedAt: "2026-04-01T00:00:02.000Z",
+    }),
+  ).toBeNull();
+  expect(resolveAsyncAnswerTurnId({ ...response, turnId }, [], [])).toBe(turnId);
+});
+
+it("recovers historic async reply turns from provider activity within their user boundary", () => {
+  const turnId = TurnId.make("response-turn");
+  const response = { turnId: null, createdAt: "2026-04-01T00:00:03.000Z" };
+  const assistant = { role: "assistant", turnId, createdAt: "2026-04-01T00:00:04.000Z" };
+  const tool = { kind: "tool.started", turnId, createdAt: assistant.createdAt };
+  const boundary = { role: "user", turnId: null, createdAt: "2026-04-01T00:00:05.000Z" };
+  expect(resolveAsyncAnswerTurnId(response, [assistant, boundary], [])).toBe(turnId);
+  expect(
+    resolveAsyncAnswerTurnId(
+      response,
+      [
+        { ...assistant, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: assistant.createdAt },
+        boundary,
+      ],
+      [],
+    ),
+  ).toBe(turnId);
+  expect(resolveAsyncAnswerTurnId(response, [boundary], [tool])).toBe(turnId);
+  expect(
+    resolveAsyncAnswerTurnId(response, [boundary], [{ ...tool, createdAt: boundary.createdAt }]),
+  ).toBeNull();
+  expect(
+    resolveAsyncAnswerTurnId(response, [], [{ ...tool, kind: "user-input.resolved" }]),
+  ).toBeNull();
+});
 
 import {
   commandDetailRepeatsCommand,
