@@ -1,8 +1,8 @@
 /**
  * Remote open-in-editor: when this client is not on the environment's
- * machine, "Open" must hand the OS a `vscode://vscode-remote/ssh-remote+…`
- * deep link (local editor connects over SSH) instead of exec'ing an editor
- * on the environment host.
+ * machine, "Open" must hand the OS an editor deep link
+ * (`vscode://vscode-remote/ssh-remote+…`, `zed://ssh/…`) so the local editor
+ * connects over SSH instead of exec'ing an editor on the environment host.
  *
  * Host precedence: a desktop-SSH environment's real `~/.ssh/config` alias
  * beats server-advertised names; among advertised names the tailnet MagicDNS

@@ -1,6 +1,8 @@
 import {
   REMOTE_CAPABLE_EDITOR_IDS,
+  remoteLinkStyleForEditor,
   remoteSchemeForEditor,
+  type EditorRemoteLinkStyle,
   type SystemSettingsPane,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -24,23 +26,38 @@ const SYSTEM_SETTINGS_URLS: Record<SystemSettingsPane, string> = {
     "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles",
 };
 
-// Remote open-in-editor deep links (`vscode://vscode-remote/ssh-remote+…`)
-// must reach the OS handler; every other non-web scheme stays blocked.
+// Remote open-in-editor deep links (`vscode://vscode-remote/ssh-remote+…` and
+// `zed://ssh/<host>/<path>`) must reach the OS handler; every other non-web
+// scheme stays blocked. Each scheme only unlocks its own editor's link shape,
+// so a Zed link cannot ride in on a VS Code scheme or the reverse.
 const SAFE_WEB_PROTOCOLS = new Set(["http:", "https:"]);
-const REMOTE_EDITOR_PROTOCOLS = new Set(
+const REMOTE_EDITOR_PROTOCOLS = new Map<string, EditorRemoteLinkStyle>(
   REMOTE_CAPABLE_EDITOR_IDS.flatMap((id) => {
     const scheme = remoteSchemeForEditor(id);
-    return scheme === undefined ? [] : [`${scheme}:`];
+    const style = remoteLinkStyleForEditor(id);
+    return scheme === undefined || style === undefined
+      ? []
+      : [[`${scheme}:`, style] as [string, EditorRemoteLinkStyle]];
   }),
 );
 
-const isRemoteEditorUrl = (url: URL) =>
-  REMOTE_EDITOR_PROTOCOLS.has(url.protocol) &&
-  url.username.length === 0 &&
-  url.password.length === 0 &&
-  url.host === "vscode-remote" &&
-  url.pathname.startsWith("/ssh-remote+") &&
-  url.pathname.length > "/ssh-remote+".length;
+// `zed://ssh/<host>/<path>`: a host segment plus a non-empty path.
+const ZED_SSH_PATHNAME = /^\/[^/]+\/.+$/;
+
+const isRemoteEditorUrl = (url: URL) => {
+  const style = REMOTE_EDITOR_PROTOCOLS.get(url.protocol);
+  if (style === undefined || url.username.length > 0 || url.password.length > 0) {
+    return false;
+  }
+  if (style === "zed-ssh") {
+    return url.host === "ssh" && ZED_SSH_PATHNAME.test(url.pathname);
+  }
+  return (
+    url.host === "vscode-remote" &&
+    url.pathname.startsWith("/ssh-remote+") &&
+    url.pathname.length > "/ssh-remote+".length
+  );
+};
 
 export function parseSafeExternalUrl(rawUrl: unknown): Option.Option<string> {
   if (typeof rawUrl !== "string") {
