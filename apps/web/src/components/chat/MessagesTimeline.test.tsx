@@ -1765,7 +1765,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("text-destructive");
   });
 
-  it("collapses a standalone tool call from its expanded label unless text is selected", async () => {
+  it("only withholds an expanded tool-call label click while text is selected", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.stubGlobal("requestAnimationFrame", () => 0);
     vi.stubGlobal("cancelAnimationFrame", () => {});
@@ -1795,36 +1795,20 @@ describe("MessagesTimeline", () => {
           />,
         );
       });
-      const row = () => renderer!.root.findByProps({ "aria-label": "pnpm lint" });
-      // The label is nested inside the row, so a browser click runs the label
-      // handler first and then reaches the row unless the label stops it.
-      const clickLabel = async (isCollapsed: boolean) => {
-        const label = row().findAll(
-          (node) =>
-            node.type === "span" &&
-            typeof node.props.className === "string" &&
-            node.props.className.includes("select-text"),
-        )[0];
-        let reachedRow = true;
-        await act(() =>
-          label!.props.onClick({
-            currentTarget: { ownerDocument: { getSelection: () => ({ isCollapsed }) } },
-            stopPropagation: () => {
-              reachedRow = false;
-            },
-          }),
-        );
-        if (reachedRow) await act(() => row().props.onClick());
-      };
-
-      await act(() => row().props.onClick());
-      expect(row().props["aria-expanded"]).toBe(true);
-
-      await clickLabel(false);
-      expect(row().props["aria-expanded"]).toBe(true);
-
-      await clickLabel(true);
-      expect(row().props["aria-expanded"]).toBe(false);
+      await act(() => renderer!.root.findByProps({ "aria-expanded": false }).props.onClick());
+      const label = renderer!.root.findAll(
+        (node) => node.type === "span" && String(node.props.className).includes("select-text"),
+      )[0];
+      const stopPropagation = vi.fn();
+      // Only the click that ends a selection may be withheld from the row
+      // toggle; the plain click has to reach it so the label can collapse.
+      for (const isCollapsed of [false, true]) {
+        label!.props.onClick({
+          currentTarget: { ownerDocument: { getSelection: () => ({ isCollapsed }) } },
+          stopPropagation,
+        });
+      }
+      expect(stopPropagation).toHaveBeenCalledTimes(1);
     } finally {
       await act(() => renderer?.unmount());
     }
