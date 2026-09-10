@@ -155,6 +155,9 @@ describe("buildRemoteOpenUrl", () => {
     expect(
       buildRemoteOpenUrl({ editor: "zed", host: "sol", absolutePath: "C:\\Users\\theo" }),
     ).toBe("zed://ssh/sol/Users/theo");
+    expect(buildRemoteOpenUrl({ editor: "zed", host: "sol", absolutePath: "/C:/project" })).toBe(
+      "zed://ssh/sol/C%3A/project",
+    );
   });
 
   it("returns undefined for editors without remote support", () => {
