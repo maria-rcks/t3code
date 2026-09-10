@@ -159,7 +159,18 @@ export function foldUserInputActivities(
           : userInputStatus === "dismissed"
             ? "User input dismissed"
             : "User input requested",
-      payload: { ...previousPayload, ...payload, ...questionAnswer, userInputStatus },
+      payload: {
+        ...previousPayload,
+        ...payload,
+        ...questionAnswer,
+        userInputStatus,
+        ...(hasAnswer
+          ? {
+              questionAnswerSubmittedAt:
+                previousPayload?.questionAnswerSubmittedAt ?? activity.createdAt,
+            }
+          : {}),
+      },
     };
     if (position === undefined) {
       positions.set(requestId, result.length);
@@ -191,7 +202,38 @@ export function foldUserInputActivities(
     }
     result[position] = { ...activity, payload: { ...payload, answers } };
   }
-  return withoutDuplicateQuestionTools(result);
+  const folded = withoutDuplicateQuestionTools(result);
+  const latestProviderActivity = new Map<string, string>();
+  for (const activity of folded) {
+    if (
+      activity.turnId &&
+      (activity.kind.startsWith("tool.") || activity.kind.startsWith("task."))
+    ) {
+      const previous = latestProviderActivity.get(activity.turnId);
+      if (!previous || activity.createdAt > previous)
+        latestProviderActivity.set(activity.turnId, activity.createdAt);
+    }
+  }
+  return folded.map((activity) => {
+    const payload = record(activity.payload);
+    const submittedAt = payload?.questionAnswerSubmittedAt;
+    if (
+      typeof submittedAt !== "string" ||
+      !activity.turnId ||
+      (latestProviderActivity.get(activity.turnId) ?? "") <= submittedAt
+    )
+      return activity;
+    const nextPayload = { ...payload };
+    delete nextPayload.questionAnswerSubmittedAt;
+    return { ...activity, payload: nextPayload };
+  });
+}
+
+export function hasQuestionAnswer(answer: UserInputAttachmentAnswerPayload): boolean {
+  return (
+    Object.values(answer.answers).some((value) => getQuestionAnswerText(value).trim().length > 0) ||
+    Object.values(answer.attachmentsByQuestionId).some((attachments) => attachments.length > 0)
+  );
 }
 
 export function getQuestionAnswerText(value: unknown): string {

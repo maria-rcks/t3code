@@ -55,6 +55,7 @@ export {
 
 export interface WorkLogEntry {
   questionAnswer?: UserInputAttachmentAnswerPayload;
+  questionAnswerSubmittedAt?: string;
   id: string;
   createdAt: string;
   turnId?: TurnId | null;
@@ -552,6 +553,8 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (activity.kind === "user-input.answer-submitted") {
     const answer = decodeQuestionAttachmentAnswer(payload);
     if (Option.isSome(answer)) entry.questionAnswer = answer.value;
+    if (typeof payload?.questionAnswerSubmittedAt === "string")
+      entry.questionAnswerSubmittedAt = payload.questionAnswerSubmittedAt;
   }
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);

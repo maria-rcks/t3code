@@ -2,6 +2,7 @@ import { GitPullRequestIcon } from "lucide-react";
 import {
   getQuestionAnswerPreview,
   getQuestionAnswerText,
+  hasQuestionAnswer,
 } from "@t3tools/client-runtime/work-log/user-input";
 import {
   type AssistantCitation,
@@ -2113,6 +2114,7 @@ function toolIconAcceptsTint(
 function LiveActivityRow({
   label,
   preview,
+  previewIsAnswer = false,
   iconName,
   toolIcon,
   failed = false,
@@ -2121,6 +2123,7 @@ function LiveActivityRow({
 }: {
   label: string;
   preview?: string | undefined;
+  previewIsAnswer?: boolean;
   iconName?: WorkEntryIconName;
   toolIcon?: ToolActivityIcon | undefined;
   failed?: boolean;
@@ -2137,6 +2140,7 @@ function LiveActivityRow({
       <LiveActivityContent
         label={label}
         preview={preview}
+        previewIsAnswer={previewIsAnswer}
         iconName={iconName}
         toolIcon={toolIcon}
         failed={failed}
@@ -2148,6 +2152,7 @@ function LiveActivityRow({
           <LiveActivityContent
             label={label}
             preview={preview}
+            previewIsAnswer={previewIsAnswer}
             iconName={iconName}
             toolIcon={toolIcon}
             highlighted
@@ -2161,6 +2166,7 @@ function LiveActivityRow({
 function LiveActivityContent({
   label,
   preview,
+  previewIsAnswer = false,
   iconName,
   toolIcon,
   failed = false,
@@ -2170,6 +2176,7 @@ function LiveActivityContent({
 }: {
   label: string;
   preview?: string | undefined;
+  previewIsAnswer?: boolean;
   iconName: WorkEntryIconName | undefined;
   toolIcon?: ToolActivityIcon | undefined;
   failed?: boolean;
@@ -2213,7 +2220,16 @@ function LiveActivityContent({
       >
         {label}
       </span>
-      {preview ? <span className="min-w-0 truncate text-muted-foreground">{preview}</span> : null}
+      {preview ? (
+        <span
+          className={cn(
+            "min-w-0 truncate",
+            previewIsAnswer ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {preview}
+        </span>
+      ) : null}
       {showTrailingFailureMark ? (
         <XIcon aria-hidden className={cn("size-3 shrink-0", failedToolIconClassName)} />
       ) : null}
@@ -2236,6 +2252,9 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
     >
       <LiveActivityRow
         label={label}
+        previewIsAnswer={
+          row.entry.questionAnswer ? hasQuestionAnswer(row.entry.questionAnswer) : false
+        }
         preview={
           row.entry.questionAnswer ? getQuestionAnswerPreview(row.entry.questionAnswer) : undefined
         }
@@ -3443,7 +3462,16 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
                 {previewText}
               </span>
               {answerPreview ? (
-                <span className="min-w-0 truncate text-muted-foreground">{answerPreview}</span>
+                <span
+                  className={cn(
+                    "min-w-0 truncate",
+                    workEntry.questionAnswer && hasQuestionAnswer(workEntry.questionAnswer)
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {answerPreview}
+                </span>
               ) : null}
             </p>
           </div>

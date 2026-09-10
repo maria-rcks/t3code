@@ -45,6 +45,42 @@ describe("question work log", () => {
   });
   const decodeAnswer = Schema.decodeUnknownSync(UserInputAttachmentAnswerPayload);
 
+  it("keeps a submission visible until subsequent provider activity, excluding the question tool", () => {
+    const turnId = TurnId.make("turn-1");
+    const submittedAt = "2026-01-01T00:00:02.000Z";
+    const activities = [
+      { ...requested, turnId },
+      {
+        ...activity("user-input.resolved", { requestId: "question-1", answers: { scope: "Web" } }),
+        turnId,
+        createdAt: submittedAt,
+      },
+      {
+        ...activity("tool.completed", {
+          toolCallId: "question-tool",
+          data: {
+            toolName: "AskUserQuestion",
+            input: { questions: [{ question: "Which scope?" }] },
+          },
+        }),
+        turnId,
+        createdAt: "2026-01-01T00:00:03.000Z",
+      },
+    ];
+    expect(foldUserInputActivities(activities)[0]).toMatchObject({
+      payload: { questionAnswerSubmittedAt: submittedAt },
+    });
+    const resumed = foldUserInputActivities([
+      ...activities,
+      {
+        ...activity("tool.updated", { toolCallId: "read-file" }),
+        turnId,
+        createdAt: "2026-01-01T00:00:04.000Z",
+      },
+    ]);
+    expect(resumed[0]?.payload).not.toHaveProperty("questionAnswerSubmittedAt");
+  });
+
   it("removes only matching question tools and their lifecycle updates in the same turn", () => {
     const turnId = TurnId.make("turn-1");
     const tool = (id: string, name: string, question: string) => ({

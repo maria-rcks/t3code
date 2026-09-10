@@ -878,6 +878,23 @@ export function deriveMessagesTimelineRows(input: {
     input.latestTurn ?? null,
     input.runningTurnId ?? null,
   );
+  const latestAssistantOutputAt = input.timelineEntries.reduce(
+    (latest, entry) =>
+      entry.kind === "message" &&
+      entry.message.role === "assistant" &&
+      entry.message.text.trim().length > 0 &&
+      entry.message.turnId === unsettledTurnId &&
+      entry.message.updatedAt > latest
+        ? entry.message.updatedAt
+        : latest,
+    "",
+  );
+  const answerAwaitingResume = (entry: WorkLogEntry) =>
+    input.isWorking &&
+    unsettledTurnId !== null &&
+    entry.turnId === unsettledTurnId &&
+    entry.questionAnswerSubmittedAt !== undefined &&
+    entry.questionAnswerSubmittedAt >= latestAssistantOutputAt;
   const activeVisualResponseTurnIds = deriveActiveVisualResponseTurnIds({
     timelineEntries: input.timelineEntries,
     unsettledTurnId,
@@ -935,6 +952,9 @@ export function deriveMessagesTimelineRows(input: {
   const latestRunningToolEntry = visibleActiveToolEntries.findLast((entry) =>
     workEntryIsActiveTurnActivity(entry.entry),
   );
+  const submittedAnswer = visibleActiveToolEntries.findLast((entry) =>
+    answerAwaitingResume(entry.entry),
+  );
   const latestToolFailed =
     latestRunningToolEntry === undefined &&
     latestVisibleToolEntry !== undefined &&
@@ -955,11 +975,11 @@ export function deriveMessagesTimelineRows(input: {
               ? LIVE_ACTIVITY_ROW_ID
               : `work-live:${workGroupIdentity(activeWorkAnchor.id, activeWorkAnchor.entry)}`,
             createdAt: activeWorkAnchor.createdAt,
-            entry: (latestRunningToolEntry ?? latestVisibleToolEntry).entry,
+            entry: (submittedAnswer ?? latestRunningToolEntry ?? latestVisibleToolEntry).entry,
             groupedEntries: visibleActiveToolEntries.map((entry) => entry.entry),
             groupId,
             expanded: input.expandedWorkGroupIds?.has(groupId) ?? false,
-            active: latestToolKeepsActivityLive,
+            active: submittedAnswer ? false : latestToolKeepsActivityLive,
           };
         })()
       : null;
@@ -1043,7 +1063,11 @@ export function deriveMessagesTimelineRows(input: {
     }
 
     if (timelineEntry.kind === "work") {
-      if (timelineEntry.entry.agentSpawn !== undefined || timelineEntry.entry.tone === "error") {
+      if (
+        timelineEntry.entry.agentSpawn !== undefined ||
+        timelineEntry.entry.tone === "error" ||
+        answerAwaitingResume(timelineEntry.entry)
+      ) {
         nextRows.push({
           kind: "work",
           id: timelineEntry.id,
@@ -1061,6 +1085,7 @@ export function deriveMessagesTimelineRows(input: {
           !nextEntry ||
           nextEntry.kind !== "work" ||
           nextEntry.entry.agentSpawn !== undefined ||
+          answerAwaitingResume(nextEntry.entry) ||
           nextEntry.entry.sourceActivityKind === "context-compaction" ||
           nextEntry.entry.tone === "error" ||
           activeWorkEntryIds.has(nextEntry.id) ||

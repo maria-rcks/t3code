@@ -82,6 +82,7 @@ export interface ThreadFeedActivity {
 
 export interface WorkLogEntry {
   readonly questionAnswer?: UserInputAttachmentAnswerPayload;
+  readonly questionAnswerSubmittedAt?: string;
   id: string;
   createdAt: string;
   turnId: TurnId | null;
@@ -246,6 +247,7 @@ const presentedActivityGroupsCache = new WeakMap<
     readonly unsettledTurnId: TurnId | null;
     readonly isWorking: boolean;
     readonly activeTail: boolean;
+    readonly awaitingAnswerIds: ReadonlyArray<string>;
     readonly rows: ReadonlyArray<ThreadFeedEntry>;
   }
 >();
@@ -499,7 +501,14 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     ...(() => {
       if (activity.kind !== "user-input.answer-submitted") return {};
       const answer = decodeQuestionAttachmentAnswer(activity.payload);
-      return Option.isSome(answer) ? { questionAnswer: answer.value } : {};
+      return Option.isSome(answer)
+        ? {
+            questionAnswer: answer.value,
+            ...(typeof payload?.questionAnswerSubmittedAt === "string"
+              ? { questionAnswerSubmittedAt: payload.questionAnswerSubmittedAt }
+              : {}),
+          }
+        : {};
     })(),
   };
   const toolCallId =
@@ -1748,6 +1757,17 @@ export function deriveThreadFeedPresentation(
   const foldsByAnchorId = deriveThreadFeedTurnFolds(sourceFeed, latestTurn);
   const unsettledTurnId = deriveUnsettledTurnId(latestTurn);
   const isWorking = activeWorkStartedAt !== null;
+  let latestAssistantMessageAt: string | null = null;
+  for (const entry of sourceFeed) {
+    if (
+      entry.type === "message" &&
+      entry.message.role === "assistant" &&
+      entry.message.turnId === unsettledTurnId &&
+      !isEmptyMessage(entry)
+    ) {
+      latestAssistantMessageAt = maxIsoTimestamp(latestAssistantMessageAt, entry.message.updatedAt);
+    }
+  }
   const collapsedEntryIds = new Set<string>();
   for (const fold of foldsByAnchorId.values()) {
     if (!expandedTurnIds.has(fold.turnId)) {
@@ -1797,6 +1817,7 @@ export function deriveThreadFeedPresentation(
         unsettledTurnId,
         isWorking,
         isActiveTailGroup,
+        latestAssistantMessageAt,
       );
     }
   }
@@ -1843,6 +1864,7 @@ function appendPresentedFeedEntry(
   unsettledTurnId: TurnId | null,
   isWorking: boolean,
   activeTail: boolean,
+  latestAssistantMessageAt: string | null,
 ): void {
   if (entry.type !== "activity-group") {
     result.push(entry);
@@ -1853,12 +1875,24 @@ function appendPresentedFeedEntry(
     return;
   }
 
+  const awaitingAnswerIds = entry.activities.flatMap((activity) => {
+    const submittedAt = activity.workEntry.questionAnswerSubmittedAt;
+    return isWorking &&
+      unsettledTurnId !== null &&
+      activity.turnId === unsettledTurnId &&
+      submittedAt !== undefined &&
+      (latestAssistantMessageAt === null || submittedAt >= latestAssistantMessageAt)
+      ? [activity.id]
+      : [];
+  });
   let cached = presentedActivityGroupsCache.get(entry);
   if (
     !cached ||
     cached.unsettledTurnId !== unsettledTurnId ||
     cached.isWorking !== isWorking ||
     cached.activeTail !== activeTail ||
+    cached.awaitingAnswerIds.length !== awaitingAnswerIds.length ||
+    cached.awaitingAnswerIds.some((id, index) => id !== awaitingAnswerIds[index]) ||
     cached.rows.some(
       (row) =>
         (row.type === "work-toggle" && expandedWorkGroupIds.has(row.groupId) !== row.expanded) ||
@@ -1873,8 +1907,9 @@ function appendPresentedFeedEntry(
       unsettledTurnId,
       isWorking,
       activeTail,
+      awaitingAnswerIds,
     );
-    cached = { unsettledTurnId, isWorking, activeTail, rows };
+    cached = { unsettledTurnId, isWorking, activeTail, awaitingAnswerIds, rows };
     presentedActivityGroupsCache.set(entry, cached);
   }
   for (const row of cached.rows) {
@@ -1889,6 +1924,7 @@ function appendActivityGroupRows(
   unsettledTurnId: TurnId | null,
   isWorking: boolean,
   activeTail: boolean,
+  awaitingAnswerIds: ReadonlyArray<string>,
 ): void {
   const activities = omitSupersededLifecycleMarkers(
     entry.activities.filter(
@@ -1919,7 +1955,8 @@ function appendActivityGroupRows(
   };
   for (const activity of activities) {
     const spawn = activity.workEntry.agentSpawn;
-    if (activity.workEntry.tone !== "error" && spawn === undefined) {
+    const awaitingResume = awaitingAnswerIds.includes(activity.id);
+    if (activity.workEntry.tone !== "error" && spawn === undefined && !awaitingResume) {
       groupableRun.push(activity);
       continue;
     }
