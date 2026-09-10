@@ -133,6 +133,17 @@ describe("question work log", () => {
       },
     ]);
     expect(resumed[0]?.payload).not.toHaveProperty("questionAnswerSubmittedAt");
+    const sameTimeTool = {
+      ...activity("tool.updated", { toolCallId: "read-file" }),
+      turnId,
+      createdAt: submittedAt,
+    };
+    expect(
+      foldUserInputActivities([activities[0]!, activities[1]!, sameTimeTool])[0]?.payload,
+    ).not.toHaveProperty("questionAnswerSubmittedAt");
+    expect(
+      foldUserInputActivities([activities[0]!, sameTimeTool, activities[1]!])[0],
+    ).toMatchObject({ payload: { questionAnswerSubmittedAt: submittedAt } });
   });
 
   it("removes only matching question tools and their lifecycle updates in the same turn", () => {

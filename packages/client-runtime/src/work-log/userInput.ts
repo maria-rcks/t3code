@@ -60,6 +60,13 @@ export function resolveAsyncAnswerTurnId(
       earliest = { turnId: entry.turnId, createdAt: entry.createdAt };
     }
   }
+  if (
+    latestTurn &&
+    latestTurn.requestedAt >= response.createdAt &&
+    (!boundary || latestTurn.requestedAt < boundary) &&
+    (!earliest || latestTurn.requestedAt <= earliest.createdAt)
+  )
+    return latestTurn.turnId;
   return earliest?.turnId ?? null;
 }
 
@@ -148,7 +155,10 @@ export function foldUserInputActivities(
   const result: OrchestrationThreadActivity[] = [];
   const positions = new Map<string, number>();
   const submittedAnswers = new Map<string, Record<string, unknown>>();
-  for (const activity of activities) {
+  const submissionOrder = new Map<string, number>();
+  const sourceOrder = new Map<OrchestrationThreadActivity, number>();
+  for (const [index, activity] of activities.entries()) {
+    sourceOrder.set(activity, index);
     if (
       activity.kind !== "user-input.requested" &&
       activity.kind !== "user-input.resolved" &&
@@ -195,6 +205,7 @@ export function foldUserInputActivities(
     }
     const hasAnswer =
       Object.keys(answers).length > 0 || Object.keys(attachmentsByQuestionId).length > 0;
+    if (hasAnswer && !submissionOrder.has(requestId)) submissionOrder.set(requestId, index);
     const userInputStatus = hasAnswer
       ? "submitted"
       : activity.kind === "user-input.resolved"
@@ -254,15 +265,19 @@ export function foldUserInputActivities(
     result[position] = { ...activity, payload: { ...payload, answers } };
   }
   const folded = withoutDuplicateQuestionTools(result);
-  const latestProviderActivity = new Map<string, string>();
+  const latestProviderActivity = new Map<string, number>();
   for (const activity of folded) {
     if (
       activity.turnId &&
       (activity.kind.startsWith("tool.") || activity.kind.startsWith("task."))
     ) {
-      const previous = latestProviderActivity.get(activity.turnId);
-      if (!previous || activity.createdAt > previous)
-        latestProviderActivity.set(activity.turnId, activity.createdAt);
+      latestProviderActivity.set(
+        activity.turnId,
+        Math.max(
+          latestProviderActivity.get(activity.turnId) ?? -1,
+          sourceOrder.get(activity) ?? -1,
+        ),
+      );
     }
   }
   return folded.map((activity) => {
@@ -271,7 +286,9 @@ export function foldUserInputActivities(
     if (
       typeof submittedAt !== "string" ||
       !activity.turnId ||
-      (latestProviderActivity.get(activity.turnId) ?? "") <= submittedAt
+      typeof payload?.requestId !== "string" ||
+      (latestProviderActivity.get(activity.turnId) ?? -1) <=
+        (submissionOrder.get(payload.requestId) ?? Infinity)
     )
       return activity;
     const nextPayload = { ...payload };

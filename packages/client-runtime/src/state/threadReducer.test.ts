@@ -13,6 +13,7 @@ import {
 import type { OrchestrationThread } from "@t3tools/contracts";
 
 import { applyThreadDetailEvent } from "./threadReducer.ts";
+import { resolveAsyncAnswerTurnId } from "../work-log/userInput.ts";
 
 const baseEventFields = {
   eventId: EventId.make("event-1"),
@@ -701,6 +702,14 @@ describe("applyThreadDetailEvent", () => {
       expect(result.kind).toBe("updated");
       if (result.kind === "updated") {
         expect(result.thread.latestTurn?.state).toBe("running");
+        expect(
+          resolveAsyncAnswerTurnId(
+            { turnId: null, createdAt: "2026-04-01T07:59:59.000Z" },
+            [],
+            [],
+            result.thread.latestTurn,
+          ),
+        ).toBe("turn-1");
         expect(result.thread.latestTurn?.completedAt).toBeNull();
       }
     });
