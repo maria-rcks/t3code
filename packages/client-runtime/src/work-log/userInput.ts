@@ -123,7 +123,12 @@ export function foldUserInputActivities(
       for (const value of payload.questions) {
         const question = record(value);
         if (typeof question?.id === "string" && typeof question.question === "string") {
-          questionTextById[question.id] = question.question;
+          Object.defineProperty(questionTextById, question.id, {
+            value: question.question,
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          });
         }
       }
     }
