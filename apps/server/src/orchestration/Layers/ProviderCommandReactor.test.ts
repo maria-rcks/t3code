@@ -1069,7 +1069,21 @@ describe("ProviderCommandReactor", () => {
         yield* dispatchTurn("blocked-compact", "/compact", "2026-01-01T00:00:01.000Z");
         yield* Deferred.await(readyDispatchStarted);
 
+        yield* harness.engine.dispatch({
+          type: "thread.interaction-mode.set",
+          commandId: CommandId.make("cmd-queued-mode-plan"),
+          threadId,
+          interactionMode: "plan",
+          createdAt: now,
+        });
         yield* dispatchTurn("during-compact-recovery", "first queued", "2026-01-01T00:00:02.000Z");
+        yield* harness.engine.dispatch({
+          type: "thread.interaction-mode.set",
+          commandId: CommandId.make("cmd-queued-mode-default"),
+          threadId,
+          interactionMode: "default",
+          createdAt: now,
+        });
         yield* dispatchTurn(
           "during-compact-recovery-2",
           "second queued",
@@ -1092,6 +1106,9 @@ describe("ProviderCommandReactor", () => {
         yield* Deferred.succeed(releaseReadyDispatch, undefined);
         if (stopBeforeResume) {
           yield* Deferred.await(resumeStarted);
+          yield* dispatchTurn("compact-during-resume", "/compact", "2026-01-01T00:00:04.000Z");
+          yield* Effect.promise(() => harness.drain());
+          expect(harness.compactThread).toHaveBeenCalledTimes(1);
           yield* harness.engine.dispatch({
             type: "thread.session.stop",
             commandId: CommandId.make("cmd-stop-before-queued-resume"),
@@ -1107,6 +1124,7 @@ describe("ProviderCommandReactor", () => {
             (entry) => entry.id === threadId,
           );
           expect(stoppedThread?.session?.status).toBe("stopped");
+          expect(yield* Effect.promise(() => harness.readPendingTurnStarts())).toEqual([]);
           expect(
             stoppedThread?.activities.filter(
               (activity) => activity.summary === "Queued message was not sent",
@@ -1116,8 +1134,8 @@ describe("ProviderCommandReactor", () => {
         }
         yield* Deferred.await(queuedSent);
         expect(harness.sendTurn.mock.calls.slice(1).map(([request]) => request)).toEqual([
-          expect.objectContaining({ input: "first queued" }),
-          expect.objectContaining({ input: "second queued" }),
+          expect.objectContaining({ input: "first queued", interactionMode: "plan" }),
+          expect.objectContaining({ input: "second queued", interactionMode: "default" }),
         ]);
         const afterRestore = (yield* Effect.promise(() => harness.readModel())).threads.find(
           (entry) => entry.id === threadId,
