@@ -2113,15 +2113,13 @@ function toolIconAcceptsTint(
 
 function LiveActivityRow({
   label,
-  preview,
   iconName,
   toolIcon,
   failed = false,
   active = false,
   shimmer = false,
 }: {
-  label: string;
-  preview?: ReactNode;
+  label: ReactNode;
   iconName?: WorkEntryIconName;
   toolIcon?: ToolActivityIcon | undefined;
   failed?: boolean;
@@ -2137,7 +2135,6 @@ function LiveActivityRow({
     >
       <LiveActivityContent
         label={label}
-        preview={preview}
         iconName={iconName}
         toolIcon={toolIcon}
         failed={failed}
@@ -2146,13 +2143,7 @@ function LiveActivityRow({
       />
       {showShimmer ? (
         <ActivityShimmerOverlay>
-          <LiveActivityContent
-            label={label}
-            preview={preview}
-            iconName={iconName}
-            toolIcon={toolIcon}
-            highlighted
-          />
+          <LiveActivityContent label={label} iconName={iconName} toolIcon={toolIcon} highlighted />
         </ActivityShimmerOverlay>
       ) : null}
     </div>
@@ -2161,7 +2152,6 @@ function LiveActivityRow({
 
 function LiveActivityContent({
   label,
-  preview,
   iconName,
   toolIcon,
   failed = false,
@@ -2169,8 +2159,7 @@ function LiveActivityContent({
   active = false,
   highlighted = false,
 }: {
-  label: string;
-  preview?: ReactNode;
+  label: ReactNode;
   iconName: WorkEntryIconName | undefined;
   toolIcon?: ToolActivityIcon | undefined;
   failed?: boolean;
@@ -2206,15 +2195,7 @@ function LiveActivityContent({
           />
         </span>
       ) : null}
-      <span
-        className={cn(
-          preview ? "shrink-0" : "min-w-0 flex-1 truncate",
-          active && "live-tool-shine",
-        )}
-      >
-        {label}
-      </span>
-      {preview ? <span className="min-w-0 truncate text-muted-foreground">{preview}</span> : null}
+      <span className={cn("min-w-0 flex-1 truncate", active && "live-tool-shine")}>{label}</span>
       {showTrailingFailureMark ? (
         <XIcon aria-hidden className={cn("size-3 shrink-0", failedToolIconClassName)} />
       ) : null}
@@ -2236,19 +2217,24 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
       onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
     >
       <LiveActivityRow
-        label={label}
-        preview={
+        label={
           row.entry.questionAnswer ? (
-            <span
-              className={
-                !row.expanded && hasQuestionAnswer(row.entry.questionAnswer)
-                  ? "text-foreground"
-                  : undefined
-              }
-            >
-              {getQuestionAnswerPreview(row.entry.questionAnswer)}
+            <span className="flex min-w-0 gap-1.5">
+              <span className="shrink-0">{label}</span>
+              <span
+                className={cn(
+                  "truncate",
+                  !row.expanded && hasQuestionAnswer(row.entry.questionAnswer)
+                    ? "text-foreground"
+                    : "text-muted-foreground",
+                )}
+              >
+                {getQuestionAnswerPreview(row.entry.questionAnswer)}
+              </span>
             </span>
-          ) : undefined
+          ) : (
+            label
+          )
         }
         iconName={workEntryIconName(row.entry)}
         toolIcon={row.entry.toolIcon ?? row.entry.toolSource?.icon}

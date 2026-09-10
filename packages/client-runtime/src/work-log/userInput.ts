@@ -1,3 +1,4 @@
+import { projectQuestionToolInput } from "@t3tools/shared/toolActivity";
 import {
   type OrchestrationThreadActivity,
   UserInputAttachmentAnswerPayload,
@@ -25,10 +26,7 @@ function questionFingerprint(
   turnId: string,
   questions: ReadonlyArray<unknown>,
 ): string | undefined {
-  const texts = questions.map((question) => {
-    const value = record(question);
-    return typeof value?.question === "string" ? value.question.trim() : "";
-  });
+  const texts = questions.map((question) => (typeof question === "string" ? question.trim() : ""));
   return texts.length > 0 && texts.every(Boolean)
     ? JSON.stringify([turnId, texts.toSorted()])
     : undefined;
@@ -42,10 +40,7 @@ function withoutDuplicateQuestionTools(
     if (activity.kind !== "user-input.answer-submitted" || !activity.turnId) continue;
     const payload = record(activity.payload);
     const texts = Object.values(record(payload?.questionTextById) ?? {});
-    const fingerprint = questionFingerprint(
-      activity.turnId,
-      texts.map((question) => ({ question })),
-    );
+    const fingerprint = questionFingerprint(activity.turnId, texts);
     if (fingerprint) questions.add(fingerprint);
   }
   if (questions.size === 0) return activities;
@@ -54,28 +49,12 @@ function withoutDuplicateQuestionTools(
     if (!activity.kind.startsWith("tool.") || !activity.turnId) continue;
     const payload = record(activity.payload);
     if (typeof payload?.toolCallId !== "string") continue;
-    const data = record(payload.data);
-    const item = record(data?.item);
-    const name = data?.toolName ?? data?.tool ?? item?.tool ?? payload.title;
-    if (typeof name !== "string") continue;
-    const normalizedName = name
-      .split(/__|[./]/)
-      .at(-1)
-      ?.replace(/[_\s]/g, "")
-      .toLowerCase();
-    if (
-      normalizedName !== "askuserquestion" &&
-      normalizedName !== "requestuserinput" &&
-      normalizedName !== "requestuserinputasync" &&
-      normalizedName !== "askquestion" &&
-      normalizedName !== "question"
-    )
-      continue;
-    const input = record(
-      data?.input ?? data?.rawInput ?? record(data?.state)?.input ?? item?.arguments,
+    const input = projectQuestionToolInput(record(payload.data) ?? {}, payload.title).input;
+    if (!input) continue;
+    const fingerprint = questionFingerprint(
+      activity.turnId,
+      input.questions.map((question) => record(question)?.question),
     );
-    if (!Array.isArray(input?.questions)) continue;
-    const fingerprint = questionFingerprint(activity.turnId, input.questions);
     if (fingerprint && questions.has(fingerprint)) {
       duplicateToolIds.add(JSON.stringify([activity.turnId, payload.toolCallId]));
     }
@@ -94,109 +73,83 @@ function withoutDuplicateQuestionTools(
 export function foldUserInputActivities(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): ReadonlyArray<OrchestrationThreadActivity> {
-  const result: OrchestrationThreadActivity[] = [];
-  const positions = new Map<string, number>();
-  const submittedAnswers = new Map<string, Record<string, unknown>>();
+  const requests = new Map<string, OrchestrationThreadActivity[]>();
   for (const activity of activities) {
     if (
       activity.kind !== "user-input.requested" &&
       activity.kind !== "user-input.resolved" &&
       activity.kind !== "user-input.answer-submitted"
-    ) {
-      result.push(activity);
+    )
       continue;
-    }
-    const payload = record(activity.payload);
-    const requestId = payload?.requestId;
-    if (!payload || typeof requestId !== "string" || requestId.length === 0) {
-      result.push(activity);
-      continue;
-    }
-    const position = positions.get(requestId);
-    const previous = position === undefined ? undefined : result[position];
-    const previousPayload = record(previous?.payload);
-    const questionTextById = {
-      ...record(previousPayload?.questionTextById),
-      ...record(payload.questionTextById),
-    };
-    if (Array.isArray(payload.questions)) {
-      for (const value of payload.questions) {
+    const requestId = record(activity.payload)?.requestId;
+    if (typeof requestId !== "string" || !requestId) continue;
+    const group = requests.get(requestId) ?? [];
+    group.push(activity);
+    requests.set(requestId, group);
+  }
+  const replacements = new Map<OrchestrationThreadActivity, OrchestrationThreadActivity | null>();
+  for (const [requestId, group] of requests) {
+    const payloads = group.map((activity) => record(activity.payload)!);
+    const questions = new Map<string, Record<string, unknown>>();
+    const texts = new Map<string, unknown>();
+    for (const payload of payloads) {
+      for (const [id, text] of Object.entries(record(payload.questionTextById) ?? {}))
+        texts.set(id, text);
+      for (const value of Array.isArray(payload.questions) ? payload.questions : []) {
         const question = record(value);
-        if (typeof question?.id === "string" && typeof question.question === "string") {
-          Object.defineProperty(questionTextById, question.id, {
-            value: question.question,
-            enumerable: true,
-            configurable: true,
-            writable: true,
-          });
-        }
+        if (typeof question?.id !== "string") continue;
+        questions.set(question.id, question);
+        if (typeof question.question === "string") texts.set(question.id, question.question);
       }
     }
-    const incomingAnswers = record(payload.answers);
-    if (activity.kind === "user-input.answer-submitted" && incomingAnswers) {
-      submittedAnswers.set(requestId, incomingAnswers);
-    }
-    const answers =
-      submittedAnswers.get(requestId) ?? incomingAnswers ?? record(previousPayload?.answers) ?? {};
-    const attachmentsByQuestionId = {
-      ...record(previousPayload?.attachmentsByQuestionId),
-      ...record(payload.attachmentsByQuestionId),
-    };
-    const questionAnswer = { requestId, questionTextById, answers, attachmentsByQuestionId };
-    if (!isQuestionAnswer(questionAnswer)) {
-      result.push(activity);
-      continue;
-    }
-    const hasAnswer =
+    const questionTextById = Object.fromEntries(texts);
+    const submitted = group.findLast(
+      (activity) =>
+        activity.kind === "user-input.answer-submitted" &&
+        record(record(activity.payload)?.answers),
+    );
+    const rawAnswers =
+      record(record(submitted?.payload)?.answers) ??
+      payloads.map((payload) => record(payload.answers)).findLast(Boolean) ??
+      {};
+    const answers = Object.fromEntries(
+      Object.entries(rawAnswers).map(([id, value]) => {
+        const options = questions.get(id)?.options;
+        const labels = new Map<string, string>();
+        for (const candidate of Array.isArray(options) ? options : []) {
+          const option = record(candidate);
+          if (typeof option?.value === "string" && typeof option.label === "string")
+            labels.set(option.value, option.label);
+        }
+        return [id, displayOptionAnswer(value, labels)];
+      }),
+    );
+    const attachmentsByQuestionId = Object.fromEntries(
+      payloads.flatMap((payload) => Object.entries(record(payload.attachmentsByQuestionId) ?? {})),
+    );
+    const answer = { requestId, questionTextById, answers, attachmentsByQuestionId };
+    if (!isQuestionAnswer(answer)) continue;
+    const submittedAnswer =
       Object.keys(answers).length > 0 || Object.keys(attachmentsByQuestionId).length > 0;
-    const userInputStatus = hasAnswer
-      ? "submitted"
-      : activity.kind === "user-input.resolved"
-        ? "dismissed"
-        : (previousPayload?.userInputStatus ?? "pending");
-    const folded: OrchestrationThreadActivity = {
-      ...(previous ?? activity),
+    for (const activity of group) replacements.set(activity, null);
+    replacements.set(group[0]!, {
+      ...group[0]!,
       kind: "user-input.answer-submitted",
       tone: "tool",
-      summary:
-        userInputStatus === "submitted"
-          ? "User input submitted"
-          : userInputStatus === "dismissed"
-            ? "User input dismissed"
-            : "User input requested",
-      payload: { ...previousPayload, ...payload, ...questionAnswer, userInputStatus },
-    };
-    if (position === undefined) {
-      positions.set(requestId, result.length);
-      result.push(folded);
-    } else {
-      result[position] = folded;
-    }
+      summary: submittedAnswer
+        ? "User input submitted"
+        : group.some((activity) => activity.kind === "user-input.resolved")
+          ? "User input dismissed"
+          : "User input requested",
+      payload: answer,
+    });
   }
-  for (const position of positions.values()) {
-    const activity = result[position]!;
-    const payload = { ...record(activity.payload) };
-    delete payload.detail;
-    const answers = { ...record(payload.answers) };
-    if (Array.isArray(payload.questions)) {
-      for (const value of payload.questions) {
-        const question = record(value);
-        if (typeof question?.id !== "string" || !Array.isArray(question.options)) continue;
-        const labels = new Map<string, string>();
-        for (const value of question.options) {
-          const option = record(value);
-          if (typeof option?.value === "string" && typeof option.label === "string") {
-            labels.set(option.value, option.label);
-          }
-        }
-        if (question.id in answers) {
-          answers[question.id] = displayOptionAnswer(answers[question.id], labels);
-        }
-      }
-    }
-    result[position] = { ...activity, payload: { ...payload, answers } };
-  }
-  return withoutDuplicateQuestionTools(result);
+  return withoutDuplicateQuestionTools(
+    activities.flatMap((activity) => {
+      const replacement = replacements.get(activity);
+      return replacement === null ? [] : [replacement ?? activity];
+    }),
+  );
 }
 
 export function getQuestionAnswerText(value: unknown): string {
