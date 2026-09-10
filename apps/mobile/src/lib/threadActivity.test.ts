@@ -313,6 +313,7 @@ describe("buildThreadFeed", () => {
     const feed = buildThreadFeed({ messages, activities });
     const rows = feed.flatMap((entry) => (entry.type === "activity-group" ? entry.activities : []));
     expect(rows).toHaveLength(1);
+    expect(rows[0]?.icon).toBe("message");
     expect(rows[0]?.workEntry).toMatchObject({
       tone: "tool",
       label: "User input submitted",

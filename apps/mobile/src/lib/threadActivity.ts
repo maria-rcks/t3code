@@ -937,6 +937,7 @@ function workEntryStatus(entry: WorkLogEntry): ThreadFeedActivity["status"] {
 function workEntryIcon(entry: DerivedWorkLogEntry): ThreadFeedActivity["icon"] {
   if (entry.agentSpawn) return "agent";
   if (
+    entry.questionAnswer ||
     entry.sourceActivityKind === "user-input.requested" ||
     entry.sourceActivityKind === "user-input.resolved"
   ) {
