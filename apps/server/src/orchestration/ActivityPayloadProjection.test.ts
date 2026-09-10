@@ -264,7 +264,12 @@ describe("projectActivityPayload", () => {
     { tool: "t3-code_preview_status", state: { output: '{"url":"https://example.com/"}' } },
     {
       toolName: "mcp__t3_code__preview_snapshot",
-      result: { content: [{ type: "text", text: '{"url":"https://example.com/"}' }] },
+      result: {
+        content: [
+          { type: "text", text: '{"url":"https://example.com/"}' },
+          { type: "text", text: "Snapshot text was bounded. Omitted: accessibilityTree." },
+        ],
+      },
     },
     {
       toolName: "mcp__t3-code__preview_click",

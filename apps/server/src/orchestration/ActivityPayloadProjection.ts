@@ -4,6 +4,7 @@ import type {
   OrchestrationThreadDetailSnapshot,
 } from "@t3tools/contracts";
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
+import { extractJsonObject } from "@t3tools/shared/schemaJson";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -269,7 +270,7 @@ function projectPreviewToolMetadata(data: Record<string, unknown>, status: unkno
     const text = extractMcpResultText(result);
     if (!text || text.length > 2 * 1024 * 1024) return {};
     try {
-      page = asRecord(JSON.parse(text));
+      page = asRecord(JSON.parse(extractJsonObject(text)));
     } catch {
       return {};
     }

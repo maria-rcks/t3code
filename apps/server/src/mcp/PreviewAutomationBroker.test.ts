@@ -166,6 +166,13 @@ it.effect("does not let an older response replace a newer explicit tab target", 
         .pipe(Effect.forkScoped);
       yield* Fiber.join(newer);
       yield* Fiber.join(older);
+      yield* broker.invoke({
+        scope,
+        operation: "status",
+        input: {},
+        tabId: olderTabId,
+        updateCurrentTab: false,
+      });
       yield* broker.invoke({ scope, operation: "snapshot", input: {} });
 
       expect(routedRequests.at(-1)?.tabId).toBe(newerTabId);
