@@ -1259,7 +1259,7 @@ export function AppearanceSettingsPanel() {
             ) : null
           }
           control={
-            <div className="ml-auto w-fit">
+            <div className="w-full sm:w-40">
               <Select
                 value={settings.diffColorScheme}
                 onValueChange={(value) => {
@@ -1267,7 +1267,7 @@ export function AppearanceSettingsPanel() {
                     updateSettings({ diffColorScheme: value });
                 }}
               >
-                <SelectTrigger size="sm" className="w-fit min-w-0" aria-label="Diff colors">
+                <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Diff colors">
                   <span
                     aria-hidden="true"
                     className={
