@@ -125,13 +125,12 @@ export function makeQuitShortcutHandler(
     }
     if (quitOnRelease) {
       event.preventDefault();
-      if (key === "q") {
-        if (modifierDown) {
-          quitAfterQuietPeriod();
-        } else {
-          clearWatchdog();
-        }
-      }
+      // A Q keydown proves the key is still down whether or not the modifier
+      // is still held, so it only pushes the quiet period back. Disarming the
+      // watchdog here instead stranded the quit whenever macOS dropped the
+      // final Q keyUp, leaving the window concealed until an unrelated
+      // modifier tap released the stale request and quit out of nowhere.
+      if (key === "q") quitAfterQuietPeriod();
       return;
     }
 
