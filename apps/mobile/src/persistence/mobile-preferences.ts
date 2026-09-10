@@ -8,8 +8,6 @@ import * as Semaphore from "effect/Semaphore";
 import type { SidebarProjectGroupingMode } from "@t3tools/contracts";
 import { MOBILE_THEME_IDS, type MobileThemeId, type MobileThemeMode } from "../lib/mobileTheme";
 
-import type { DiffColorScheme } from "@t3tools/contracts/settings";
-
 import * as MobileDatabase from "./mobile-database";
 import * as MobileSecureStorage from "./mobile-secure-storage";
 import { MobileStorageDecodeError, MobileStorageEncodeError } from "./mobile-storage";
@@ -23,7 +21,6 @@ export interface Preferences {
   readonly lightThemeId?: MobileThemeId;
   readonly darkThemeId?: MobileThemeId;
   readonly themeMode?: MobileThemeMode;
-  readonly diffColorScheme?: DiffColorScheme;
   readonly materialYouStyleLayoutEnabled?: boolean;
   readonly baseFontSize?: number;
   readonly terminalFontSize?: number | null;
@@ -94,7 +91,6 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     lightThemeId?: MobileThemeId;
     darkThemeId?: MobileThemeId;
     themeMode?: MobileThemeMode;
-    diffColorScheme?: DiffColorScheme;
     materialYouStyleLayoutEnabled?: boolean;
     baseFontSize?: number;
     terminalFontSize?: number | null;
@@ -138,9 +134,6 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     parsed.themeMode === "dark"
   ) {
     preferences.themeMode = parsed.themeMode;
-  }
-  if (parsed.diffColorScheme === "red-green" || parsed.diffColorScheme === "blue-orange") {
-    preferences.diffColorScheme = parsed.diffColorScheme;
   }
   if (typeof parsed.materialYouStyleLayoutEnabled === "boolean") {
     preferences.materialYouStyleLayoutEnabled = parsed.materialYouStyleLayoutEnabled;

@@ -44,7 +44,7 @@ export function ReviewCommentComposerSheet(props: ReviewCommentComposerSheetProp
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const { themeAppearance: selectedTheme, diffColorScheme } = useAppearancePreferences();
+  const { themeAppearance: selectedTheme } = useAppearancePreferences();
   const target = useReviewCommentTarget();
   const { codeSurface } = useAppearanceCodeSurface();
   const { environmentId, threadId } = props.route.params;
@@ -225,10 +225,7 @@ export function ReviewCommentComposerSheet(props: ReviewCommentComposerSheetProp
                         return (
                           <View
                             key={line.id}
-                            className={cn(
-                              "flex-row items-start",
-                              changeTone(line.change, diffColorScheme),
-                            )}
+                            className={cn("flex-row items-start", changeTone(line.change))}
                             style={{ height: codeSurface.rowHeight }}
                           >
                             <ReviewChangeBar change={line.change} height={codeSurface.rowHeight} />

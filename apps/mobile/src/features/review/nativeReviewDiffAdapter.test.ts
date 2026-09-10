@@ -191,30 +191,6 @@ describe("getCachedNativeReviewDiffData", () => {
 });
 
 describe("createNativeReviewDiffTheme", () => {
-  it.each(["light", "dark"] as const)(
-    "changes only diff colors for the blue-orange palette in %s mode",
-    (appearance) => {
-      const variables = appTheme("t3-code", appearance);
-      const baseline = createNativeReviewDiffTheme(appearance, "t3-code", variables, "red-green");
-      const alternate = createNativeReviewDiffTheme(
-        appearance,
-        "t3-code",
-        variables,
-        "blue-orange",
-      );
-
-      expect(alternate).toEqual({
-        ...baseline,
-        addBackground: appearance === "dark" ? "#142a45" : "#e7f0ff",
-        deleteBackground: appearance === "dark" ? "#3e2718" : "#fff0e3",
-        addBar: "#60a5fa",
-        deleteBar: "#fb923c",
-        addText: appearance === "dark" ? "#60a5fa" : "#2563eb",
-        deleteText: appearance === "dark" ? "#fb923c" : "#c2410c",
-      });
-    },
-  );
-
   it("serializes every native color as cross-platform opaque hex", () => {
     for (const themeId of MOBILE_THEME_IDS) {
       for (const appearance of ["light", "dark"] as const) {
@@ -222,7 +198,6 @@ describe("createNativeReviewDiffTheme", () => {
           appearance,
           themeId,
           appTheme(themeId, appearance),
-          "red-green",
         );
         for (const color of Object.values(theme)) {
           expect(color, `${themeId}/${appearance}`).toMatch(/^#[\da-f]{6}$/i);
@@ -232,13 +207,8 @@ describe("createNativeReviewDiffTheme", () => {
   });
 
   it("uses the selected app palette for native code surfaces", () => {
-    const standard = createNativeReviewDiffTheme(
-      "dark",
-      "t3-code",
-      appTheme("t3-code", "dark"),
-      "red-green",
-    );
-    const iris = createNativeReviewDiffTheme("dark", "iris", appTheme("iris", "dark"), "red-green");
+    const standard = createNativeReviewDiffTheme("dark", "t3-code", appTheme("t3-code", "dark"));
+    const iris = createNativeReviewDiffTheme("dark", "iris", appTheme("iris", "dark"));
 
     expect(iris.background).not.toBe(standard.background);
     expect(iris.hunkText).not.toBe(standard.hunkText);

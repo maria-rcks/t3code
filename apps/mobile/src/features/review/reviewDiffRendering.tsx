@@ -1,7 +1,5 @@
 import { Platform, Text as NativeText, View } from "react-native";
 
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
-import type { DiffColorScheme } from "@t3tools/contracts/settings";
 import { cn } from "../../lib/cn";
 import { MOBILE_CODE_SURFACE } from "../../lib/typography";
 
@@ -21,32 +19,21 @@ export function renderVisibleWhitespace(value: string): string {
   return expandedTabs.replace(/^( +)/, (leading) => leading.replaceAll(" ", "\u00A0"));
 }
 
-export function changeTone(
-  change: ReviewRenderableLineRow["change"],
-  scheme: DiffColorScheme = "red-green",
-): string {
-  if (change === "add") return scheme === "blue-orange" ? "bg-blue-500/10" : "bg-emerald-500/10";
-  if (change === "delete") return scheme === "blue-orange" ? "bg-orange-500/10" : "bg-rose-500/10";
+export function changeTone(change: ReviewRenderableLineRow["change"]): string {
+  if (change === "add") return "bg-emerald-500/10";
+  if (change === "delete") return "bg-rose-500/10";
   return "bg-card";
 }
 
-export function changeBarTone(
-  change: ReviewRenderableLineRow["change"],
-  scheme: DiffColorScheme = "red-green",
-): string {
-  if (change === "add") return scheme === "blue-orange" ? "bg-blue-400" : "bg-emerald-400";
-  if (change === "delete") return scheme === "blue-orange" ? "bg-orange-400" : "bg-rose-400";
+export function changeBarTone(change: ReviewRenderableLineRow["change"]): string {
+  if (change === "add") return "bg-emerald-400";
+  if (change === "delete") return "bg-rose-400";
   return "bg-border/50";
 }
 
-function diffHighlightColor(
-  change: ReviewRenderableLineRow["change"],
-  scheme: DiffColorScheme,
-): string | undefined {
-  if (change === "add")
-    return scheme === "blue-orange" ? "rgba(59, 130, 246, 0.24)" : "rgba(16, 185, 129, 0.24)";
-  if (change === "delete")
-    return scheme === "blue-orange" ? "rgba(249, 115, 22, 0.24)" : "rgba(244, 63, 94, 0.24)";
+function diffHighlightColor(change: ReviewRenderableLineRow["change"]): string | undefined {
+  if (change === "add") return "rgba(16, 185, 129, 0.24)";
+  if (change === "delete") return "rgba(244, 63, 94, 0.24)";
   return undefined;
 }
 
@@ -54,7 +41,6 @@ export function ReviewChangeBar(props: {
   readonly change: ReviewRenderableLineRow["change"];
   readonly height?: number;
 }) {
-  const { diffColorScheme } = useAppearancePreferences();
   const height = props.height ?? REVIEW_DIFF_LINE_HEIGHT;
   if (props.change === "delete") {
     return (
@@ -62,7 +48,7 @@ export function ReviewChangeBar(props: {
         <View>
           {Array.from({ length: Math.ceil(height / 2) }, (_, index) => (
             <View key={index}>
-              <View className={cn("h-px w-[5px]", changeBarTone("delete", diffColorScheme))} />
+              <View className="h-px w-[5px] bg-rose-400" />
               <View className="h-px" />
             </View>
           ))}
@@ -73,7 +59,7 @@ export function ReviewChangeBar(props: {
 
   return (
     <View className="w-[5px] overflow-hidden" style={{ height }}>
-      <View className={cn("h-full w-[5px] flex-1", changeBarTone(props.change, diffColorScheme))} />
+      <View className={cn("h-full w-[5px] flex-1", changeBarTone(props.change))} />
     </View>
   );
 }
@@ -86,7 +72,6 @@ export function DiffTokenText(props: {
   readonly fontSize?: number;
   readonly lineHeight?: number;
 }) {
-  const { diffColorScheme } = useAppearancePreferences();
   const fontSize = props.fontSize ?? MOBILE_CODE_SURFACE.fontSize;
   const lineHeight = props.lineHeight ?? MOBILE_CODE_SURFACE.rowHeight;
   if (!props.tokens || props.tokens.length === 0) {
@@ -144,7 +129,7 @@ export function DiffTokenText(props: {
                 fontStyle,
                 backgroundColor:
                   token.diffHighlight && props.change
-                    ? diffHighlightColor(props.change, diffColorScheme)
+                    ? diffHighlightColor(props.change)
                     : undefined,
                 borderRadius: token.diffHighlight ? 4 : undefined,
               }}

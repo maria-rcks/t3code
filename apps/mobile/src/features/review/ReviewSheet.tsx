@@ -163,7 +163,6 @@ const ReviewFileNavigatorRow = memo(function ReviewFileNavigatorRow(props: {
   readonly selected: boolean;
   readonly onSelectFile: (fileId: string | null) => void;
 }) {
-  const { diffColors } = useAppearancePreferences();
   const { file, selected, onSelectFile } = props;
   // Tapping the selected file again returns to the all-files diff.
   const handlePress = useCallback(() => {
@@ -192,12 +191,8 @@ const ReviewFileNavigatorRow = memo(function ReviewFileNavigatorRow(props: {
         {file.path}
       </Text>
       <View className="mt-1 flex-row gap-2">
-        <Text className="text-2xs font-t3-bold" style={{ color: diffColors.addText }}>
-          +{file.additions}
-        </Text>
-        <Text className="text-2xs font-t3-bold" style={{ color: diffColors.deleteText }}>
-          -{file.deletions}
-        </Text>
+        <Text className="text-2xs font-t3-bold text-emerald-600">+{file.additions}</Text>
+        <Text className="text-2xs font-t3-bold text-rose-600">-{file.deletions}</Text>
       </View>
     </Pressable>
   );

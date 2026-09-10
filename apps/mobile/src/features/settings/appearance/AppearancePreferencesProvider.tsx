@@ -44,13 +44,7 @@ import {
   type MobileThemeRuntimeState,
 } from "../../../lib/mobileThemeRuntime";
 
-import type { DiffColorScheme } from "@t3tools/contracts/settings";
-import { getDiffColors } from "../../../lib/diffColors";
-
 interface AppearancePreferencesContextValue {
-  readonly diffColorScheme: DiffColorScheme;
-  readonly diffColors: ReturnType<typeof getDiffColors>;
-  readonly setDiffColorScheme: (value: DiffColorScheme) => void;
   /** Effective values with base-size derivation applied. Use this for rendering. */
   readonly appearance: ResolvedAppearance;
   readonly themeId: MobileThemeId;
@@ -97,16 +91,6 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
   );
   const themeMode = normalizeMobileThemeMode(storedPreferences?.themeMode);
   const themeAppearance = themeMode === "system" ? systemColorScheme : themeMode;
-  const diffColorScheme =
-    storedPreferences?.diffColorScheme === "blue-orange" ? "blue-orange" : "red-green";
-  const diffColors = useMemo(
-    () => getDiffColors(diffColorScheme, themeAppearance),
-    [diffColorScheme, themeAppearance],
-  );
-  const setDiffColorScheme = useCallback(
-    (value: DiffColorScheme) => savePreferences({ diffColorScheme: value }),
-    [savePreferences],
-  );
   const resolvedThemeIds = resolveMobileThemeIds(storedPreferences ?? {});
   const themeIds = useMemo<MobileThemeIds>(
     () => ({ light: resolvedThemeIds.light, dark: resolvedThemeIds.dark }),
@@ -303,9 +287,6 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
   const value = useMemo(
     (): AppearancePreferencesContextValue => ({
       appearance,
-      diffColorScheme,
-      diffColors,
-      setDiffColorScheme,
       themeId,
       themeIds,
       themeMode,
@@ -329,9 +310,6 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     }),
     [
       appearance,
-      diffColorScheme,
-      diffColors,
-      setDiffColorScheme,
       themeId,
       themeIds,
       themeMode,
