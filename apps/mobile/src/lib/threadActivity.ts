@@ -241,6 +241,10 @@ const messageEntriesCache = new WeakMap<
   Extract<RawThreadFeedEntry, { readonly type: "message" }>
 >();
 const activityGroupsCache = new WeakMap<ThreadFeedActivity, ThreadFeedActivityGroup>();
+const asyncAnswerEntriesCache = new WeakMap<
+  ThreadFeedActivity,
+  Extract<RawThreadFeedEntry, { readonly type: "activity" }>
+>();
 const presentedActivityGroupsCache = new WeakMap<
   ThreadFeedActivityGroup,
   {
@@ -2223,10 +2227,70 @@ export function buildThreadFeed(
     : loadedMessages;
   const oldestLoadedMessageCreatedAt =
     options?.loadedMessages !== undefined ? (loadedMessages[0]?.createdAt ?? null) : null;
-  const activityEntries = getThreadFeedActivityEntries(thread.activities).filter(
-    (entry) =>
-      oldestLoadedMessageCreatedAt === null || entry.createdAt >= oldestLoadedMessageCreatedAt,
+  const asyncAnswerMessages = new Map(
+    messages
+      .filter(
+        (message) =>
+          message.role === "user" && message.id.startsWith("async-answer:") && message.turnId,
+      )
+      .map((message) => [message.id as string, message]),
   );
+  const latestProviderActivityAt = new Map<TurnId, string>();
+  if (asyncAnswerMessages.size > 0) {
+    for (const activity of thread.activities) {
+      if (
+        activity.turnId &&
+        (activity.kind.startsWith("tool.") || activity.kind.startsWith("task."))
+      ) {
+        const previous = latestProviderActivityAt.get(activity.turnId);
+        if (!previous || activity.createdAt > previous)
+          latestProviderActivityAt.set(activity.turnId, activity.createdAt);
+      }
+    }
+  }
+  const activityEntries = getThreadFeedActivityEntries(thread.activities)
+    .map((entry) => {
+      const answer = entry.activity.workEntry.questionAnswer;
+      const message = answer
+        ? asyncAnswerMessages.get(`async-answer:${answer.requestId}`)
+        : undefined;
+      if (!message?.turnId) return entry;
+      const resumedAt = latestProviderActivityAt.get(message.turnId);
+      const submittedAt =
+        resumedAt && resumedAt > message.createdAt ? undefined : message.createdAt;
+      const cached = asyncAnswerEntriesCache.get(entry.activity);
+      if (
+        cached &&
+        cached.turnId === message.turnId &&
+        cached.createdAt === message.createdAt &&
+        cached.activity.workEntry.questionAnswerSubmittedAt === submittedAt
+      )
+        return cached;
+      const workEntry = {
+        ...entry.activity.workEntry,
+        turnId: message.turnId,
+        createdAt: message.createdAt,
+      };
+      if (submittedAt) workEntry.questionAnswerSubmittedAt = submittedAt;
+      else delete workEntry.questionAnswerSubmittedAt;
+      const relocated = {
+        ...entry,
+        turnId: message.turnId,
+        createdAt: message.createdAt,
+        activity: {
+          ...entry.activity,
+          turnId: message.turnId,
+          createdAt: message.createdAt,
+          workEntry,
+        },
+      };
+      asyncAnswerEntriesCache.set(entry.activity, relocated);
+      return relocated;
+    })
+    .filter(
+      (entry) =>
+        oldestLoadedMessageCreatedAt === null || entry.createdAt >= oldestLoadedMessageCreatedAt,
+    );
   const foldedAnswerMessageIds = new Set(
     activityEntries.flatMap((entry) =>
       entry.activity.workEntry.questionAnswer

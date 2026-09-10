@@ -1758,6 +1758,14 @@ describe("deriveTimelineEntries", () => {
       }),
     );
     const timeline = deriveTimelineEntries(messages, [], work);
+    expect(timeline.find((entry) => entry.kind === "work")).toMatchObject({
+      createdAt: messages[0]!.createdAt,
+      entry: { turnId: "answer-turn", questionAnswerSubmittedAt: expect.any(String) },
+    });
+    const beforeResponse = deriveTimelineEntriesWithState([], [], work);
+    expect(deriveTimelineEntriesWithState(messages, [], work, beforeResponse).entries).toEqual(
+      timeline,
+    );
     expect(
       timeline.flatMap((entry) => (entry.kind === "message" ? [entry.message.id] : [])),
     ).toEqual(["real-user-message", "async-answer:unloaded"]);

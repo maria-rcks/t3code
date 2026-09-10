@@ -2041,6 +2041,41 @@ describe("deriveMessagesTimelineRows", () => {
         timelineEntries: [{ ...question, entry: resumedQuestion }, input.timelineEntries[1]!],
       }).find((row) => row.kind === "work-live"),
     ).toMatchObject({ entry: { id: "tool" } });
+    const message: ChatMessage = {
+      id: MessageId.make("reply"),
+      role: "assistant",
+      text: "Checking",
+      createdAt,
+      updatedAt: createdAt,
+      turnId,
+      streaming: true,
+    };
+    const streamingInput = {
+      ...input,
+      timelineEntries: [
+        { kind: "message" as const, id: "reply", createdAt, message },
+        ...input.timelineEntries,
+      ],
+    };
+    const previous = deriveMessagesTimelineRowsWithState(streamingInput);
+    expect(new Set(previous.rows.map((row) => row.id)).size).toBe(previous.rows.length);
+    const nextInput = {
+      ...streamingInput,
+      timelineEntries: [
+        {
+          kind: "message" as const,
+          id: "reply",
+          createdAt,
+          message: { ...message, text: "You chose stable", updatedAt: "2026-01-01T00:00:06Z" },
+        },
+        ...input.timelineEntries,
+      ],
+    };
+    const next = deriveMessagesTimelineRowsWithState(nextInput, previous);
+    expect(next.rows).toEqual(deriveMessagesTimelineRows(nextInput));
+    expect(next.rows.find((row) => row.kind === "work-live")).toMatchObject({
+      entry: { id: "tool" },
+    });
   });
 
   it("renders a single completed tool call directly", () => {

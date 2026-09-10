@@ -276,91 +276,138 @@ function makeThread(
 }
 
 describe("buildThreadFeed", () => {
-  it("keeps a submitted answer visible until the same-turn assistant resumes", () => {
-    const turnId = TurnId.make("answer-turn");
-    const startedAt = "2026-04-01T00:00:00.000Z";
-    const submittedAt = "2026-04-01T00:00:03.000Z";
-    const latestTurn = { turnId, state: "running" as const, startedAt, completedAt: null };
-    const thread = makeThread({
-      id: ThreadId.make("answer-thread"),
-      projectId: ProjectId.make("project-1"),
-      title: "Answer visibility",
-      messages: [
-        {
-          id: MessageId.make("assistant-question"),
-          role: "assistant",
-          text: "Choose a runtime.",
-          turnId,
-          streaming: true,
-          createdAt: startedAt,
-          updatedAt: startedAt,
-        },
-      ],
-      activities: [
-        makeActivity({
-          id: EventId.make("previous-tool"),
-          kind: "tool.completed",
-          tone: "tool",
-          summary: "Read files",
-          createdAt: "2026-04-01T00:00:01.000Z",
-          turnId,
-        }),
-        makeActivity({
-          id: EventId.make("answer"),
-          kind: "user-input.answer-submitted",
-          summary: "User input submitted",
-          createdAt: submittedAt,
-          turnId,
-          payload: {
-            requestId: "runtime-question",
-            questionTextById: { runtime: "Which runtime?" },
-            answers: { runtime: "Node.js" },
-            attachmentsByQuestionId: {},
+  it.each([false, true])(
+    "keeps a submitted answer visible until its response turn resumes (async: %s)",
+    (async) => {
+      const turnId = TurnId.make("answer-turn");
+      const questionTurnId = async ? TurnId.make("original-question-turn") : turnId;
+      const startedAt = "2026-04-01T00:00:00.000Z";
+      const submittedAt = "2026-04-01T00:00:03.000Z";
+      const latestTurn = { turnId, state: "running" as const, startedAt, completedAt: null };
+      const thread = makeThread({
+        id: ThreadId.make("answer-thread"),
+        projectId: ProjectId.make("project-1"),
+        title: "Answer visibility",
+        messages: [
+          {
+            id: MessageId.make("assistant-question"),
+            role: "assistant",
+            text: "Choose a runtime.",
+            turnId,
+            streaming: true,
+            createdAt: startedAt,
+            updatedAt: startedAt,
           },
-        }),
-      ],
-    });
-    const feed = buildThreadFeed(thread);
-    const present = (source: ReadonlyArray<ThreadFeedEntry>) =>
-      deriveThreadFeedPresentation(source, latestTurn, new Set(), new Set(), startedAt);
-    const answerIsVisible = (rows: ReadonlyArray<ThreadFeedEntry>) =>
-      rows.some(
-        (row) =>
-          row.type === "activity-group" &&
-          row.activities.some((activity) => activity.workEntry.questionAnswer),
+          ...(async
+            ? [
+                {
+                  id: MessageId.make("async-answer:runtime-question"),
+                  role: "user" as const,
+                  text: "Node.js",
+                  turnId,
+                  streaming: false,
+                  createdAt: submittedAt,
+                  updatedAt: submittedAt,
+                },
+              ]
+            : []),
+        ],
+        activities: [
+          makeActivity({
+            id: EventId.make("previous-tool"),
+            kind: "tool.completed",
+            tone: "tool",
+            summary: "Read files",
+            createdAt: "2026-04-01T00:00:01.000Z",
+            turnId: questionTurnId,
+          }),
+          makeActivity({
+            id: EventId.make("answer"),
+            kind: "user-input.answer-submitted",
+            summary: "User input submitted",
+            createdAt: submittedAt,
+            turnId: questionTurnId,
+            payload: {
+              requestId: "runtime-question",
+              questionTextById: { runtime: "Which runtime?" },
+              answers: { runtime: "Node.js" },
+              attachmentsByQuestionId: {},
+            },
+          }),
+        ],
+      });
+      const feed = buildThreadFeed(thread);
+      const present = (source: ReadonlyArray<ThreadFeedEntry>) =>
+        deriveThreadFeedPresentation(source, latestTurn, new Set(), new Set(), startedAt);
+      const answerIsVisible = (rows: ReadonlyArray<ThreadFeedEntry>) =>
+        rows.some(
+          (row) =>
+            row.type === "activity-group" &&
+            row.activities.some((activity) => activity.workEntry.questionAnswer),
+        );
+      expect(answerIsVisible(present(feed))).toBe(true);
+      expect(feed.some((entry) => entry.type === "message" && entry.message.role === "user")).toBe(
+        false,
       );
-    expect(answerIsVisible(present(feed))).toBe(true);
-    const updatedFeed = (messageTurnId: TurnId, text = "Using Node.js.") =>
-      feed.map((entry) =>
-        entry.type === "message"
-          ? {
-              ...entry,
-              message: {
-                ...entry.message,
-                text,
-                turnId: messageTurnId,
-                updatedAt: "2026-04-01T00:00:04.000Z",
-              },
-            }
-          : entry,
+      const answerGroup = feed.find(
+        (entry) =>
+          entry.type === "activity-group" &&
+          entry.activities.some((activity) => activity.workEntry.questionAnswer),
       );
-    expect(answerIsVisible(present(updatedFeed(TurnId.make("other-turn"))))).toBe(true);
-    expect(answerIsVisible(present(updatedFeed(turnId, "")))).toBe(true);
-    // Reuse the activity group to exercise presentation-cache invalidation.
-    expect(answerIsVisible(present(updatedFeed(turnId)))).toBe(false);
-    expect(answerIsVisible(deriveThreadFeedPresentation(feed, latestTurn, new Set()))).toBe(false);
-    expect(
-      answerIsVisible(
-        deriveThreadFeedPresentation(
-          feed,
-          { ...latestTurn, state: "completed", completedAt: "2026-04-01T00:00:05.000Z" },
-          new Set(),
-          new Set(),
-          startedAt,
+      expect(answerGroup).toMatchObject({ turnId });
+      const updatedFeed = (messageTurnId: TurnId, text = "Using Node.js.") =>
+        feed.map((entry) =>
+          entry.type === "message"
+            ? {
+                ...entry,
+                message: {
+                  ...entry.message,
+                  text,
+                  turnId: messageTurnId,
+                  updatedAt: "2026-04-01T00:00:04.000Z",
+                },
+              }
+            : entry,
+        );
+      expect(answerIsVisible(present(updatedFeed(TurnId.make("other-turn"))))).toBe(true);
+      expect(answerIsVisible(present(updatedFeed(turnId, "")))).toBe(true);
+      // Reuse the activity group to exercise presentation-cache invalidation.
+      expect(answerIsVisible(present(updatedFeed(turnId)))).toBe(false);
+      expect(
+        answerIsVisible(
+          present(
+            buildThreadFeed({
+              ...thread,
+              activities: [
+                ...thread.activities,
+                makeActivity({
+                  id: EventId.make("resumed-tool"),
+                  kind: "tool.started",
+                  summary: "Running tool",
+                  createdAt: "2026-04-01T00:00:04.000Z",
+                  turnId,
+                }),
+              ],
+            }),
+          ),
         ),
-      ),
-    ).toBe(false);
-  });
+      ).toBe(false);
+      expect(answerIsVisible(deriveThreadFeedPresentation(feed, latestTurn, new Set()))).toBe(
+        false,
+      );
+      expect(
+        answerIsVisible(
+          deriveThreadFeedPresentation(
+            feed,
+            { ...latestTurn, state: "completed", completedAt: "2026-04-01T00:00:05.000Z" },
+            new Set(),
+            new Set(),
+            startedAt,
+          ),
+        ),
+      ).toBe(false);
+    },
+  );
 
   it("folds question answers into tool history and only hides the matching async reply", () => {
     const createdAt = "2026-04-01T00:00:01.000Z";

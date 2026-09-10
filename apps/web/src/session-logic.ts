@@ -1633,8 +1633,42 @@ export function deriveTimelineEntriesWithState(
   );
   const showMessage = (message: ChatMessage) =>
     message.role !== "user" || !foldedAnswerMessageIds.has(message.id);
+  const asyncAnswers = new Map<string, ChatMessage>(
+    messages
+      .filter(
+        (message) =>
+          message.role === "user" && message.turnId && foldedAnswerMessageIds.has(message.id),
+      )
+      .map((message) => [message.id, message]),
+  );
+  const latestProviderActivity = new Map<TurnId, string>();
+  if (asyncAnswers.size > 0) {
+    for (const entry of workEntries) {
+      if (
+        entry.turnId &&
+        (entry.sourceActivityKind?.startsWith("tool.") ||
+          entry.sourceActivityKind?.startsWith("task.")) &&
+        entry.createdAt > (latestProviderActivity.get(entry.turnId) ?? "")
+      )
+        latestProviderActivity.set(entry.turnId, entry.createdAt);
+    }
+  }
+  const workRow = (entry: WorkLogEntry) => {
+    const response =
+      entry.questionAnswer && asyncAnswers.get(`async-answer:${entry.questionAnswer.requestId}`);
+    if (!response?.turnId) return timelineEntryFromWork(entry);
+    const resumed = (latestProviderActivity.get(response.turnId) ?? "") > response.createdAt;
+    const { questionAnswerSubmittedAt: _submittedAt, ...rest } = entry;
+    return timelineEntryFromWork({
+      ...rest,
+      turnId: response.turnId,
+      createdAt: response.createdAt,
+      ...(!resumed ? { questionAnswerSubmittedAt: response.createdAt } : {}),
+    });
+  };
   const canAppend =
     previous !== null &&
+    asyncAnswers.size === 0 &&
     !previous.entries.some((entry) => entry.kind === "message" && !showMessage(entry.message)) &&
     hasExactArrayPrefix(previous.messages, messages) &&
     hasExactArrayPrefix(previous.proposedPlans, proposedPlans) &&
@@ -1648,7 +1682,7 @@ export function deriveTimelineEntriesWithState(
     const proposedPlanRows = proposedPlans
       .slice(previous.proposedPlans.length)
       .map(timelineEntryFromProposedPlan);
-    const workRows = workEntries.slice(previous.workEntries.length).map(timelineEntryFromWork);
+    const workRows = workEntries.slice(previous.workEntries.length).map(workRow);
     const suffix = [...messageRows, ...proposedPlanRows, ...workRows].toSorted(
       compareTimelineEntriesByCreatedAt,
     );
@@ -1662,7 +1696,7 @@ export function deriveTimelineEntriesWithState(
 
   const messageRows = messages.filter(showMessage).map(timelineEntryFromMessage);
   const proposedPlanRows = proposedPlans.map(timelineEntryFromProposedPlan);
-  const workRows = workEntries.map(timelineEntryFromWork);
+  const workRows = workEntries.map(workRow);
   return {
     messages,
     proposedPlans,
