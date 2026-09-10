@@ -1,4 +1,4 @@
-import { SearchIcon } from "lucide-react";
+import { SearchIcon, UserCheckIcon } from "lucide-react";
 import { PullRequestStackPopover } from "./PullRequestStackPopover";
 import { memo, type RefCallback } from "react";
 
@@ -197,16 +197,20 @@ function PullRequestRowImpl({
           {entry.labels.length > 0 ? <PullRequestRowLabels labels={entry.labels} /> : null}
           {/* Only a verdict somebody has actually given: "review required" is the absence of
               one, and saying so on every unreviewed row would say nothing. */}
-          {entry.reviewDecision === "approved" || entry.reviewDecision === "changes-requested" ? (
-            <span
-              className={cn(
-                "min-w-0 truncate",
-                entry.reviewDecision === "approved"
-                  ? "text-emerald-600/90 dark:text-emerald-400/80"
-                  : "text-amber-600/90 dark:text-amber-400/80",
-              )}
-            >
-              {entry.reviewDecision === "approved" ? "Approved" : "Changes requested"}
+          {entry.reviewDecision === "approved" ? (
+            <Tooltip>
+              <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
+                <UserCheckIcon
+                  aria-hidden
+                  className="size-3.5 text-emerald-600/90 dark:text-emerald-400/80"
+                />
+                <span className="sr-only">Approved</span>
+              </TooltipTrigger>
+              <TooltipPopup>Approved</TooltipPopup>
+            </Tooltip>
+          ) : entry.reviewDecision === "changes-requested" ? (
+            <span className="min-w-0 truncate text-amber-600/90 dark:text-amber-400/80">
+              Changes requested
             </span>
           ) : null}
           {entry.checksState === undefined ? null : (
