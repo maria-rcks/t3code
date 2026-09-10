@@ -10,6 +10,7 @@ import {
   PreviewViewportSize,
 } from "./preview.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
+import { ToolActivityIcon } from "./providerRuntime.ts";
 
 const BoundedUrl = Schema.String.check(Schema.isTrimmed())
   .check(Schema.isNonEmpty())
@@ -623,6 +624,7 @@ export const PreviewAutomationResponse = Schema.Struct({
   requestId: TrimmedNonEmptyString,
   ok: Schema.Boolean,
   result: Schema.optional(Schema.Unknown),
+  toolIcon: Schema.optional(ToolActivityIcon),
   error: Schema.optional(
     Schema.Struct({
       _tag: TrimmedNonEmptyString,

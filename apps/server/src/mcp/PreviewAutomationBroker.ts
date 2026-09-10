@@ -46,6 +46,11 @@ export interface PreviewAutomationInvokeInput {
   readonly timeoutMs?: number;
 }
 
+export interface PreviewAutomationResult<A> {
+  readonly result: A;
+  readonly toolIcon?: PreviewAutomationResponse["toolIcon"];
+}
+
 export class PreviewAutomationBroker extends Context.Service<
   PreviewAutomationBroker,
   {
@@ -59,6 +64,9 @@ export class PreviewAutomationBroker extends Context.Service<
     readonly invoke: <A = unknown>(
       request: PreviewAutomationInvokeInput,
     ) => Effect.Effect<A, PreviewAutomationError>;
+    readonly invokeWithPresentation: <A = unknown>(
+      request: PreviewAutomationInvokeInput,
+    ) => Effect.Effect<PreviewAutomationResult<A>, PreviewAutomationError>;
   }
 >()("t3/mcp/PreviewAutomationBroker") {}
 
@@ -74,7 +82,7 @@ interface ClientConnection {
 
 interface PendingRequest {
   readonly queue: ClientConnection["queue"];
-  readonly deferred: Deferred.Deferred<unknown, PreviewAutomationError>;
+  readonly deferred: Deferred.Deferred<PreviewAutomationResult<unknown>, PreviewAutomationError>;
   readonly context: PreviewAutomationRequestErrorContext;
 }
 
@@ -436,7 +444,10 @@ export const make = Effect.gen(function* PreviewAutomationBrokerMake() {
     });
     if (!pending) return;
     if (response.ok) {
-      yield* Deferred.succeed(pending.deferred, response.result);
+      yield* Deferred.succeed(pending.deferred, {
+        result: response.result,
+        ...(response.toolIcon ? { toolIcon: response.toolIcon } : {}),
+      });
     } else {
       yield* Deferred.fail(
         pending.deferred,
@@ -447,11 +458,16 @@ export const make = Effect.gen(function* PreviewAutomationBrokerMake() {
     }
   });
 
-  const invoke = Effect.fn("PreviewAutomationBroker.invoke")(function* <A = unknown>(
+  const invokeWithPresentation = Effect.fn("PreviewAutomationBroker.invoke")(function* <
+    A = unknown,
+  >(
     input: Parameters<PreviewAutomationBroker["Service"]["invoke"]>[0],
-  ): Effect.fn.Return<A, PreviewAutomationError> {
+  ): Effect.fn.Return<PreviewAutomationResult<A>, PreviewAutomationError> {
     const timeoutMs = input.timeoutMs ?? 15_000;
-    const deferred = yield* Deferred.make<unknown, PreviewAutomationError>();
+    const deferred = yield* Deferred.make<
+      PreviewAutomationResult<unknown>,
+      PreviewAutomationError
+    >();
     const route = yield* SynchronizedRef.modify(state, (current) => {
       const assignments = new Map(
         Array.from(current.assignments).filter(([, assignment]) => {
@@ -564,18 +580,18 @@ export const make = Effect.gen(function* PreviewAutomationBrokerMake() {
       if (!offered) {
         const completion = yield* Deferred.poll(deferred);
         if (Option.isSome(completion)) {
-          return (yield* completion.value) as A;
+          return (yield* completion.value) as PreviewAutomationResult<A>;
         }
         return yield* new PreviewAutomationRequestQueueClosedError(requestContext);
       }
       const result = yield* Deferred.await(deferred).pipe(Effect.timeoutOption(timeoutMs));
       return yield* Option.match(result, {
         onNone: () => Effect.fail(new PreviewAutomationTimeoutError(requestContext)),
-        onSome: (value) => Effect.succeed(value as A),
+        onSome: (value) => Effect.succeed(value as PreviewAutomationResult<A>),
       });
     });
     const result = yield* awaitResponse().pipe(Effect.ensuring(removePending));
-    const responseTabId = readResultTabId(result);
+    const responseTabId = readResultTabId(result.result);
     const resultTabId = responseTabId === undefined ? input.tabId : responseTabId;
     if (resultTabId === undefined) return result;
     const assignmentKey = hostAssignmentKey(input.scope);
@@ -605,7 +621,15 @@ export const make = Effect.gen(function* PreviewAutomationBrokerMake() {
     return result;
   });
 
-  return PreviewAutomationBroker.of({ connect, focusHost, respond, invoke });
+  const invoke = <A = unknown>(input: PreviewAutomationInvokeInput) =>
+    invokeWithPresentation<A>(input).pipe(Effect.map(({ result }) => result));
+  return PreviewAutomationBroker.of({
+    connect,
+    focusHost,
+    respond,
+    invoke,
+    invokeWithPresentation,
+  });
 }).pipe(Effect.withSpan("PreviewAutomationBroker.make"));
 
 export const layer = Layer.effect(PreviewAutomationBroker, make);

@@ -615,6 +615,11 @@ it.effect("registers annotated tools and preserves authenticated request context
     Effect.gen(function* () {
       const server = yield* McpServer.McpServer;
       const broker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
+      const toolIcon = {
+        _tag: "website" as const,
+        pageUrl: "http://example.test/",
+        faviconUrl: "data:image/png;base64,aWNvbg==",
+      };
       const routedRequests: Array<{
         readonly operation: string;
         readonly tabId?: string | undefined;
@@ -631,6 +636,7 @@ it.effect("registers annotated tools and preserves authenticated request context
           connectionId: event.connectionId,
           requestId: event.request.requestId,
           ok: true,
+          toolIcon,
           result:
             event.request.operation === "snapshot"
               ? snapshotResult
@@ -664,7 +670,7 @@ it.effect("registers annotated tools and preserves authenticated request context
       expect(clickTool?.tool.annotations?.readOnlyHint).toBe(false);
       expect(clickTool?.tool.annotations?.destructiveHint).toBe(true);
       expect(clickTool?.tool.annotations?.openWorldHint).toBe(true);
-      expect(clickTool?.tool.outputSchema).toEqual({
+      expect(clickTool?.tool.outputSchema).toMatchObject({
         type: "object",
         additionalProperties: false,
         description: "The preview action completed successfully.",
@@ -684,6 +690,7 @@ it.effect("registers annotated tools and preserves authenticated request context
       expect(status.structuredContent).toMatchObject({
         available: true,
         tabId,
+        toolIcon,
       });
 
       const malformed = yield* server
@@ -704,6 +711,7 @@ it.effect("registers annotated tools and preserves authenticated request context
       expect(snapshot.isError).toBe(false);
       expect(snapshot.content.some((content) => content.type === "image")).toBe(true);
       expect(snapshot.structuredContent).toMatchObject({
+        toolIcon,
         screenshot: { mimeType: "image/png", width: 10, height: 5 },
       });
       expect(routedRequests.find(({ operation }) => operation === "snapshot")?.tabId).toBe(
@@ -721,10 +729,12 @@ it.effect("registers annotated tools and preserves authenticated request context
           Effect.provideService(McpSchema.McpServerClient, client),
         );
       expect(evaluated.isError).toBe(false);
-      expect(evaluated.structuredContent).toEqual({ value: ["Connect", "Continue"] });
-      expect(evaluated.content).toEqual([
-        { type: "text", text: '{"value":["Connect","Continue"]}' },
-      ]);
+      expect(evaluated.structuredContent).toEqual({ value: ["Connect", "Continue"], toolIcon });
+      const evaluatedText = evaluated.content[0];
+      expect(evaluatedText?.type === "text" ? decodeJsonText(evaluatedText.text) : null).toEqual({
+        toolIcon,
+        value: ["Connect", "Continue"],
+      });
 
       const actionRequests = [
         { name: "preview_click", arguments: { x: 10, y: 10 } },
@@ -741,8 +751,9 @@ it.effect("registers annotated tools and preserves authenticated request context
             Effect.provideService(McpSchema.McpServerClient, client),
           );
         expect(result.isError).toBe(false);
-        expect(result.structuredContent).toEqual({});
-        expect(result.content).toEqual([{ type: "text", text: "{}" }]);
+        expect(result.structuredContent).toEqual({ toolIcon });
+        const text = result.content[0];
+        expect(text?.type === "text" ? decodeJsonText(text.text) : null).toEqual({ toolIcon });
       }
     }),
   ).pipe(Effect.provide(TestLayer)),

@@ -14,6 +14,7 @@ import {
   type PreviewAutomationSetColorSchemeResult,
   type PreviewAutomationHost as PreviewAutomationHostState,
   type PreviewAutomationRequest,
+  type PreviewAutomationResponse,
   type PreviewAutomationStatus,
   type PreviewRenderedViewportSize,
   type PreviewViewportSetting,
@@ -75,7 +76,10 @@ import {
   assertPreviewRuntimeCurrent,
   waitForNavigationReadiness,
 } from "./previewNavigationReadiness";
-import { createPreviewAutomationRequestConsumerAtom } from "./previewAutomationRequestConsumer";
+import {
+  createPreviewAutomationRequestConsumerAtom,
+  type PreviewAutomationHandledResult,
+} from "./previewAutomationRequestConsumer";
 import { createPreviewAutomationClientId } from "./previewAutomationClientId";
 import {
   needsPreviewAutomationSessionSync,
@@ -324,7 +328,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
   const presentationSuppressedRuntimeTabsRef = useRef(new Map<string, Set<string>>());
 
   const handleRequest = useCallback(
-    async (request: PreviewAutomationRequest): Promise<unknown> => {
+    async (request: PreviewAutomationRequest): Promise<PreviewAutomationHandledResult> => {
       // Session sync and tab creation consume the same budget as overlay registration.
       const hostDeadlineMs = Date.now() + resolveHostWaitBudgetMs(request.timeoutMs);
       const threadRef: ScopedThreadRef = {
@@ -333,7 +337,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
       };
       let tabId = request.tabId ?? null;
       const browserActivity = { release: null as (() => void) | null };
-      try {
+      const execute = async () => {
         let state = readThreadPreviewState(threadRef);
         const needsSessionSync = needsPreviewAutomationSessionSync(state, request.tabId);
         if (needsSessionSync) {
@@ -746,6 +750,61 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
             };
           }
         }
+      };
+      try {
+        const result: unknown = await execute();
+        let toolIcon: PreviewAutomationResponse["toolIcon"];
+        let iconTimeout: ReturnType<typeof setTimeout> | undefined;
+        try {
+          // Read the resolved target, including tabs created or selected by this operation.
+          const resultHasPageUrl =
+            ["status", "open", "navigate", "snapshot"].includes(request.operation) &&
+            typeof result === "object" &&
+            result !== null &&
+            "url" in result;
+          const pageUrl = resultHasPageUrl
+            ? result.url
+            : tabId && previewBridge && Date.now() < hostDeadlineMs
+              ? (
+                  await Promise.race([
+                    previewBridge.automation.status(
+                      previewRuntimeTabId(
+                        threadRef,
+                        readThreadPreviewState(threadRef).serverEpoch,
+                        tabId,
+                      ),
+                    ),
+                    new Promise<null>((resolve) => {
+                      iconTimeout = setTimeout(
+                        () => resolve(null),
+                        Math.min(300, Math.max(0, hostDeadlineMs - Date.now())),
+                      );
+                    }),
+                  ])
+                )?.url
+              : null;
+          if (typeof pageUrl === "string" && pageUrl.length <= 4096) {
+            const url = new URL(pageUrl);
+            if (url.protocol === "http:" || url.protocol === "https:") {
+              toolIcon = { _tag: "website", pageUrl };
+              const favicon = tabId
+                ? readThreadPreviewState(threadRef).desktopByTabId[tabId]?.favicon
+                : null;
+              if (
+                favicon &&
+                favicon.dataUrl.length <= 4096 &&
+                new URL(favicon.pageUrl).origin === url.origin
+              ) {
+                toolIcon = { ...toolIcon, faviconUrl: favicon.dataUrl };
+              }
+            }
+          }
+        } catch {
+          // Icon lookup must not turn a successful browser action into a failure.
+        } finally {
+          clearTimeout(iconTimeout);
+        }
+        return { result, ...(toolIcon ? { toolIcon } : {}) };
       } catch (cause) {
         throw PreviewAutomationOperationError.fromCause({
           requestId: request.requestId,

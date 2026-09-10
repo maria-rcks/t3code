@@ -17,6 +17,7 @@ import {
 import {
   createPreviewAutomationRequestConsumerAtom,
   serializePreviewAutomationError,
+  type PreviewAutomationHandledResult,
 } from "./previewAutomationRequestConsumer";
 
 const environmentId = EnvironmentId.make("environment-1");
@@ -47,7 +48,9 @@ const requestEvent = (
   request: request(requestId, overrides),
 });
 
-const consumerState = (handleRequest: (request: PreviewAutomationRequest) => Promise<unknown>) => ({
+const consumerState = (
+  handleRequest: (request: PreviewAutomationRequest) => Promise<PreviewAutomationHandledResult>,
+) => ({
   connectionAtom: Atom.make<string | null>(null),
   requestHandlerAtom: Atom.make({ handle: handleRequest }),
 });
@@ -60,7 +63,7 @@ describe("previewAutomationRequestConsumer", () => {
         connectionId,
       }),
     );
-    const handleRequest = vi.fn(async () => undefined);
+    const handleRequest = vi.fn(async () => ({ result: undefined }));
     const respond = vi.fn(async () => undefined);
     const state = consumerState(handleRequest);
     const consumerAtom = createPreviewAutomationRequestConsumerAtom({
@@ -90,7 +93,7 @@ describe("previewAutomationRequestConsumer", () => {
         connectionId: "connection-2",
       }),
     );
-    const handleRequest = vi.fn(async () => undefined);
+    const handleRequest = vi.fn(async () => ({ result: undefined }));
     const respond = vi.fn(async () => undefined);
     const state = consumerState(handleRequest);
     const consumerAtom = createPreviewAutomationRequestConsumerAtom({
@@ -121,7 +124,8 @@ describe("previewAutomationRequestConsumer", () => {
       AsyncResult.initial<PreviewAutomationStreamEvent, Error>(false),
     );
     const handleRequest = vi.fn(async (value: PreviewAutomationRequest) => ({
-      requestId: value.requestId,
+      result: { requestId: value.requestId },
+      toolIcon: { _tag: "website" as const, pageUrl: `https://${value.requestId}.example` },
     }));
     const responses: PreviewAutomationResponse[] = [];
     const respond = vi.fn(async (response: PreviewAutomationResponse) => {
@@ -149,6 +153,10 @@ describe("previewAutomationRequestConsumer", () => {
       "request-2",
     ]);
     expect(responses.map((response) => response.requestId)).toEqual(["request-1", "request-2"]);
+    expect(responses.map(({ toolIcon }) => toolIcon)).toEqual([
+      { _tag: "website", pageUrl: "https://request-1.example" },
+      { _tag: "website", pageUrl: "https://request-2.example" },
+    ]);
     registry.dispose();
   });
 
@@ -156,8 +164,8 @@ describe("previewAutomationRequestConsumer", () => {
     const requestsAtom = Atom.make<AsyncResult.AsyncResult<PreviewAutomationStreamEvent, Error>>(
       AsyncResult.initial<PreviewAutomationStreamEvent, Error>(false),
     );
-    const firstHandler = vi.fn(async () => "first");
-    const secondHandler = vi.fn(async () => "second");
+    const firstHandler = vi.fn(async () => ({ result: "first" }));
+    const secondHandler = vi.fn(async () => ({ result: "second" }));
     const respond = vi.fn(async (_response: PreviewAutomationResponse) => undefined);
     const state = consumerState(firstHandler);
     const consumerAtom = createPreviewAutomationRequestConsumerAtom({
@@ -189,7 +197,7 @@ describe("previewAutomationRequestConsumer", () => {
       AsyncResult.success<PreviewAutomationStreamEvent, Error>(requestEvent("request-ready")),
     );
     const respond = vi.fn(async (_response: PreviewAutomationResponse) => undefined);
-    const state = consumerState(async () => undefined);
+    const state = consumerState(async () => ({ result: undefined }));
     const consumerAtom = createPreviewAutomationRequestConsumerAtom({
       requestsAtom,
       clientId,

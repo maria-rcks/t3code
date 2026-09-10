@@ -12,6 +12,11 @@ import {
   serializePreviewAutomationHostError,
 } from "./previewAutomationErrors";
 
+export interface PreviewAutomationHandledResult {
+  readonly result: unknown;
+  readonly toolIcon?: PreviewAutomationResponse["toolIcon"];
+}
+
 type AutomationStreamResult<E> = AsyncResult.AsyncResult<PreviewAutomationStreamEvent, E>;
 
 export function serializePreviewAutomationError(
@@ -29,7 +34,7 @@ export function createPreviewAutomationRequestConsumerAtom<E>(options: {
   readonly connectionAtom: Atom.Writable<PreviewAutomationStreamEvent["connectionId"] | null>;
   readonly environmentId: PreviewAutomationHost["environmentId"];
   readonly requestHandlerAtom: Atom.Atom<{
-    readonly handle: (request: PreviewAutomationRequest) => Promise<unknown>;
+    readonly handle: (request: PreviewAutomationRequest) => Promise<PreviewAutomationHandledResult>;
   }>;
   readonly respond: (response: PreviewAutomationResponse) => Promise<unknown>;
   readonly label: string;
@@ -67,13 +72,14 @@ export function createPreviewAutomationRequestConsumerAtom<E>(options: {
         .once(options.requestHandlerAtom)
         .handle(request)
         .then(
-          (value) =>
+          ({ result, toolIcon }) =>
             options.respond({
               clientId: options.clientId,
               connectionId: event.connectionId,
               requestId: request.requestId,
               ok: true,
-              ...(value === undefined ? {} : { result: value }),
+              ...(result === undefined ? {} : { result }),
+              ...(toolIcon ? { toolIcon } : {}),
             }),
           (error) =>
             options.respond({
