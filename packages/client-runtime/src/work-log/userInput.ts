@@ -60,8 +60,11 @@ function withoutDuplicateQuestionTools(
     }
   }
   return activities.filter((activity) => {
-    const toolCallId = record(activity.payload)?.toolCallId;
+    const payload = record(activity.payload);
+    const toolCallId = payload?.toolCallId;
     return (
+      activity.tone === "error" ||
+      /^(failed|declined|stopped|cancelled)$/.test(String(payload?.status)) ||
       !activity.kind.startsWith("tool.") ||
       typeof toolCallId !== "string" ||
       !duplicateToolIds.has(JSON.stringify([activity.turnId, toolCallId]))
