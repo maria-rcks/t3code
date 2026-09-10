@@ -18,7 +18,7 @@ type ComposerSelectControlProps = Omit<ComponentProps<typeof SelectTrigger>, "si
 
 const composerControlClassName =
   "rounded-[var(--control-radius)] text-secondary-label transition-none hover:text-foreground [&_svg[data-composer-control-chevron]]:-mx-0.5 [&_svg[data-composer-control-icon]]:mx-0";
-const expandedComposerControlClassName = "h-7 min-h-7 gap-1.5 px-2.5";
+const expandedComposerControlClassName = "h-7 min-h-7 gap-1.5 px-2 text-xs sm:text-xs";
 const restingComposerControlClassName =
   "[--control-icon-color:currentColor] font-normal text-muted-foreground/70 hover:text-foreground/80 [&_svg[data-composer-control-chevron]]:-me-1 [&_svg[data-composer-control-chevron]]:ms-0";
 
@@ -58,7 +58,7 @@ export function ComposerControlIcon({
       aria-hidden="true"
       className={cn(
         "shrink-0",
-        size === "xs" ? "size-3" : opticalSize === "large" ? "size-4.5" : "size-4",
+        size === "xs" ? "size-3" : opticalSize === "large" ? "size-4" : "size-3.5",
         className,
       )}
       data-composer-control-icon
@@ -78,7 +78,7 @@ export function ComposerControlChevron({
       aria-hidden="true"
       className={cn(
         "shrink-0",
-        size === "xs" ? "size-3 text-current opacity-50" : "size-3.5 text-icon-muted",
+        size === "xs" ? "size-3 text-current opacity-50" : "size-3 text-icon-muted",
         className,
       )}
       data-composer-control-chevron
@@ -97,7 +97,7 @@ export function ComposerControlSeparator({
   return (
     <Separator
       orientation="vertical"
-      className={cn("mx-0.5 hidden sm:block", size === "xs" ? "h-3.5!" : "h-4", className)}
+      className={cn("mx-0.5 hidden sm:block", size === "xs" ? "h-3.5!" : "h-3.5", className)}
       {...props}
     />
   );

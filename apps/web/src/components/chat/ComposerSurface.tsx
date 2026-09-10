@@ -2,10 +2,9 @@ import type { ComponentProps } from "react";
 
 import { cn } from "~/lib/utils";
 
-/** One glass backdrop until a top attachment needs the composer to cover its overlap. */
 function Shell({
-  contextStrip = false,
   className,
+  contextStrip,
   ...props
 }: ComponentProps<"div"> & { contextStrip?: boolean }) {
   return (
@@ -14,7 +13,9 @@ function Shell({
       data-with-context={contextStrip || undefined}
       className={cn(
         "@container/composer-surface group/composer-surface relative isolate mx-auto w-full max-w-3xl",
-        "[--chat-composer-drawer-inset:1.375rem] [--chat-composer-radius:12px] [--chat-composer-curve:5.37px] [--chat-composer-strip-radius:8px] [--chat-composer-strip-curve:3.58px] [--chat-composer-glass-surface:var(--card)] [--chat-composer-outline:var(--border)]",
+        // Banners, the command menu, and the context strip sit flush with the frame, so one
+        // rounded backdrop covers the whole stack and no drawer geometry is needed.
+        "[--chat-composer-drawer-inset:0rem] [--chat-composer-radius:var(--radius)] [--chat-composer-glass-surface:var(--card)] [--chat-composer-outline:var(--border)]",
         "dark:[--chat-composer-glass-surface:var(--surface-raised)] dark:[--chat-composer-highlight:rgb(255_255_255/3%)] dark:[--chat-composer-outline:color-mix(in_srgb,var(--color-white)_5%,transparent)]",
         "[html[data-theme-id]_&]:[--chat-composer-glass-surface:var(--app-theme-surface-raised)] [html[data-theme-id]_&]:[--chat-composer-outline:var(--app-theme-toolbar-border)]",
         "dark:[html[data-theme-id]:not([data-theme-id=t3-chat])_&]:[--chat-composer-highlight:color-mix(in_srgb,var(--app-theme-input)_12%,transparent)] dark:[html[data-theme-id]:not([data-theme-id=t3-chat])_&]:[--chat-composer-outline:color-mix(in_srgb,var(--app-theme-input)_30%,var(--background))]",
@@ -22,13 +23,6 @@ function Shell({
         "before:pointer-events-none before:absolute before:inset-0 before:z-0 before:rounded-(--chat-composer-radius) before:bg-[color-mix(in_srgb,var(--chat-composer-glass-surface)_var(--glass-opacity),transparent)] before:backdrop-blur-(--glass-blur) before:backdrop-saturate-(--glass-saturation)",
         "not-supports-[((backdrop-filter:blur(1px))_or_(-webkit-backdrop-filter:blur(1px)))]:before:bg-(--chat-composer-glass-surface)",
         "has-data-[composer-banner-surface=attached]:before:hidden",
-        contextStrip && [
-          "[--chat-composer-context-extension:2.25rem] sm:[--chat-composer-context-extension:2rem]",
-          // Keep one continuous backdrop around the fixed-pixel corners and rem-sized strip inset.
-          "supports-[clip-path:shape(from_0_0,line_to_1px_1px)]:before:rounded-none",
-          "before:[clip-path:shape(from_0_var(--chat-composer-radius),curve_to_var(--chat-composer-radius)_0_with_0_var(--chat-composer-curve)/var(--chat-composer-curve)_0,line_to_calc(100%-var(--chat-composer-radius))_0,curve_to_100%_var(--chat-composer-radius)_with_calc(100%-var(--chat-composer-curve))_0/100%_var(--chat-composer-curve),line_to_100%_calc(100%-var(--chat-composer-context-extension)-var(--chat-composer-radius)),curve_to_calc(100%-var(--chat-composer-radius))_calc(100%-var(--chat-composer-context-extension))_with_100%_calc(100%-var(--chat-composer-context-extension)-var(--chat-composer-curve))/calc(100%-var(--chat-composer-curve))_calc(100%-var(--chat-composer-context-extension)),line_to_calc(100%-var(--chat-composer-drawer-inset))_calc(100%-var(--chat-composer-context-extension)),line_to_calc(100%-var(--chat-composer-drawer-inset))_calc(100%-var(--chat-composer-strip-radius)),curve_to_calc(100%-var(--chat-composer-drawer-inset)-var(--chat-composer-strip-radius))_100%_with_calc(100%-var(--chat-composer-drawer-inset))_calc(100%-var(--chat-composer-strip-curve))/calc(100%-var(--chat-composer-drawer-inset)-var(--chat-composer-strip-curve))_100%,line_to_calc(var(--chat-composer-drawer-inset)+var(--chat-composer-strip-radius))_100%,curve_to_var(--chat-composer-drawer-inset)_calc(100%-var(--chat-composer-strip-radius))_with_calc(var(--chat-composer-drawer-inset)+var(--chat-composer-strip-curve))_100%/var(--chat-composer-drawer-inset)_calc(100%-var(--chat-composer-strip-curve)),line_to_var(--chat-composer-drawer-inset)_calc(100%-var(--chat-composer-context-extension)),line_to_var(--chat-composer-radius)_calc(100%-var(--chat-composer-context-extension)),curve_to_0_calc(100%-var(--chat-composer-context-extension)-var(--chat-composer-radius))_with_var(--chat-composer-curve)_calc(100%-var(--chat-composer-context-extension))/0_calc(100%-var(--chat-composer-context-extension)-var(--chat-composer-curve)),line_to_0_var(--chat-composer-radius),close)]",
-          "not-supports-[clip-path:shape(from_0_0,line_to_1px_1px)]:before:bottom-(--chat-composer-context-extension)",
-        ],
         className,
       )}
       {...props}
@@ -39,9 +33,9 @@ function Shell({
 const outlineClasses =
   "after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-(--chat-composer-outline) dark:after:shadow-[inset_0_1px_var(--chat-composer-highlight)]";
 
-// The bottom strip continues the outline, so leave the seam between its corners open.
+// The context strip continues the outline below, so the frame ends in a straight seam.
 const contextSeamClasses =
-  "group-data-with-context/composer-surface:after:[clip-path:polygon(0_0,100%_0,100%_100%,calc(100%-var(--chat-composer-drawer-inset))_100%,calc(100%-var(--chat-composer-drawer-inset))_calc(100%-2px),var(--chat-composer-drawer-inset)_calc(100%-2px),var(--chat-composer-drawer-inset)_100%,0_100%)]";
+  "group-data-with-context/composer-surface:rounded-b-none group-data-with-context/composer-surface:after:border-b-0";
 
 function Host({ className, ...props }: ComponentProps<"div">) {
   return (
@@ -84,11 +78,13 @@ function ContextStrip({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="composer-context-strip"
       className={cn(
-        "group/composer-context relative isolate mx-auto -mt-4 flex w-[calc(100%-2*var(--chat-composer-drawer-inset))] items-center gap-2 overflow-x-clip overflow-y-visible ps-1 pe-2 pt-5 pb-1",
-        "before:absolute before:inset-0 before:-z-1 before:rounded-b-(--chat-composer-strip-radius) before:border before:border-(--chat-composer-outline) before:mask-[linear-gradient(to_bottom,transparent_0_1rem,black_1rem)] before:shadow-[0_2px_8px_-4px_rgb(0_0_0/12%)]",
-        "dark:before:border-white/7 dark:before:bg-[linear-gradient(to_bottom,transparent_0_1rem,rgb(0_0_0/18%)_1rem,transparent_calc(1rem+10px)),linear-gradient(rgb(255_255_255/1%),rgb(255_255_255/1%))] dark:before:shadow-[0_14px_32px_-18px_rgb(0_0_0/75%)]",
+        "group/composer-context relative isolate flex w-full items-center gap-2 overflow-x-clip overflow-y-visible px-1.5 py-1",
+        // Full-width footer row: the frame's side and bottom edges continue here and the
+        // top edge doubles as the divider from the prompt area.
+        "before:absolute before:inset-0 before:-z-1 before:rounded-b-(--chat-composer-radius) before:border before:border-(--chat-composer-outline) before:shadow-[0_2px_8px_-4px_rgb(0_0_0/12%)]",
+        "dark:before:border-white/7 dark:before:shadow-none",
+        "after:pointer-events-none after:absolute after:inset-px after:top-0 after:-z-1 after:rounded-b-[calc(var(--chat-composer-radius)-1px)] after:bg-[color-mix(in_srgb,var(--contrast-foreground)_2%,transparent)]",
         "group-has-data-[composer-banner-surface=attached]/composer-surface:before:bg-[color-mix(in_srgb,var(--chat-composer-glass-surface)_var(--glass-opacity),transparent)] group-has-data-[composer-banner-surface=attached]/composer-surface:before:backdrop-blur-(--glass-blur) group-has-data-[composer-banner-surface=attached]/composer-surface:before:backdrop-saturate-(--glass-saturation)",
-        "not-supports-[clip-path:shape(from_0_0,line_to_1px_1px)]:before:bg-[color-mix(in_srgb,var(--chat-composer-glass-surface)_var(--glass-opacity),transparent)] not-supports-[clip-path:shape(from_0_0,line_to_1px_1px)]:before:backdrop-blur-(--glass-blur) not-supports-[clip-path:shape(from_0_0,line_to_1px_1px)]:before:backdrop-saturate-(--glass-saturation)",
         className,
       )}
       {...props}

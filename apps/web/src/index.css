@@ -1102,9 +1102,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --sidebar-stage-fade: var(--sidebar);
 
   @variant dark {
-    --background: var(--color-neutral-950);
+    --background: #000;
     --foreground: #f1f3f7;
-    --card: var(--color-neutral-950);
+    --card: #000;
     --card-foreground: var(--foreground);
     --accent: #191a1d;
     --accent-foreground: #f7f9ff;
