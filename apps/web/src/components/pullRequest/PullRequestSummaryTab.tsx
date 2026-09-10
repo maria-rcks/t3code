@@ -465,7 +465,7 @@ export function PullRequestSummaryTab({
   const [expandedChecksUrl, setExpandedChecksUrl] = useState<string | null>(null);
   const showCompletedChecks = expandedChecksUrl === detail.url;
   const completedCheckCount = detail.checks.filter((check) =>
-    ["success", "skipped", "neutral"].includes(check.status),
+    ["success", "skipped"].includes(check.status),
   ).length;
   const shownComments = shown.url === detail.url ? shown.count : COMMENT_PAGE;
   // Windowed by recency regardless of display order: expanding always reaches further back in
@@ -812,10 +812,7 @@ export function PullRequestSummaryTab({
             </div>
             <div id={checksId} className="mt-2">
               {detail.checks.map((check, index) => {
-                if (
-                  !showCompletedChecks &&
-                  ["success", "skipped", "neutral"].includes(check.status)
-                ) {
+                if (!showCompletedChecks && ["success", "skipped"].includes(check.status)) {
                   return null;
                 }
                 const finding = { kind: "check", check } as const;
