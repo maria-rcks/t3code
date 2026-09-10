@@ -348,10 +348,14 @@ describe("MessagesTimeline", () => {
         });
         const toggle = renderer!.root.findByProps({ "aria-expanded": false });
         await act(() => toggle.props.onClick());
-        const questionToggle = renderer!.root.findByProps({
-          "aria-label": "Question answer submitted",
-          "aria-expanded": false,
-        });
+        const questionToggle = renderer!.root.find(
+          (node) =>
+            node.props["aria-label"]?.startsWith("Question answer submitted:") &&
+            node.props["aria-expanded"] === false,
+        );
+        expect(questionToggle.props["aria-label"]).toContain(
+          Object.values(answers)[0] ?? "spec.txt",
+        );
         expect(JSON.stringify(renderer!.toJSON())).not.toContain("Provide a spec");
         await act(() => questionToggle.props.onClick());
         const markup = JSON.stringify(renderer!.toJSON());

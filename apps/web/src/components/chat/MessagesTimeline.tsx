@@ -3385,9 +3385,10 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
       : workLogEntryIsToolLike(workEntry)
         ? "text-secondary-label"
         : "text-foreground/80";
+  const accessiblePreview = [previewText, answerPreview].filter(Boolean).join(": ");
   const accessibleDisplayText = showFailedIndicator
-    ? `${previewText}, tool call failed`
-    : previewText;
+    ? `${accessiblePreview}, tool call failed`
+    : accessiblePreview;
   const rowToggleProps = canExpand
     ? {
         role: "button" as const,
