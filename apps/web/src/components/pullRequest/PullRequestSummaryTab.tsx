@@ -229,16 +229,11 @@ function MetaRow({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 max-w-full items-center gap-2 text-xs">
-      <Tooltip>
-        <TooltipTrigger
-          render={<span className="flex shrink-0 items-center text-muted-foreground" />}
-        >
-          {icon}
-          <span className="sr-only">{label}</span>
-        </TooltipTrigger>
-        <TooltipPopup side="bottom">{label}</TooltipPopup>
-      </Tooltip>
+    <div className="grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] items-center gap-2 text-xs">
+      <span className="flex items-center gap-1.5 text-muted-foreground">
+        {icon}
+        {label}
+      </span>
       <span className="min-w-0 text-foreground">{children}</span>
     </div>
   );
@@ -248,14 +243,12 @@ function Section({
   title,
   count,
   defaultOpen = true,
-  hideOpenTitle = false,
   actions,
   children,
 }: {
   title: string;
   count?: number;
   defaultOpen?: boolean;
-  hideOpenTitle?: boolean;
   /** Controls riding on the heading row itself. A sibling of the trigger, not a child of it —
       a button cannot hold a button — and only while open, since they act on what is shown. */
   actions?: ReactNode;
@@ -297,16 +290,8 @@ function Section({
       >
         {/* Title first, chevron riding to its right, count last: the row reads as a heading
             with an affordance rather than a tree node. */}
-        <CollapsibleTrigger
-          aria-label={
-            hideOpenTitle ? `${open ? "Collapse" : "Expand"} ${title.toLowerCase()}` : undefined
-          }
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-1.5 px-4 py-3 text-left text-xs font-medium text-muted-foreground hover:text-foreground",
-            hideOpenTitle && open && "ml-auto min-h-7 flex-none px-1 py-1",
-          )}
-        >
-          <span className={hideOpenTitle && open ? "sr-only" : undefined}>{title}</span>
+        <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-1.5 px-4 py-3 text-left text-xs font-medium text-muted-foreground hover:text-foreground">
+          <span>{title}</span>
           <ChevronRightIcon
             aria-hidden
             className={cn(
@@ -618,7 +603,7 @@ export function PullRequestSummaryTab({
   return (
     <div className="h-full overflow-y-auto" data-pull-request-summary-scroll>
       <section className="px-4 py-2.5">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="space-y-2">
           <MetaRow icon={<UsersIcon className="size-3.5" />} label="Reviewers">
             <span className="flex min-w-0 flex-wrap items-center gap-1.5">
               {reviewerEntries.length === 0 ? (
@@ -748,7 +733,7 @@ export function PullRequestSummaryTab({
         </div>
       </section>
 
-      <Section title="Description" hideOpenTitle>
+      <section aria-label="Description" className="px-4 pt-2 pb-4">
         <div className="group">
           {bodyScope === detail.url ? (
             <PullRequestMarkdownEditor
@@ -795,7 +780,7 @@ export function PullRequestSummaryTab({
             onRefresh={onRefresh}
           />
         </div>
-      </Section>
+      </section>
 
       <Section title="Checks">
         {detail.checks.length === 0 ? (
