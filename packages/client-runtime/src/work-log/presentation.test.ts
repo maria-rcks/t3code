@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { ThreadId } from "@t3tools/contracts";
+import {
+  EventId,
+  ThreadId,
+  TurnId,
+  type OrchestrationThreadActivity,
+  UserInputAttachmentAnswerPayload,
+} from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
+import {
+  foldUserInputActivities,
+  getQuestionAnswerPreview,
+  getQuestionAnswerText,
+} from "./userInput.js";
 
 import {
   commandDetailRepeatsCommand,
@@ -16,6 +28,125 @@ import {
   workEntryDisplayIndicatesToolFailure,
   workEntryIndicatesToolSuccess,
 } from "./presentation.js";
+
+describe("question work log", () => {
+  const activity = (kind: string, payload: unknown): OrchestrationThreadActivity => ({
+    id: EventId.make(kind),
+    kind,
+    payload,
+    summary: kind,
+    tone: "info",
+    turnId: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  const requested = activity("user-input.requested", {
+    requestId: "question-1",
+    questions: [{ id: "scope", question: "Which scope?" }],
+  });
+  const decodeAnswer = Schema.decodeUnknownSync(UserInputAttachmentAnswerPayload);
+
+  it("removes only matching question tools and their lifecycle updates in the same turn", () => {
+    const turnId = TurnId.make("turn-1");
+    const tool = (id: string, name: string, question: string) => ({
+      ...activity("tool.completed", {
+        toolCallId: id,
+        data: { toolName: name, input: { questions: [{ question }] } },
+      }),
+      turnId,
+    });
+    const unrelatedTool = tool("other-tool", "Read", "Which scope?");
+    const otherQuestion = tool("other-question", "AskUserQuestion", "Which theme?");
+    const otherTurn = {
+      ...tool("other-turn", "AskUserQuestion", "Which scope?"),
+      turnId: TurnId.make("turn-2"),
+    };
+    const folded = foldUserInputActivities([
+      { ...activity("tool.started", { toolCallId: "question-tool" }), turnId },
+      { ...requested, turnId },
+      unrelatedTool,
+      otherQuestion,
+      otherTurn,
+      tool("question-tool", "AskUserQuestion", "Which scope?"),
+    ]);
+    expect(folded).toHaveLength(4);
+    expect(folded[0]).toMatchObject({ summary: "User input requested" });
+    expect(folded.slice(1)).toEqual([unrelatedTool, otherQuestion, otherTurn]);
+  });
+
+  it.each([
+    { answers: { scope: "Web" }, status: "submitted" },
+    { answers: {}, status: "dismissed" },
+  ])("keeps $status when the request arrives after its resolution", ({ answers, status }) => {
+    const folded = foldUserInputActivities([
+      activity("user-input.resolved", { requestId: "question-1", answers }),
+      requested,
+    ]);
+    expect(folded).toHaveLength(1);
+    expect(folded[0]).toMatchObject({
+      payload: { userInputStatus: status, answers, questionTextById: { scope: "Which scope?" } },
+    });
+  });
+
+  it("keeps a submitted question at its original position among other tools", () => {
+    const tool = activity("tool.completed", { title: "Read file" });
+    const folded = foldUserInputActivities([
+      requested,
+      tool,
+      activity("user-input.resolved", {
+        requestId: "question-1",
+        answers: { scope: { answers: ["Web", "Mobile"] } },
+      }),
+    ]);
+    expect(folded).toHaveLength(2);
+    expect(folded[1]).toBe(tool);
+    expect(folded[0]).toMatchObject({
+      id: requested.id,
+      summary: "User input submitted",
+      tone: "tool",
+      payload: { questionTextById: { scope: "Which scope?" } },
+    });
+    expect(getQuestionAnswerPreview(decodeAnswer(folded[0]?.payload))).toBe("Web, Mobile");
+    expect(getQuestionAnswerText({ answers: ["Web", "Mobile"] })).toBe("Web, Mobile");
+  });
+
+  it("preserves attachment history and the original answer when the provider adds paths", () => {
+    const attachmentsByQuestionId = {
+      scope: [{ type: "file", id: "spec", name: "spec.txt", mimeType: "text/plain", sizeBytes: 4 }],
+    };
+    const folded = foldUserInputActivities([
+      requested,
+      activity("user-input.answer-submitted", {
+        requestId: "question-1",
+        answers: { scope: "Use the spec" },
+        attachmentsByQuestionId,
+      }),
+      activity("user-input.resolved", {
+        requestId: "question-1",
+        answers: { scope: "Use the spec\n[Attached file saved at: /tmp/spec]" },
+      }),
+    ]);
+    expect(folded).toHaveLength(1);
+    const answer = decodeAnswer(folded[0]?.payload);
+    expect(answer.attachmentsByQuestionId).toEqual(attachmentsByQuestionId);
+    expect(getQuestionAnswerPreview(answer)).toBe("Use the spec");
+  });
+
+  it("shows the question while pending and preserves dismissal without an answer", () => {
+    const pending = foldUserInputActivities([requested]);
+    expect(getQuestionAnswerPreview(decodeAnswer(pending[0]?.payload))).toBe("Which scope?");
+    expect(pending[0]).toMatchObject({ payload: { userInputStatus: "pending" } });
+    const dismissed = foldUserInputActivities([
+      requested,
+      activity("user-input.resolved", { requestId: "question-1", responseMode: "message" }),
+    ]);
+    expect(dismissed).toHaveLength(1);
+    expect(dismissed[0]).toMatchObject({
+      summary: "User input dismissed",
+      payload: { userInputStatus: "dismissed", answers: {} },
+    });
+    expect(getQuestionAnswerPreview(decodeAnswer(dismissed[0]?.payload))).toBe("Which scope?");
+  });
+});
 
 describe("workEntryIndicatesToolFailure", () => {
   const base = {

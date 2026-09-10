@@ -276,6 +276,55 @@ function makeThread(
 }
 
 describe("buildThreadFeed", () => {
+  it("folds question answers into tool history and only hides the matching async reply", () => {
+    const createdAt = "2026-04-01T00:00:01.000Z";
+    const activities = [
+      makeActivity({
+        id: EventId.make("question-request"),
+        kind: "user-input.requested",
+        summary: "User input requested",
+        createdAt,
+        turnId: TurnId.make("question-turn"),
+        payload: {
+          requestId: "question-1",
+          questions: [{ id: "scope", question: "Which scope?" }],
+        },
+      }),
+      makeActivity({
+        id: EventId.make("question-response"),
+        kind: "user-input.resolved",
+        summary: "User input submitted",
+        createdAt: "2026-04-01T00:00:02.000Z",
+        turnId: TurnId.make("question-turn"),
+        payload: { requestId: "question-1", answers: { scope: "Web" } },
+      }),
+    ];
+    const messages = ["async-answer:question-1", "real-user-message", "async-answer:unloaded"].map(
+      (id) => ({
+        id: MessageId.make(id),
+        role: "user" as const,
+        text: "Web",
+        turnId: TurnId.make("answer-turn"),
+        createdAt: "2026-04-01T00:00:03.000Z",
+        updatedAt: "2026-04-01T00:00:03.000Z",
+        streaming: false,
+      }),
+    );
+    const feed = buildThreadFeed({ messages, activities });
+    const rows = feed.flatMap((entry) => (entry.type === "activity-group" ? entry.activities : []));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.workEntry).toMatchObject({
+      tone: "tool",
+      label: "User input submitted",
+      questionAnswer: { questionTextById: { scope: "Which scope?" }, answers: { scope: "Web" } },
+    });
+    expect(feed.flatMap((entry) => (entry.type === "message" ? [entry.message.id] : []))).toEqual([
+      "real-user-message",
+      "async-answer:unloaded",
+    ]);
+    expect(buildThreadFeed({ messages, activities: [] })).toHaveLength(3);
+  });
+
   it("reuses unchanged feed and presentation rows during an assistant text update", () => {
     const completedTurnId = TurnId.make("completed-turn");
     const activeTurnId = TurnId.make("active-turn");

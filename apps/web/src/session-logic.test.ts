@@ -1723,6 +1723,47 @@ describe("image asset requests", () => {
 });
 
 describe("deriveTimelineEntries", () => {
+  it("folds question answers into tool history and only hides the matching async reply", () => {
+    const activities = [
+      makeActivity({
+        kind: "user-input.requested",
+        turnId: "question-turn",
+        payload: {
+          requestId: "question-1",
+          questions: [{ id: "scope", question: "Which scope?" }],
+        },
+      }),
+      makeActivity({
+        kind: "user-input.resolved",
+        turnId: "question-turn",
+        payload: { requestId: "question-1", answers: { scope: "Web" } },
+      }),
+    ];
+    const work = deriveWorkLogEntries(activities);
+    expect(work).toHaveLength(1);
+    expect(work[0]).toMatchObject({
+      tone: "tool",
+      label: "User input submitted",
+      questionAnswer: { questionTextById: { scope: "Which scope?" }, answers: { scope: "Web" } },
+    });
+    const messages = ["async-answer:question-1", "real-user-message", "async-answer:unloaded"].map(
+      (id) => ({
+        id: MessageId.make(id),
+        role: "user" as const,
+        text: "Web",
+        turnId: TurnId.make("answer-turn"),
+        createdAt: "2026-02-23T00:00:03.000Z",
+        updatedAt: "2026-02-23T00:00:03.000Z",
+        streaming: false,
+      }),
+    );
+    const timeline = deriveTimelineEntries(messages, [], work);
+    expect(
+      timeline.flatMap((entry) => (entry.kind === "message" ? [entry.message.id] : [])),
+    ).toEqual(["real-user-message", "async-answer:unloaded"]);
+    expect(deriveTimelineEntries(messages, [], [])).toHaveLength(3);
+  });
+
   const streamingMessage = {
     id: MessageId.make("streaming-message"),
     role: "assistant" as const,

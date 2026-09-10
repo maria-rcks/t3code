@@ -1,4 +1,5 @@
 import { QuestionAnswerHistory } from "./QuestionAnswerHistory";
+import { getQuestionAnswerPreview } from "@t3tools/client-runtime/work-log/user-input";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { type AppSymbolName, SymbolView } from "../../components/AppSymbol";
@@ -818,6 +819,11 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
                 numberOfLines={expanded ? undefined : 1}
               >
                 {displayText}
+                {row.workEntry.questionAnswer ? (
+                  <Text className="text-foreground-subtle">
+                    {`  ${getQuestionAnswerPreview(row.workEntry.questionAnswer)}`}
+                  </Text>
+                ) : null}
               </Text>
             </>
           )}

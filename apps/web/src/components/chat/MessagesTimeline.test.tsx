@@ -348,12 +348,20 @@ describe("MessagesTimeline", () => {
         });
         const toggle = renderer!.root.findByProps({ "aria-expanded": false });
         await act(() => toggle.props.onClick());
+        const questionToggle = renderer!.root.findByProps({
+          "aria-label": "Question answer submitted",
+          "aria-expanded": false,
+        });
+        expect(JSON.stringify(renderer!.toJSON())).not.toContain("Provide a spec");
+        await act(() => questionToggle.props.onClick());
         const markup = JSON.stringify(renderer!.toJSON());
         expect(markup.match(/Provide a spec/g)).toHaveLength(1);
-        expect(markup.match(/spec\.txt/g)).toHaveLength(1);
+        expect(markup).toContain("spec.txt");
         expect(markup).toContain("Provide a screenshot");
         expect(markup).toContain("shot.png");
         for (const answer of Object.values(answers)) expect(markup).toContain(answer);
+        await act(() => questionToggle.props.onClick());
+        expect(JSON.stringify(renderer!.toJSON())).not.toContain("Provide a spec");
       } finally {
         await act(() => renderer?.unmount());
       }

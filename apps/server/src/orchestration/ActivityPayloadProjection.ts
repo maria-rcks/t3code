@@ -352,6 +352,45 @@ function projectAcpContent(value: unknown): Record<string, unknown> | undefined 
   return summary ? { content: summary } : undefined;
 }
 
+function projectQuestionToolInput(data: Record<string, unknown>, title: unknown) {
+  const item = asRecord(data.item);
+  const toolName = data.toolName ?? data.tool ?? item?.tool ?? title;
+  if (typeof toolName !== "string") return {};
+  const name = toolName
+    .split(/__|[./]/)
+    .at(-1)
+    ?.replace(/[_\s]/g, "")
+    .toLowerCase();
+  if (
+    name !== "askuserquestion" &&
+    name !== "requestuserinput" &&
+    name !== "requestuserinputasync" &&
+    name !== "askquestion" &&
+    name !== "question"
+  )
+    return {};
+  const input = asRecord(
+    data.input ?? data.rawInput ?? asRecord(data.state)?.input ?? item?.arguments,
+  );
+  const questions = input?.questions ?? asRecord(input?.params)?.questions;
+  if (!Array.isArray(questions)) return {};
+  // Clients match native tools to the canonical question; choices and answers
+  // already live on the user-input activities and need not cross the wire twice.
+  return {
+    toolName,
+    input: {
+      questions: questions.map((value) => {
+        const question = asRecord(value);
+        return {
+          question: asTrimmedString(
+            question?.question ?? question?.question_text ?? question?.prompt ?? question?.title,
+          ),
+        };
+      }),
+    },
+  };
+}
+
 /**
  * Removes activity payload fields that no current client reads while retaining
  * the full payload in persistence and the event store.
@@ -370,18 +409,19 @@ export function projectActivityPayload(
     payload.status === "completed" && (itemStatus === "failed" || itemStatus === "declined")
       ? { ...payload, status: itemStatus }
       : payload;
+  const questionInput = projectQuestionToolInput(data, payload.title);
 
   if (payload.itemType === "mcp_tool_call") {
     return {
       ...activity,
       payload: {
         ...projectedPayload,
-        data: projectMcpToolCallData(data),
+        data: { ...projectMcpToolCallData(data), ...questionInput },
       },
     };
   }
 
-  const projectedData: Record<string, unknown> = {};
+  const projectedData: Record<string, unknown> = { ...questionInput };
   const item = projectCommandData(data);
   if (item) {
     projectedData.item = item;

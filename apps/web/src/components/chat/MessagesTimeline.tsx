@@ -1,5 +1,9 @@
 import { GitPullRequestIcon } from "lucide-react";
 import {
+  getQuestionAnswerPreview,
+  getQuestionAnswerText,
+} from "@t3tools/client-runtime/work-log/user-input";
+import {
   type AssistantCitation,
   type EnvironmentId,
   type MessageId,
@@ -2108,6 +2112,7 @@ function toolIconAcceptsTint(
 
 function LiveActivityRow({
   label,
+  preview,
   iconName,
   toolIcon,
   failed = false,
@@ -2115,6 +2120,7 @@ function LiveActivityRow({
   shimmer = false,
 }: {
   label: string;
+  preview?: string | undefined;
   iconName?: WorkEntryIconName;
   toolIcon?: ToolActivityIcon | undefined;
   failed?: boolean;
@@ -2130,6 +2136,7 @@ function LiveActivityRow({
     >
       <LiveActivityContent
         label={label}
+        preview={preview}
         iconName={iconName}
         toolIcon={toolIcon}
         failed={failed}
@@ -2138,7 +2145,13 @@ function LiveActivityRow({
       />
       {showShimmer ? (
         <ActivityShimmerOverlay>
-          <LiveActivityContent label={label} iconName={iconName} toolIcon={toolIcon} highlighted />
+          <LiveActivityContent
+            label={label}
+            preview={preview}
+            iconName={iconName}
+            toolIcon={toolIcon}
+            highlighted
+          />
         </ActivityShimmerOverlay>
       ) : null}
     </div>
@@ -2147,6 +2160,7 @@ function LiveActivityRow({
 
 function LiveActivityContent({
   label,
+  preview,
   iconName,
   toolIcon,
   failed = false,
@@ -2155,6 +2169,7 @@ function LiveActivityContent({
   highlighted = false,
 }: {
   label: string;
+  preview?: string | undefined;
   iconName: WorkEntryIconName | undefined;
   toolIcon?: ToolActivityIcon | undefined;
   failed?: boolean;
@@ -2190,7 +2205,15 @@ function LiveActivityContent({
           />
         </span>
       ) : null}
-      <span className={cn("min-w-0 flex-1 truncate", active && "live-tool-shine")}>{label}</span>
+      <span
+        className={cn(
+          preview ? "shrink-0" : "min-w-0 flex-1 truncate",
+          active && "live-tool-shine",
+        )}
+      >
+        {label}
+      </span>
+      {preview ? <span className="min-w-0 truncate text-muted-foreground">{preview}</span> : null}
       {showTrailingFailureMark ? (
         <XIcon aria-hidden className={cn("size-3 shrink-0", failedToolIconClassName)} />
       ) : null}
@@ -2213,6 +2236,9 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
     >
       <LiveActivityRow
         label={label}
+        preview={
+          row.entry.questionAnswer ? getQuestionAnswerPreview(row.entry.questionAnswer) : undefined
+        }
         iconName={workEntryIconName(row.entry)}
         toolIcon={row.entry.toolIcon ?? row.entry.toolSource?.icon}
         failed={failed}
@@ -3142,6 +3168,7 @@ const toolCallExpandedBodyClassName =
 
 function workEntryIconName(workEntry: TimelineWorkEntry): WorkEntryIconName {
   if (
+    workEntry.questionAnswer ||
     workEntry.sourceActivityKind === "user-input.requested" ||
     workEntry.sourceActivityKind === "user-input.resolved"
   ) {
@@ -3307,9 +3334,10 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
     showWarningIndicator || showDestructiveRowStyle
       ? undefined
       : (workEntry.toolIcon ?? workEntry.toolSource?.icon);
-  const previewText = workEntry.questionAnswer
-    ? "Question answer submitted"
-    : (displayLabel ?? workEntryDisplayLabel(workEntry, workspaceRoot));
+  const previewText = displayLabel ?? workEntryDisplayLabel(workEntry, workspaceRoot);
+  const answerPreview = workEntry.questionAnswer
+    ? getQuestionAnswerPreview(workEntry.questionAnswer)
+    : null;
   const viewedImagePath = workEntryViewedImagePath(workEntry);
   const viewedImage =
     viewedImagePath && threadRef
@@ -3319,6 +3347,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
         })
       : null;
   const canExpand =
+    Boolean(workEntry.questionAnswer) ||
     (showFailedIndicator && previewText.trim().length > 0) ||
     (workEntry.itemType === "mcp_tool_call" && workEntry.toolData !== undefined) ||
     Boolean(
@@ -3403,7 +3432,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
             <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
               <span
                 className={cn(
-                  "min-w-0 flex-1",
+                  answerPreview ? "shrink-0" : "min-w-0 flex-1",
                   expanded ? "whitespace-pre-wrap break-words select-text" : "truncate",
                   headingClass,
                 )}
@@ -3412,6 +3441,9 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
               >
                 {previewText}
               </span>
+              {answerPreview ? (
+                <span className="min-w-0 truncate text-muted-foreground">{answerPreview}</span>
+              ) : null}
             </p>
           </div>
           {showFailedIndicator &&
@@ -3452,10 +3484,10 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
           />
         </div>
       ) : null}
-      {workEntry.questionAnswer ? (
+      {expanded && workEntry.questionAnswer ? (
         <QuestionAnswerHistory answer={workEntry.questionAnswer} />
       ) : null}
-      {expanded && canExpand && expandedBody ? (
+      {expanded && canExpand && expandedBody && !workEntry.questionAnswer ? (
         <div
           className="mt-1 ms-7 cursor-default rounded-md bg-muted/40 px-3 py-2"
           onClick={stopRowToggle}
@@ -3488,19 +3520,19 @@ function QuestionAnswerHistory({
     <div className="ms-7 mt-2 space-y-2" onClick={stopRowToggle}>
       {[
         ...new Set([
+          ...Object.keys(answer.questionTextById ?? {}),
           ...Object.keys(answer.answers),
           ...Object.keys(answer.attachmentsByQuestionId),
         ]),
       ].map((questionId) => (
         <div key={questionId} className="space-y-1">
           {answer.questionTextById?.[questionId] ? (
-            <p className="text-sm text-muted-foreground">{answer.questionTextById[questionId]}</p>
+            <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+              {answer.questionTextById[questionId]}
+            </p>
           ) : null}
           <p className="whitespace-pre-wrap text-sm">
-            {[answer.answers[questionId]]
-              .flat()
-              .filter((value): value is string => typeof value === "string")
-              .join(", ")}
+            {getQuestionAnswerText(answer.answers[questionId])}
           </p>
           <div className="flex flex-wrap gap-2">
             {(answer.attachmentsByQuestionId[questionId] ?? []).map((attachment) => {
