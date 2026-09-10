@@ -21,6 +21,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   canSnooze,
   effectiveSnoozed,
+  isTitleRegenerationPending,
   threadWokeAt,
 } from "@t3tools/client-runtime/state/thread-settled";
 import { resolveSettledThreadTimestamp } from "@t3tools/client-runtime/state/thread-sort";
@@ -1035,7 +1036,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   );
   const threadKey = scopedThreadKey(threadRef);
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(props.isActive);
-  const isRegeneratingTitle = thread.titleRegeneration != null;
+  const isRegeneratingTitle = isTitleRegenerationPending(thread, {
+    now: new Date().toISOString(),
+  });
   const lastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
   const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
   const openPrLink = useOpenPrLink();
@@ -3750,7 +3753,7 @@ export default function Sidebar() {
             .threadTitleRegeneration === true,
       );
       const regeneratableTitleThreads = titleRegenerationThreads.filter(
-        (thread) => thread.titleRegeneration == null,
+        (thread) => !isTitleRegenerationPending(thread, { now: selectionNow.toISOString() }),
       );
       const titleRegenerationMenuItem = buildBulkTitleRegenerationContextMenuItem({
         supportedCount: titleRegenerationThreads.length,
@@ -3993,7 +3996,9 @@ export default function Sidebar() {
         const supportsTitleRegeneration =
           serverConfigs.get(thread.environmentId)?.environment.capabilities
             .threadTitleRegeneration === true;
-        const isRegeneratingTitle = thread.titleRegeneration != null;
+        const isRegeneratingTitle = isTitleRegenerationPending(thread, {
+          now: new Date().toISOString(),
+        });
         const isSettled = settledThreadKeysRef.current.has(threadKey);
         const isSnoozed = snoozedThreadKeysRef.current.has(threadKey);
         const isPinned = thread.pinnedAt != null;

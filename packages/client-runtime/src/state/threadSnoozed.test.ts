@@ -1,5 +1,5 @@
 // @effect-diagnostics globalDate:off -- Tests exercise local calendar snooze boundaries.
-import { ThreadId } from "@t3tools/contracts";
+import { CommandId, ThreadId } from "@t3tools/contracts";
 import { TurnId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -7,6 +7,7 @@ import {
   canSnooze,
   effectiveSnoozed,
   hasQueuedTurnStart,
+  isTitleRegenerationPending,
   resolveSnoozePresets,
   snoozeWakeLabel,
   threadRaisedHandWhileSnoozed,
@@ -369,5 +370,31 @@ describe("resolveSnoozePresets", () => {
     ]);
     const tomorrow = new Date(presets.find((preset) => preset.id === "tomorrow")!.snoozedUntil);
     expect(tomorrow.getDay()).toBe(1);
+  });
+});
+
+describe("isTitleRegenerationPending", () => {
+  const startedAt = "2026-04-10T11:58:00.000Z";
+
+  it("stays pending while the request is within the grace window", () => {
+    expect(
+      isTitleRegenerationPending(
+        { titleRegeneration: { requestId: CommandId.make("cmd-1"), startedAt } },
+        { now: NOW },
+      ),
+    ).toBe(true);
+  });
+
+  it("stops pending once the request outlives the grace window, so it can be retried", () => {
+    expect(
+      isTitleRegenerationPending(
+        { titleRegeneration: { requestId: CommandId.make("cmd-1"), startedAt } },
+        { now: "2026-04-10T12:10:00.000Z" },
+      ),
+    ).toBe(false);
+  });
+
+  it("is never pending without a request", () => {
+    expect(isTitleRegenerationPending({ titleRegeneration: null }, { now: NOW })).toBe(false);
   });
 });

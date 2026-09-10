@@ -9,7 +9,37 @@ import type { OrchestrationThreadShell } from "@t3tools/contracts";
  * such threads would be permanently unsettleable.
  */
 export const QUEUED_TURN_START_GRACE_MS = 2 * 60 * 1_000;
+
+/**
+ * A title regeneration request lives for at most this long: every text
+ * generation provider bounds its own call at 180s, so a request still
+ * pending after this window means the server's completion was never
+ * dispatched or never reached this client. Without the bound the pending
+ * flag is a one-way door — the menu entry reads "Regenerating…" and stays
+ * disabled forever, so the retry that would clear it can never be sent.
+ */
+export const TITLE_REGENERATION_GRACE_MS = 5 * 60 * 1_000;
 const DAY_MS = 24 * 60 * 60 * 1_000;
+
+/**
+ * Whether a title regeneration is still plausibly in flight. Server events
+ * clear `titleRegeneration` on completion; this only decides how long the
+ * UI keeps trusting a pending request that never completed.
+ */
+export function isTitleRegenerationPending(
+  shell: Pick<OrchestrationThreadShell, "titleRegeneration">,
+  options: { readonly now: string },
+): boolean {
+  const startedAt = shell.titleRegeneration?.startedAt;
+  if (startedAt == null) return false;
+  const startedAtMs = Date.parse(startedAt);
+  if (Number.isNaN(startedAtMs)) return false;
+  const nowMs = Date.parse(options.now);
+  if (Number.isNaN(nowMs)) return false;
+  // Bounded on both sides like hasQueuedTurnStart: startedAt is stamped by
+  // the environment's server, whose clock can run ahead of this device's.
+  return Math.abs(nowMs - startedAtMs) <= TITLE_REGENERATION_GRACE_MS;
+}
 
 /**
  * A user message no turn has picked up yet: the turn.start command was
