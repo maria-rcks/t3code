@@ -385,11 +385,20 @@ describe("isTitleRegenerationPending", () => {
     ).toBe(true);
   });
 
-  it("stops pending once the request outlives the grace window, so it can be retried", () => {
+  it("stays pending across a serial bulk run that outlasts a single generation", () => {
     expect(
       isTitleRegenerationPending(
         { titleRegeneration: { requestId: CommandId.make("cmd-1"), startedAt } },
         { now: "2026-04-10T12:10:00.000Z" },
+      ),
+    ).toBe(true);
+  });
+
+  it("stops pending once the request outlives the grace window, so it can be retried", () => {
+    expect(
+      isTitleRegenerationPending(
+        { titleRegeneration: { requestId: CommandId.make("cmd-1"), startedAt } },
+        { now: "2026-04-10T12:20:00.000Z" },
       ),
     ).toBe(false);
   });

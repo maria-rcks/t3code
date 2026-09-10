@@ -8,7 +8,11 @@ import type {
 } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
 import type { EnvironmentMachineKind } from "@t3tools/contracts";
-import { canSnooze, resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  canSnooze,
+  isTitleRegenerationPending,
+  resolveSnoozePresets,
+} from "@t3tools/client-runtime/state/thread-settled";
 import { resolveSettledThreadTimestamp } from "@t3tools/client-runtime/state/thread-sort";
 import type { MenuAction } from "@react-native-menu/menu";
 import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
@@ -559,7 +563,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     () =>
       buildThreadTitleRegenerationMenuItems({
         supported: props.titleRegenerationSupported,
-        isRegenerating: thread.titleRegeneration != null,
+        isRegenerating: isTitleRegenerationPending(
+          { titleRegeneration: thread.titleRegeneration },
+          { now: new Date().toISOString() },
+        ),
       }),
     [props.titleRegenerationSupported, thread.titleRegeneration],
   );

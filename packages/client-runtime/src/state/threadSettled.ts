@@ -11,20 +11,25 @@ import type { OrchestrationThreadShell } from "@t3tools/contracts";
 export const QUEUED_TURN_START_GRACE_MS = 2 * 60 * 1_000;
 
 /**
- * A title regeneration request lives for at most this long: every text
- * generation provider bounds its own call at 180s, so a request still
- * pending after this window means the server's completion was never
- * dispatched or never reached this client. Without the bound the pending
- * flag is a one-way door — the menu entry reads "Regenerating…" and stays
- * disabled forever, so the retry that would clear it can never be sent.
+ * How long the UI keeps trusting a pending title regeneration. The server
+ * clears the flag when the request resolves, so this bound only decides
+ * what to show when that resolution does not arrive — without it the
+ * pending flag is a one-way door: the menu entry reads "Regenerating…"
+ * and stays disabled forever, so the retry that would clear it can never
+ * be sent.
+ *
+ * Sized for the bulk path. The server regenerates titles on a single
+ * serial worker, and one generation runs until its provider's own limit
+ * (180s for most, unbounded for OpenCode), so a batch legitimately leaves
+ * later threads pending for several minutes.
  */
-export const TITLE_REGENERATION_GRACE_MS = 5 * 60 * 1_000;
+export const TITLE_REGENERATION_GRACE_MS = 15 * 60 * 1_000;
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
 /**
  * Whether a title regeneration is still plausibly in flight. Server events
- * clear `titleRegeneration` on completion; this only decides how long the
- * UI keeps trusting a pending request that never completed.
+ * clear `titleRegeneration` when the request resolves; this only decides
+ * how long the UI keeps trusting one that has not resolved.
  */
 export function isTitleRegenerationPending(
   shell: Pick<OrchestrationThreadShell, "titleRegeneration">,

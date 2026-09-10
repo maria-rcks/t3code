@@ -4,6 +4,7 @@ import type {
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
+import { isTitleRegenerationPending } from "@t3tools/client-runtime/state/thread-settled";
 import type { EnvironmentMachineKind } from "@t3tools/contracts";
 import type { MenuAction } from "@react-native-menu/menu";
 import { SymbolView } from "../../components/AppSymbol";
@@ -549,7 +550,10 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
       THREAD_ROW_MENU_ACTIONS[0]!,
       ...buildThreadTitleRegenerationMenuItems({
         supported: props.titleRegenerationSupported,
-        isRegenerating: thread.titleRegeneration != null,
+        isRegenerating: isTitleRegenerationPending(
+          { titleRegeneration: thread.titleRegeneration },
+          { now: new Date().toISOString() },
+        ),
       }),
       THREAD_ROW_MENU_ACTIONS[1]!,
     ],

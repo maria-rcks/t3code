@@ -1,6 +1,10 @@
 import type { ThreadMoveDestination } from "../threads/threadOrder";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import { canSnooze, effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  canSnooze,
+  effectiveSnoozed,
+  isTitleRegenerationPending,
+} from "@t3tools/client-runtime/state/thread-settled";
 import * as Cause from "effect/Cause";
 import * as Haptics from "expo-haptics";
 import { useCallback, useRef } from "react";
@@ -437,7 +441,7 @@ export function useThreadListActions(): {
     async (thread: EnvironmentThreadShell) => {
       const key = scopedThreadKey(thread.environmentId, thread.id);
       if (
-        thread.titleRegeneration != null ||
+        isTitleRegenerationPending(thread, { now: new Date().toISOString() }) ||
         titleRegenerationInFlightThreadKeys.current.has(key)
       ) {
         return false;
