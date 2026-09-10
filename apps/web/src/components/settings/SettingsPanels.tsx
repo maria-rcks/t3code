@@ -117,12 +117,7 @@ import {
   resolveTerminalFontSizePreference,
   TYPOGRAPHY_ADVANCED_STORAGE_KEY,
 } from "../../appearanceFonts";
-import {
-  CodeFontPreview,
-  DiffColorsPreview,
-  PromptFontPreview,
-  TerminalFontPreview,
-} from "./SettingsFontPreviews";
+import { CodeFontPreview, PromptFontPreview, TerminalFontPreview } from "./SettingsFontPreviews";
 import { SharedSettingsMismatchAlert } from "./SharedSettingsMismatchAlert";
 import { discoverInstalledFonts, FontFamilyPicker, useFontEnumeration } from "./FontFamilyPicker";
 import {
@@ -1267,8 +1262,7 @@ export function AppearanceSettingsPanel() {
             ) : null
           }
           control={
-            <div className="ml-auto grid w-fit grid-cols-[5rem_max-content] items-center gap-3 sm:grid-cols-[7rem_max-content] sm:gap-4">
-              <DiffColorsPreview />
+            <div className="ml-auto w-fit">
               <Select
                 value={settings.diffColorScheme}
                 onValueChange={(value) => {
@@ -1277,6 +1271,17 @@ export function AppearanceSettingsPanel() {
                 }}
               >
                 <SelectTrigger size="sm" className="w-fit min-w-0" aria-label="Diff colors">
+                  <span
+                    aria-hidden="true"
+                    className={
+                      settings.diffColorScheme === "blue-orange"
+                        ? "flex shrink-0 flex-row-reverse gap-1"
+                        : "flex shrink-0 gap-1"
+                    }
+                  >
+                    <span className="size-2 rounded-full bg-[var(--diff-deletion)]" />
+                    <span className="size-2 rounded-full bg-[var(--diff-addition)]" />
+                  </span>
                   <SelectValue>
                     {settings.diffColorScheme === "blue-orange" ? "Blue & orange" : "Red & green"}
                   </SelectValue>

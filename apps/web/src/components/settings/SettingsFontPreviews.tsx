@@ -1,5 +1,4 @@
 import { preloadPatchFile } from "@pierre/diffs/ssr";
-import colorPreviewHtml from "virtual:diff-colors-preview";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "../ComposerPromptEditor";
 import { terminalThemeFromApp } from "../ThreadTerminalDrawer";
@@ -17,23 +16,6 @@ import { GhosttyTerminalSurface } from "~/terminal/ghostty/surface";
 
 const EMPTY_TERMINAL_CONTEXTS: ReadonlyArray<never> = [];
 const EMPTY_SKILLS: ReadonlyArray<never> = [];
-
-function mountColorPreview(host: HTMLDivElement | null) {
-  if (host === null) return;
-  const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
-  shadow.innerHTML = colorPreviewHtml;
-}
-
-/** Use the right panel's renderer so this preview follows every diff color token. */
-export function DiffColorsPreview() {
-  return (
-    <div
-      ref={mountColorPreview}
-      aria-label="Diff color preview"
-      className="diff-render-surface h-10 w-full min-w-0 overflow-hidden rounded-lg border border-border bg-background shadow-xs/5 [--code-background:var(--background)] [--diffs-gap-block:0px] [color-scheme:inherit]"
-    />
-  );
-}
 
 // Serialized the way the composer stores inline tokens: the $skill and the
 // markdown-style file links render as chips, so the preview shows prompt
