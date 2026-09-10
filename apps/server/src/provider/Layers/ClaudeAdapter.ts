@@ -1419,51 +1419,6 @@ const CLAUDE_SETTING_SOURCES = [
   "local",
 ] as const satisfies ReadonlyArray<SettingSource>;
 
-const CLAUDE_PERMISSION_MODES = [
-  "default",
-  "acceptEdits",
-  "bypassPermissions",
-  "plan",
-  "dontAsk",
-  "auto",
-] as const satisfies ReadonlyArray<PermissionMode>;
-
-/**
- * Launch-arg flag names that ask the Claude CLI for a permission mode. The CLI
- * treats `--dangerously-skip-permissions` as a request for `bypassPermissions`,
- * so it collides with the `--permission-mode` the SDK emits for the thread's
- * runtime mode.
- */
-const CLAUDE_PERMISSION_LAUNCH_ARGS: ReadonlySet<string> = new Set([
-  "permission-mode",
-  "dangerously-skip-permissions",
-]);
-
-/**
- * Permission mode a user pinned through provider launch args, if any.
- *
- * The CLI resolves the mode from all of its inputs at once rather than from
- * argv order, so appending the user's flag after ours left it inert. Reading it
- * here lets the explicit arg win, and keeps the mode in one place: the SDK
- * emits `--permission-mode` once (see the caller dropping these keys from
- * `extraArgs`), `session.configured` reports the real mode, and leaving plan
- * mode restores it.
- */
-function readLaunchArgPermissionMode(
-  flags: Record<string, string | null>,
-): PermissionMode | undefined {
-  const explicit = flags["permission-mode"];
-  if (typeof explicit === "string") {
-    const mode = explicit.trim();
-    // An unrecognized value stays in `extraArgs` so the CLI rejects it, rather
-    // than being silently swapped for the runtime mode's own flag.
-    return (CLAUDE_PERMISSION_MODES as ReadonlyArray<string>).includes(mode)
-      ? (mode as PermissionMode)
-      : undefined;
-  }
-  return "dangerously-skip-permissions" in flags ? "bypassPermissions" : undefined;
-}
-
 function buildPromptText(
   input: ProviderSendTurnInput,
   boundInstanceId: ProviderInstanceId,
@@ -4653,13 +4608,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       ) => runPromise(handleResumeDialog(request, callbackOptions));
 
       const claudeBinaryPath = claudeSdkExecutablePath;
-      const launchArgs = parseCliArgs(claudeSettings.launchArgs).flags;
-      const launchArgPermissionMode = readLaunchArgPermissionMode(launchArgs);
-      const extraArgs = launchArgPermissionMode
-        ? Object.fromEntries(
-            Object.entries(launchArgs).filter(([flag]) => !CLAUDE_PERMISSION_LAUNCH_ARGS.has(flag)),
-          )
-        : launchArgs;
+      const {
+        "permission-mode": launchArgPermissionMode,
+        "dangerously-skip-permissions": launchArgSkipPermissions,
+        ...extraArgs
+      } = parseCliArgs(claudeSettings.launchArgs).flags;
       const selectedModel =
         input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined;
       const modelSelection = selectedModel
@@ -4700,10 +4653,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         auto: "auto",
         "full-access": "bypassPermissions",
       };
-      // An explicit launch arg wins over the thread's runtime mode: the CLI
-      // would otherwise resolve the two conflicting inputs on its own and leave
-      // the user's flag inert.
-      const permissionMode = launchArgPermissionMode ?? runtimeModeToPermission[input.runtimeMode];
+      // A permission launch arg is folded into the mode T3 sends rather than
+      // passed through: the CLI resolves both inputs together, so argv order
+      // never let the user's flag win.
+      const permissionMode =
+        (launchArgPermissionMode as PermissionMode | null | undefined) ??
+        (launchArgSkipPermissions === null || launchArgSkipPermissions === "true"
+          ? "bypassPermissions"
+          : runtimeModeToPermission[input.runtimeMode]);
       const settings = {
         ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
         ...(fastMode ? { fastMode: true } : {}),
