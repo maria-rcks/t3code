@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../../../components/AppText";
@@ -44,10 +44,6 @@ export function DiffAppearanceSection() {
     selectedRowIds: EMPTY_IDS,
     canHighlight: true,
   });
-  const styleJson = useMemo(
-    () => JSON.stringify({ ...nativeReviewDiffStyle, contentWidth: width }),
-    [nativeReviewDiffStyle, width],
-  );
 
   return (
     <SettingsSection card title="Diff colors">
@@ -64,7 +60,7 @@ export function DiffAppearanceSection() {
             rowHeight={codeSurface.rowHeight}
             rowsJson={bridge.rowsJson}
             themeJson={bridge.themeJson}
-            styleJson={styleJson}
+            styleJson={bridge.styleJson}
             tokensPatchJson={bridge.tokensPatchJson}
             tokensResetKey={bridge.tokensResetKey}
             onDebug={bridge.onDebug}
