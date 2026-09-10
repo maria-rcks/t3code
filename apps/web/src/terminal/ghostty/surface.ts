@@ -395,6 +395,15 @@ export function isTerminalPasteShortcut(
   return isMacPlatform(platform) ? event.metaKey : event.ctrlKey && event.shiftKey;
 }
 
+/**
+ * Middle-click paste is an X11/Wayland convention. macOS and Windows have no
+ * primary selection and use the button for autoscroll, so only desktops that
+ * expect the gesture get it.
+ */
+export function isTerminalMiddleClickPastePlatform(platform = navigator.platform): boolean {
+  return /linux|bsd|x11/i.test(platform);
+}
+
 export function isTerminalCompositionCommitInput(event: Pick<InputEvent, "inputType">): boolean {
   return (
     event.inputType === "" ||
@@ -938,6 +947,26 @@ export class GhosttyTerminalSurface {
     if (encoded.length > 0) this.options.onData(encoded);
   }
 
+  /**
+   * The middle-click paste source. A browser cannot read the X11/Wayland
+   * PRIMARY buffer, so the terminal's own selection stands in for it when the
+   * user highlighted here, and the system clipboard covers the rest. Both go
+   * through pasteFromClipboard, so a middle click joins the same paste race as
+   * every other paste path.
+   */
+  private pasteFromSelectionBuffer(): void {
+    const selection = this.getSelection();
+    if (selection.length > 0) {
+      void this.pasteFromClipboard(() => Promise.resolve(selection));
+      return;
+    }
+    const clipboard = navigator.clipboard;
+    if (typeof clipboard?.readText !== "function") return;
+    void this.pasteFromClipboard(() => clipboard.readText()).catch(() => {
+      // Clipboard read denied; middle-click has no other source to fall back to.
+    });
+  }
+
   hasSelection(): boolean {
     return this.core.selectionText().length > 0;
   }
@@ -1272,6 +1301,14 @@ export class GhosttyTerminalSurface {
       this.canvas.setPointerCapture(event.pointerId);
       return;
     }
+    if (event.button === 1 && isTerminalMiddleClickPastePlatform()) {
+      // Cancelling the pointer event also suppresses the compatibility
+      // mousedown, and with it Chromium's middle-click autoscroll.
+      event.preventDefault();
+      event.stopPropagation();
+      this.pasteFromSelectionBuffer();
+      return;
+    }
     if (event.button !== 0) return;
     const clickCount = this.recordSelectionClick(event);
     const link = this.linkAt(event.clientX, event.clientY);
@@ -1551,7 +1588,12 @@ export class GhosttyTerminalSurface {
   };
 
   private readonly onMouseDown = (event: MouseEvent) => {
-    if (event.button === 0) event.preventDefault();
+    // onPointerDown answers the middle button; cancelling it here too keeps
+    // Chromium's autoscroll from starting in browsers that still deliver the
+    // compatibility mousedown after a cancelled pointerdown.
+    if (event.button === 0 || (event.button === 1 && isTerminalMiddleClickPastePlatform())) {
+      event.preventDefault();
+    }
     this.focus();
   };
 

@@ -167,13 +167,13 @@ describe("GhosttyTerminalSurface visibility", () => {
       resize() {
         for (const callback of resizeCallbacks) callback();
       },
-      pointer(type: string, clientX: number, buttons: number, shiftKey = false) {
+      pointer(type: string, clientX: number, buttons: number, shiftKey = false, button = 0) {
         canvas.dispatchEvent(
           Object.assign(new Event(type, { cancelable: true }), {
             clientX,
             clientY: 5,
             pointerId: 1,
-            button: 0,
+            button,
             buttons,
             shiftKey,
           }),
@@ -278,6 +278,38 @@ describe("GhosttyTerminalSurface visibility", () => {
     expect(surface.getSelection()).toBe("");
     expect(surface.getSelectionPosition()).toBeNull();
     expect(harness.renderedSnapshot.rowData[0]?.cells.some((cell) => cell.selected)).toBe(false);
+  });
+
+  it("pastes the current selection on a Linux middle click", async () => {
+    const harness = createHarness();
+    vi.stubGlobal("navigator", { platform: "Linux x86_64" });
+    const surface = await harness.create();
+    surface.write("hello world");
+    harness.flushFrame();
+    harness.pointer("pointerdown", 5, 1);
+    harness.pointer("pointermove", 37, 1);
+    harness.pointer("pointerup", 37, 0);
+    expect(surface.getSelection()).toBe("hello");
+
+    harness.onData.mockClear();
+    harness.pointer("pointerdown", 5, 4, false, 1);
+    await vi.waitFor(() => expect(harness.onData).toHaveBeenCalled());
+    expect(harness.onData.mock.calls.at(-1)?.[0]).toBe("hello");
+    expect(surface.getSelection()).toBe("hello");
+  });
+
+  it("forwards a middle click to an application that tracks the mouse", async () => {
+    const harness = createHarness();
+    vi.stubGlobal("navigator", { platform: "Linux x86_64" });
+    const surface = await harness.create();
+    surface.write("\x1b[?1000hhello world");
+    harness.flushFrame();
+
+    harness.onData.mockClear();
+    harness.pointer("pointerdown", 5, 4, false, 1);
+    // Legacy X10 report for a middle-button press at 1,1: the application gets
+    // the click instead of a paste.
+    expect(harness.onData.mock.calls.at(-1)?.[0]).toBe("\x1b[M!!!");
   });
 
   it("starts a selection when dragging from a link", async () => {
