@@ -400,8 +400,8 @@ export function isTerminalPasteShortcut(
  * primary selection and use the button for autoscroll, so only desktops that
  * expect the gesture get it.
  */
-export function isTerminalMiddleClickPastePlatform(platform = navigator.platform): boolean {
-  return /linux|bsd|x11/i.test(platform);
+function isMiddleClickPastePlatform(): boolean {
+  return /linux|bsd/i.test(navigator.platform);
 }
 
 export function isTerminalCompositionCommitInput(event: Pick<InputEvent, "inputType">): boolean {
@@ -948,23 +948,17 @@ export class GhosttyTerminalSurface {
   }
 
   /**
-   * The middle-click paste source. A browser cannot read the X11/Wayland
-   * PRIMARY buffer, so the terminal's own selection stands in for it when the
-   * user highlighted here, and the system clipboard covers the rest. Both go
-   * through pasteFromClipboard, so a middle click joins the same paste race as
-   * every other paste path.
+   * Middle-click pastes the terminal's own selection, which is the only
+   * primary-selection-like buffer a browser can read. It goes through
+   * pasteFromClipboard so it joins the same paste race as every other path.
+   * With nothing selected here there is no buffer to paste, and CLIPBOARD is
+   * deliberately not substituted: middle-click must never emit text the user
+   * only ever copied.
    */
-  private pasteFromSelectionBuffer(): void {
+  private pasteTerminalSelection(): void {
     const selection = this.getSelection();
-    if (selection.length > 0) {
-      void this.pasteFromClipboard(() => Promise.resolve(selection));
-      return;
-    }
-    const clipboard = navigator.clipboard;
-    if (typeof clipboard?.readText !== "function") return;
-    void this.pasteFromClipboard(() => clipboard.readText()).catch(() => {
-      // Clipboard read denied; middle-click has no other source to fall back to.
-    });
+    if (selection.length === 0) return;
+    void this.pasteFromClipboard(() => Promise.resolve(selection));
   }
 
   hasSelection(): boolean {
@@ -1301,12 +1295,10 @@ export class GhosttyTerminalSurface {
       this.canvas.setPointerCapture(event.pointerId);
       return;
     }
-    if (event.button === 1 && isTerminalMiddleClickPastePlatform()) {
-      // Cancelling the pointer event also suppresses the compatibility
-      // mousedown, and with it Chromium's middle-click autoscroll.
-      event.preventDefault();
-      event.stopPropagation();
-      this.pasteFromSelectionBuffer();
+    if (event.button === 1 && isMiddleClickPastePlatform()) {
+      // Left uncancelled on purpose: cancelling pointerdown drops the
+      // compatibility mousedown, which is what activates a split pane.
+      this.pasteTerminalSelection();
       return;
     }
     if (event.button !== 0) return;
@@ -1552,6 +1544,10 @@ export class GhosttyTerminalSurface {
     if (this.canvas.hasPointerCapture(event.pointerId)) {
       this.canvas.releasePointerCapture(event.pointerId);
     }
+    if (event.button === 1 && isMiddleClickPastePlatform()) {
+      event.preventDefault();
+      return;
+    }
     if (event.button !== 0) return;
     if (!this.selectionMoved && this.selectionMode === "cell") {
       this.clearSelection();
@@ -1588,13 +1584,21 @@ export class GhosttyTerminalSurface {
   };
 
   private readonly onMouseDown = (event: MouseEvent) => {
-    // onPointerDown answers the middle button; cancelling it here too keeps
-    // Chromium's autoscroll from starting in browsers that still deliver the
-    // compatibility mousedown after a cancelled pointerdown.
-    if (event.button === 0 || (event.button === 1 && isTerminalMiddleClickPastePlatform())) {
+    // Cancelling the middle button here stops autoscroll while still letting
+    // the event bubble to the drawer handler that activates a split pane.
+    if (event.button === 0 || (event.button === 1 && isMiddleClickPastePlatform())) {
       event.preventDefault();
     }
     this.focus();
+  };
+
+  /**
+   * Chromium pastes PRIMARY into the focused editable on a middle mouseup, and
+   * the hidden textarea is focused, so leaving the default alive would deliver
+   * a second paste through onPaste on top of the one onPointerDown sent.
+   */
+  private readonly onMouseUp = (event: MouseEvent) => {
+    if (event.button === 1 && isMiddleClickPastePlatform()) event.preventDefault();
   };
 
   private readonly onContextMenu = (event: MouseEvent) => {
@@ -1686,6 +1690,7 @@ export class GhosttyTerminalSurface {
     this.canvas.addEventListener("pointercancel", this.onPointerUp);
     this.canvas.addEventListener("wheel", this.onWheel, { passive: false });
     this.canvas.addEventListener("mousedown", this.onMouseDown);
+    this.canvas.addEventListener("mouseup", this.onMouseUp);
     this.canvas.addEventListener("contextmenu", this.onContextMenu);
     this.scrollbar.addEventListener("pointerdown", this.onScrollbarPointerDown);
     this.scrollbar.addEventListener("pointermove", this.onScrollbarPointerMove);
@@ -1711,6 +1716,7 @@ export class GhosttyTerminalSurface {
     this.canvas.removeEventListener("pointercancel", this.onPointerUp);
     this.canvas.removeEventListener("wheel", this.onWheel);
     this.canvas.removeEventListener("mousedown", this.onMouseDown);
+    this.canvas.removeEventListener("mouseup", this.onMouseUp);
     this.canvas.removeEventListener("contextmenu", this.onContextMenu);
     this.scrollbar.removeEventListener("pointerdown", this.onScrollbarPointerDown);
     this.scrollbar.removeEventListener("pointermove", this.onScrollbarPointerMove);

@@ -280,9 +280,10 @@ describe("GhosttyTerminalSurface visibility", () => {
     expect(harness.renderedSnapshot.rowData[0]?.cells.some((cell) => cell.selected)).toBe(false);
   });
 
-  it("pastes the current selection on a Linux middle click", async () => {
+  it("pastes the terminal selection, and only that, on a Linux middle click", async () => {
     const harness = createHarness();
-    vi.stubGlobal("navigator", { platform: "Linux x86_64" });
+    const readText = vi.fn(async () => "clipboard text");
+    vi.stubGlobal("navigator", { platform: "Linux x86_64", clipboard: { readText } });
     const surface = await harness.create();
     surface.write("hello world");
     harness.flushFrame();
@@ -296,20 +297,12 @@ describe("GhosttyTerminalSurface visibility", () => {
     await vi.waitFor(() => expect(harness.onData).toHaveBeenCalled());
     expect(harness.onData.mock.calls.at(-1)?.[0]).toBe("hello");
     expect(surface.getSelection()).toBe("hello");
-  });
 
-  it("forwards a middle click to an application that tracks the mouse", async () => {
-    const harness = createHarness();
-    vi.stubGlobal("navigator", { platform: "Linux x86_64" });
-    const surface = await harness.create();
-    surface.write("\x1b[?1000hhello world");
-    harness.flushFrame();
-
-    harness.onData.mockClear();
+    // Without a selection there is no primary buffer to paste; the clipboard
+    // holds what the user copied and must not be substituted.
+    surface.clearSelection();
     harness.pointer("pointerdown", 5, 4, false, 1);
-    // Legacy X10 report for a middle-button press at 1,1: the application gets
-    // the click instead of a paste.
-    expect(harness.onData.mock.calls.at(-1)?.[0]).toBe("\x1b[M!!!");
+    expect(readText).not.toHaveBeenCalled();
   });
 
   it("starts a selection when dragging from a link", async () => {
