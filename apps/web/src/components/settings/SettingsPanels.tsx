@@ -1245,9 +1245,6 @@ export function AppearanceSettingsPanel() {
             }
           />
         ) : null}
-      </SettingsSection>
-
-      <SettingsSection id="diff-colors" title="Diffs">
         <SettingsRow
           {...searchableSetting("diff-color-scheme")}
           description="Choose colors for additions and deletions, including change counts."
