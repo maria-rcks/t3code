@@ -702,14 +702,6 @@ describe("applyThreadDetailEvent", () => {
       expect(result.kind).toBe("updated");
       if (result.kind === "updated") {
         expect(result.thread.latestTurn?.state).toBe("running");
-        expect(
-          resolveAsyncAnswerTurnId(
-            { turnId: null, createdAt: "2026-04-01T07:59:59.000Z" },
-            [],
-            [],
-            result.thread.latestTurn,
-          ),
-        ).toBe("turn-1");
         expect(result.thread.latestTurn?.completedAt).toBeNull();
       }
     });
@@ -917,6 +909,15 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.session?.status).toBe("running");
         expect(result.thread.latestTurn?.turnId).toBe("turn-1");
         expect(result.thread.latestTurn?.state).toBe("running");
+        expect(result.thread.latestTurn?.requestedAt).toBe("2026-04-01T08:00:00.000Z");
+        expect(
+          resolveAsyncAnswerTurnId(
+            { turnId: null, createdAt: "2026-04-01T07:59:59.000Z" },
+            [],
+            [],
+            result.thread.latestTurn,
+          ),
+        ).toBe("turn-1");
       }
     });
   });
