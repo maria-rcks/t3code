@@ -40,16 +40,25 @@ export class EnvironmentHttpConnectionNotReadyError extends Data.TaggedError(
 const LINKED_PULL_REQUEST_IDLE_TTL_MS = 5_000;
 
 /** Keep confirmed edits on the same cached reference regardless of input property order. */
-function writableQueryFamily<A>(
+function writableQueryFamily<A, E>(
   family: (target: {
     readonly environmentId: EnvironmentId;
     readonly input: PullRequestRef;
-  }) => Atom.Atom<A>,
+  }) => Atom.Atom<AsyncResult.AsyncResult<A, E>>,
 ) {
-  const writable = Atom.family((source: Atom.Atom<A>) =>
+  const writable = Atom.family((source: Atom.Atom<AsyncResult.AsyncResult<A, E>>) =>
     Atom.writable(
-      (get) => get(source),
-      (context, value: A) => context.setSelf(value),
+      (get) => {
+        const result = get(source);
+        if (result._tag === "Success" && !result.waiting) return result;
+        const previous = get.self<AsyncResult.AsyncResult<A, E>>();
+        const value = Option.flatMap(previous, AsyncResult.value);
+        if (Option.isNone(value)) return result;
+        return result._tag === "Failure"
+          ? AsyncResult.failureWithPrevious(result.cause, { previous, waiting: result.waiting })
+          : AsyncResult.success<A, E>(value.value, result);
+      },
+      (context, value: AsyncResult.AsyncResult<A, E>) => context.setSelf(value),
       (refresh) => refresh(source),
     ).pipe(Atom.setIdleTTL(5 * 60_000)),
   );
@@ -317,8 +326,13 @@ export function createPullRequestEnvironmentAtoms<R, E>(
             ) ?? [];
           // A read started before this write can still return the old reviewers.
           if (registry.get(candidatesAtom).waiting) registry.refresh(candidatesAtom);
-          if (registry.get(detail(target)).waiting) registry.refresh(detail(target));
-          if (registry.get(activity(target)).waiting) registry.refresh(activity(target));
+          const missingIdentities = selected.length < reviewers.length;
+          if (missingIdentities || registry.get(detail(target)).waiting) {
+            registry.refresh(detail(target));
+          }
+          if (missingIdentities || registry.get(activity(target)).waiting) {
+            registry.refresh(activity(target));
+          }
           registry.update(
             candidatesAtom,
             AsyncResult.map((value) => ({
@@ -328,17 +342,23 @@ export function createPullRequestEnvironmentAtoms<R, E>(
               ),
             })),
           );
+          const selectedLogins = new Set(
+            selected.map((candidate) => candidate.login.toLowerCase()),
+          );
           const updateReviewers = (actors: ReadonlyArray<PullRequestActor>) =>
             requested
               ? [
                   ...actors,
                   ...selected
-                    .filter((candidate) => !actors.some((actor) => actor.login === candidate.login))
+                    .filter(
+                      (candidate) =>
+                        !actors.some(
+                          (actor) => actor.login.toLowerCase() === candidate.login.toLowerCase(),
+                        ),
+                    )
                     .map(({ login, name, avatarUrl }) => ({ login, name, avatarUrl })),
                 ]
-              : actors.filter(
-                  (actor) => !selected.some((candidate) => candidate.login === actor.login),
-                );
+              : actors.filter((actor) => !selectedLogins.has(actor.login.toLowerCase()));
           registry.update(
             detail(target),
             AsyncResult.map((value) => ({
@@ -357,10 +377,11 @@ export function createPullRequestEnvironmentAtoms<R, E>(
                       ? updateReviewers(value.reviewers)
                       : value.reviewers.filter(
                           (actor) =>
-                            !selected.some((candidate) => candidate.login === actor.login) ||
+                            !selectedLogins.has(actor.login.toLowerCase()) ||
                             value.comments.some(
                               (comment) =>
-                                comment.kind === "review" && comment.author?.login === actor.login,
+                                (comment.kind === "review" || comment.kind === "review-comment") &&
+                                comment.author?.login.toLowerCase() === actor.login.toLowerCase(),
                             ),
                         ),
                   }),

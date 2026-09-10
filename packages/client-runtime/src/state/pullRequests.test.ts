@@ -225,11 +225,19 @@ it.effect("updates cached labels after successful edits without rereading the ho
       let detailReads = 0;
       let candidateReads = 0;
       let refuse = false;
+      let failDetail = false;
+      const detailRefreshStarted = yield* Latch.make();
+      const releaseDetailRefresh = yield* Latch.make();
       const client = {
         [WS_METHODS.pullRequestsSubscribeRefreshes]: () => Stream.never,
         [WS_METHODS.pullRequestsDetail]: () =>
-          Effect.sync(() => {
+          Effect.gen(function* () {
             detailReads++;
+            if (failDetail) {
+              yield* detailRefreshStarted.open;
+              yield* releaseDetailRefresh.await;
+              return yield* Effect.fail(new MutationRefused());
+            }
             return { title: "keep this title", labels: [{ name: "existing", color: "111111" }] };
           }),
         [WS_METHODS.pullRequestsLabelCandidates]: () =>
@@ -333,11 +341,25 @@ it.effect("updates cached labels after successful edits without rereading the ho
       expect(detailReads).toBe(1);
       expect(candidateReads).toBe(1);
 
+      failDetail = true;
+      registry.refresh(detail);
+      yield* detailRefreshStarted.await;
+      expect(registry.get(detail).waiting).toBe(true);
+      expect(Option.getOrThrow(AsyncResult.value(registry.get(detail))).labels).toEqual([
+        { name: "new", color: "abcdef" },
+      ]);
+      yield* releaseDetailRefresh.open;
+      yield* Effect.exit(AtomRegistry.getResult(registry, detail, { suspendOnWaiting: true }));
+      expect(AsyncResult.isFailure(registry.get(detail))).toBe(true);
+      expect(Option.getOrThrow(AsyncResult.value(registry.get(detail))).labels).toEqual([
+        { name: "new", color: "abcdef" },
+      ]);
+      failDetail = false;
       registry.refresh(detail);
       expect(
         (yield* AtomRegistry.getResult(registry, detail, { suspendOnWaiting: true })).labels,
       ).toEqual([{ name: "existing", color: "111111" }]);
-      expect(detailReads).toBe(2);
+      expect(detailReads).toBe(3);
     }),
   ),
 );
@@ -348,7 +370,9 @@ it.effect("updates reviewer requests and enriched reviewers without rereading th
       let reads = 0;
       let refuse = false;
       const actor = { login: "reviewer", name: "Reviewer", avatarUrl: null };
+      const hostActor = { ...actor, login: "Reviewer" };
       let hostRequested = false;
+      let reviewed = false;
       let pauseActivity = false;
       const activityStarted = yield* Latch.make();
       const client = {
@@ -356,7 +380,7 @@ it.effect("updates reviewer requests and enriched reviewers without rereading th
         [WS_METHODS.pullRequestsDetail]: () =>
           Effect.sync(() => {
             reads++;
-            return { reviewers: [] };
+            return { reviewers: hostRequested ? [hostActor] : [] };
           }),
         [WS_METHODS.pullRequestsActivity]: () =>
           Effect.gen(function* () {
@@ -366,16 +390,21 @@ it.effect("updates reviewer requests and enriched reviewers without rereading th
               yield* activityStarted.open;
               return yield* Effect.never;
             }
-            return { reviewers: hostRequested ? [actor] : [], comments: [] };
-          }),
-        [WS_METHODS.pullRequestsReviewerCandidates]: () =>
-          Effect.sync(() => {
-            reads++;
             return {
-              candidates: [{ ...actor, id: "12", kind: "user", isRequested: false }],
-              truncated: false,
+              reviewers: hostRequested ? [hostActor] : [],
+              comments: reviewed ? [{ kind: "review-comment", author: hostActor }] : [],
             };
           }),
+        [WS_METHODS.pullRequestsReviewerCandidates]: (input: { number: number }) =>
+          input.number === 2
+            ? Effect.never
+            : Effect.sync(() => {
+                reads++;
+                return {
+                  candidates: [{ ...actor, id: "12", kind: "user", isRequested: false }],
+                  truncated: false,
+                };
+              }),
         [WS_METHODS.pullRequestsRequestReviewers]: (input: { requested: boolean }) =>
           refuse
             ? Effect.fail(new MutationRefused())
@@ -437,8 +466,34 @@ it.effect("updates reviewer requests and enriched reviewers without rereading th
       expect(AsyncResult.isSuccess(yield* request(true))).toBe(true);
       expect(
         (yield* AtomRegistry.getResult(registry, activity, { suspendOnWaiting: true })).reviewers,
-      ).toEqual([actor]);
+      ).toEqual([hostActor]);
       expect(reads).toBe(5);
+      expect(AsyncResult.isSuccess(yield* request(false))).toBe(true);
+      expect((yield* AtomRegistry.getResult(registry, activity)).reviewers).toEqual([]);
+
+      reviewed = true;
+      yield* request(true);
+      registry.refresh(activity);
+      yield* AtomRegistry.getResult(registry, activity, { suspendOnWaiting: true });
+      yield* request(false);
+      expect((yield* AtomRegistry.getResult(registry, activity)).reviewers).toEqual([hostActor]);
+
+      // A caller without an open picker still needs authoritative reviewer identities.
+      const otherTarget = { ...target, input: { ...target.input, number: 2 } };
+      const otherDetail = atoms.detail(otherTarget);
+      const unmount = registry.mount(otherDetail);
+      yield* Effect.addFinalizer(() => Effect.sync(unmount));
+      yield* AtomRegistry.getResult(registry, otherDetail, { suspendOnWaiting: true });
+      yield* Effect.promise(() =>
+        atoms.requestReviewers.run(registry, {
+          ...otherTarget,
+          input: { ...otherTarget.input, reviewers: [{ id: "12", kind: "user" }], requested: true },
+        }),
+      );
+      expect(
+        (yield* AtomRegistry.getResult(registry, otherDetail, { suspendOnWaiting: true }))
+          .reviewers,
+      ).toEqual([hostActor]);
     }),
   ),
 );
