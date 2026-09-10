@@ -1,5 +1,6 @@
 import { EnvironmentId, ProjectId, WS_METHODS, type PullRequestStack } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Latch from "effect/Latch";
 import * as Layer from "effect/Layer";
@@ -25,6 +26,8 @@ import {
 } from "./pullRequests.ts";
 import { PullRequestDiffLoader } from "./pullRequestDiffHttp.ts";
 import { executeAtomQuery } from "./runtime.ts";
+
+class MutationRefused extends Data.TaggedError("MutationRefused") {}
 
 const TARGET = new PrimaryConnectionTarget({
   environmentId: EnvironmentId.make("environment-1"),
@@ -212,6 +215,230 @@ it.effect("refreshes pull request activity after a comment is updated", () =>
         (yield* AtomRegistry.getResult(registry, activity, { suspendOnWaiting: true })).comments[0]
           ?.body,
       ).toBe("after turn");
+    }),
+  ),
+);
+
+it.effect("updates cached labels after successful edits without rereading the host", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      let detailReads = 0;
+      let candidateReads = 0;
+      let refuse = false;
+      const client = {
+        [WS_METHODS.pullRequestsSubscribeRefreshes]: () => Stream.never,
+        [WS_METHODS.pullRequestsDetail]: () =>
+          Effect.sync(() => {
+            detailReads++;
+            return { title: "keep this title", labels: [{ name: "existing", color: "111111" }] };
+          }),
+        [WS_METHODS.pullRequestsLabelCandidates]: () =>
+          Effect.sync(() => {
+            candidateReads++;
+            return {
+              candidates: [
+                { name: "existing", color: "111111", description: null, isApplied: true },
+                {
+                  name: "new",
+                  color: "abcdef",
+                  description: "keep this description",
+                  isApplied: false,
+                },
+              ],
+              truncated: false,
+            };
+          }),
+        [WS_METHODS.pullRequestsSetLabels]: () =>
+          refuse ? Effect.fail(new MutationRefused()) : Effect.void,
+      } as unknown as WsRpcProtocolClient;
+      const { atoms, registry } = yield* makeTestRuntime(client);
+      const target = {
+        environmentId: TARGET.environmentId,
+        input: {
+          projectId: ProjectId.make("project-1"),
+          repository: "acme/web",
+          number: 1,
+          host: "github.example.com",
+        },
+      };
+      const detail = atoms.detail(target);
+      const candidates = atoms.labelCandidates(target);
+      const unmountDetail = registry.mount(detail);
+      let unmountCandidates = registry.mount(candidates);
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          unmountDetail();
+          unmountCandidates();
+        }),
+      );
+      yield* AtomRegistry.getResult(registry, detail, { suspendOnWaiting: true });
+      yield* AtomRegistry.getResult(registry, candidates, { suspendOnWaiting: true });
+
+      const added = yield* Effect.promise(() =>
+        atoms.setLabels.run(registry, {
+          ...target,
+          input: {
+            host: target.input.host,
+            projectId: target.input.projectId,
+            repository: target.input.repository,
+            number: target.input.number,
+            labels: ["new"],
+            applied: true,
+          },
+        }),
+      );
+      expect(AsyncResult.isSuccess(added)).toBe(true);
+      expect((yield* AtomRegistry.getResult(registry, detail)).labels).toEqual([
+        { name: "existing", color: "111111" },
+        { name: "new", color: "abcdef" },
+      ]);
+      expect((yield* AtomRegistry.getResult(registry, detail)).title).toBe("keep this title");
+      unmountCandidates();
+      unmountCandidates = registry.mount(atoms.labelCandidates(target));
+      expect((yield* AtomRegistry.getResult(registry, candidates)).candidates[1]).toEqual({
+        name: "new",
+        color: "abcdef",
+        description: "keep this description",
+        isApplied: true,
+      });
+
+      const removed = yield* Effect.promise(() =>
+        atoms.setLabels.run(registry, {
+          ...target,
+          input: { ...target.input, labels: ["existing"], applied: false },
+        }),
+      );
+      expect(AsyncResult.isSuccess(removed)).toBe(true);
+      expect((yield* AtomRegistry.getResult(registry, detail)).labels).toEqual([
+        { name: "new", color: "abcdef" },
+      ]);
+      expect((yield* AtomRegistry.getResult(registry, candidates)).candidates[0]?.isApplied).toBe(
+        false,
+      );
+
+      refuse = true;
+      const failed = yield* Effect.promise(() =>
+        atoms.setLabels.run(registry, {
+          ...target,
+          input: { ...target.input, labels: ["new"], applied: false },
+        }),
+      );
+      expect(AsyncResult.isFailure(failed)).toBe(true);
+      expect((yield* AtomRegistry.getResult(registry, detail)).labels).toEqual([
+        { name: "new", color: "abcdef" },
+      ]);
+      expect((yield* AtomRegistry.getResult(registry, candidates)).candidates[1]?.isApplied).toBe(
+        true,
+      );
+      expect(detailReads).toBe(1);
+      expect(candidateReads).toBe(1);
+
+      registry.refresh(detail);
+      expect(
+        (yield* AtomRegistry.getResult(registry, detail, { suspendOnWaiting: true })).labels,
+      ).toEqual([{ name: "existing", color: "111111" }]);
+      expect(detailReads).toBe(2);
+    }),
+  ),
+);
+
+it.effect("updates reviewer requests and enriched reviewers without rereading the host", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      let reads = 0;
+      let refuse = false;
+      const actor = { login: "reviewer", name: "Reviewer", avatarUrl: null };
+      let hostRequested = false;
+      let pauseActivity = false;
+      const activityStarted = yield* Latch.make();
+      const client = {
+        [WS_METHODS.pullRequestsSubscribeRefreshes]: () => Stream.never,
+        [WS_METHODS.pullRequestsDetail]: () =>
+          Effect.sync(() => {
+            reads++;
+            return { reviewers: [] };
+          }),
+        [WS_METHODS.pullRequestsActivity]: () =>
+          Effect.gen(function* () {
+            reads++;
+            if (pauseActivity) {
+              pauseActivity = false;
+              yield* activityStarted.open;
+              return yield* Effect.never;
+            }
+            return { reviewers: hostRequested ? [actor] : [], comments: [] };
+          }),
+        [WS_METHODS.pullRequestsReviewerCandidates]: () =>
+          Effect.sync(() => {
+            reads++;
+            return {
+              candidates: [{ ...actor, id: "12", kind: "user", isRequested: false }],
+              truncated: false,
+            };
+          }),
+        [WS_METHODS.pullRequestsRequestReviewers]: (input: { requested: boolean }) =>
+          refuse
+            ? Effect.fail(new MutationRefused())
+            : Effect.sync(() => {
+                hostRequested = input.requested;
+              }),
+      } as unknown as WsRpcProtocolClient;
+      const { atoms, registry } = yield* makeTestRuntime(client);
+      const target = {
+        environmentId: TARGET.environmentId,
+        input: {
+          projectId: ProjectId.make("project-1"),
+          repository: "acme/web",
+          number: 1,
+          host: "github.example.com",
+        },
+      };
+      const detail = atoms.detail(target);
+      const activity = atoms.activity(target);
+      const candidates = atoms.reviewerCandidates(target);
+      for (const unmount of [
+        registry.mount(detail),
+        registry.mount(activity),
+        registry.mount(candidates),
+      ]) {
+        yield* Effect.addFinalizer(() => Effect.sync(unmount));
+      }
+      yield* AtomRegistry.getResult(registry, detail, { suspendOnWaiting: true });
+      yield* AtomRegistry.getResult(registry, activity, { suspendOnWaiting: true });
+      yield* AtomRegistry.getResult(registry, candidates, { suspendOnWaiting: true });
+      const request = (requested: boolean) =>
+        Effect.promise(() =>
+          atoms.requestReviewers.run(registry, {
+            ...target,
+            input: { ...target.input, reviewers: [{ id: "12", kind: "user" }], requested },
+          }),
+        );
+      expect(AsyncResult.isSuccess(yield* request(true))).toBe(true);
+      expect((yield* AtomRegistry.getResult(registry, detail)).reviewers).toEqual([actor]);
+      expect((yield* AtomRegistry.getResult(registry, activity)).reviewers).toEqual([actor]);
+      expect((yield* AtomRegistry.getResult(registry, candidates)).candidates[0]?.isRequested).toBe(
+        true,
+      );
+      refuse = true;
+      expect(AsyncResult.isFailure(yield* request(false))).toBe(true);
+      expect((yield* AtomRegistry.getResult(registry, detail)).reviewers).toEqual([actor]);
+      refuse = false;
+      expect(AsyncResult.isSuccess(yield* request(false))).toBe(true);
+      expect((yield* AtomRegistry.getResult(registry, detail)).reviewers).toEqual([]);
+      expect((yield* AtomRegistry.getResult(registry, activity)).reviewers).toEqual([]);
+      expect((yield* AtomRegistry.getResult(registry, candidates)).candidates[0]?.isRequested).toBe(
+        false,
+      );
+      expect(reads).toBe(3);
+      // A slow activity read started before the write must not hide the new request.
+      pauseActivity = true;
+      registry.refresh(activity);
+      yield* activityStarted.await;
+      expect(AsyncResult.isSuccess(yield* request(true))).toBe(true);
+      expect(
+        (yield* AtomRegistry.getResult(registry, activity, { suspendOnWaiting: true })).reviewers,
+      ).toEqual([actor]);
+      expect(reads).toBe(5);
     }),
   ),
 );

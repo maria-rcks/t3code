@@ -1,7 +1,10 @@
 import {
   WS_METHODS,
+  type EnvironmentId,
+  type PullRequestActor,
   type PullRequestDetail,
   type PullRequestDiffInput,
+  type PullRequestRef,
   type PullRequestSummary,
   type VcsStatusResult,
 } from "@t3tools/contracts";
@@ -9,7 +12,7 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
 import {
   createAtomCommandScheduler,
@@ -35,6 +38,35 @@ export class EnvironmentHttpConnectionNotReadyError extends Data.TaggedError(
 )<{ readonly message: string }> {}
 
 const LINKED_PULL_REQUEST_IDLE_TTL_MS = 5_000;
+
+/** Keep confirmed edits on the same cached reference regardless of input property order. */
+function writableQueryFamily<A>(
+  family: (target: {
+    readonly environmentId: EnvironmentId;
+    readonly input: PullRequestRef;
+  }) => Atom.Atom<A>,
+) {
+  const writable = Atom.family((source: Atom.Atom<A>) =>
+    Atom.writable(
+      (get) => get(source),
+      (context, value: A) => context.setSelf(value),
+      (refresh) => refresh(source),
+    ).pipe(Atom.setIdleTTL(5 * 60_000)),
+  );
+  return ({
+    environmentId,
+    input: { projectId, host, repository, number },
+  }: {
+    readonly environmentId: EnvironmentId;
+    readonly input: PullRequestRef;
+  }) =>
+    writable(
+      family({
+        environmentId,
+        input: { projectId, ...(host === undefined ? {} : { host }), repository, number },
+      }),
+    );
+}
 
 function createPullRequestRefreshAtomFamily<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
@@ -92,7 +124,7 @@ export function pullRequestDetailToVcsStatus(
 /**
  * Reopening a PR within a minute reuses detail and activity. Explicit refreshes and
  * turn notifications still revalidate. Mutations run serially per environment: actions on the same
- * pull request are order-sensitive, and the detail view refetches after each one.
+ * pull request are order-sensitive. Confirmed label and reviewer edits update cached state.
  */
 export function createPullRequestEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | PullRequestDiffLoader | R, E>,
@@ -103,12 +135,36 @@ export function createPullRequestEnvironmentAtoms<R, E>(
     mode: "serial",
     key: ({ environmentId }: { readonly environmentId: string }) => environmentId,
   } as const;
-  const activity = createEnvironmentRpcQueryAtomFamily(runtime, {
-    label: "environment-data:pull-requests:activity",
-    tag: WS_METHODS.pullRequestsActivity,
-    staleTimeMs: 60_000,
-    refreshTrigger: ({ environmentId }) => refreshes({ environmentId, input: {} }),
-  });
+  const activity = writableQueryFamily(
+    createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:pull-requests:activity",
+      tag: WS_METHODS.pullRequestsActivity,
+      staleTimeMs: 60_000,
+      refreshTrigger: ({ environmentId }) => refreshes({ environmentId, input: {} }),
+    }),
+  );
+  const detail = writableQueryFamily(
+    createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:pull-requests:detail",
+      tag: WS_METHODS.pullRequestsDetail,
+      staleTimeMs: 60_000,
+      refreshTrigger: ({ environmentId }) => refreshes({ environmentId, input: {} }),
+    }),
+  );
+  const labelCandidates = writableQueryFamily(
+    createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:pull-requests:label-candidates",
+      tag: WS_METHODS.pullRequestsLabelCandidates,
+      staleTimeMs: 60_000,
+    }),
+  );
+  const reviewerCandidates = writableQueryFamily(
+    createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:pull-requests:reviewer-candidates",
+      tag: WS_METHODS.pullRequestsReviewerCandidates,
+      staleTimeMs: 60_000,
+    }),
+  );
   return {
     refreshes,
     linkedThreads: createEnvironmentRpcQueryAtomFamily(runtime, {
@@ -137,12 +193,7 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       staleTimeMs: 60_000,
       refreshTrigger: ({ environmentId }) => refreshes({ environmentId, input: {} }),
     }),
-    detail: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:pull-requests:detail",
-      tag: WS_METHODS.pullRequestsDetail,
-      staleTimeMs: 60_000,
-      refreshTrigger: ({ environmentId }) => refreshes({ environmentId, input: {} }),
-    }),
+    detail,
     activity,
     threadComments: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:thread-comments",
@@ -241,28 +292,133 @@ export function createPullRequestEnvironmentAtoms<R, E>(
      * for a minute, because who has access to a repository changes far more slowly than the
      * change request it is being read for.
      */
-    reviewerCandidates: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:pull-requests:reviewer-candidates",
-      tag: WS_METHODS.pullRequestsReviewerCandidates,
-      staleTimeMs: 60_000,
-    }),
+    reviewerCandidates,
     requestReviewers: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:request-reviewers",
       tag: WS_METHODS.pullRequestsRequestReviewers,
       scheduler: commandScheduler,
       concurrency: serialPerEnvironment,
+      onSuccess: (
+        { environmentId, input: { projectId, host, repository, number, reviewers, requested } },
+        registry,
+      ) =>
+        Effect.sync(() => {
+          const target = {
+            environmentId,
+            input: { projectId, ...(host === undefined ? {} : { host }), repository, number },
+          };
+          const candidatesAtom = reviewerCandidates(target);
+          const candidates = Option.getOrNull(AsyncResult.value(registry.get(candidatesAtom)));
+          const selected =
+            candidates?.candidates.filter((candidate) =>
+              reviewers.some(
+                (reviewer) => reviewer.id === candidate.id && reviewer.kind === candidate.kind,
+              ),
+            ) ?? [];
+          // A read started before this write can still return the old reviewers.
+          if (registry.get(candidatesAtom).waiting) registry.refresh(candidatesAtom);
+          if (registry.get(detail(target)).waiting) registry.refresh(detail(target));
+          if (registry.get(activity(target)).waiting) registry.refresh(activity(target));
+          registry.update(
+            candidatesAtom,
+            AsyncResult.map((value) => ({
+              ...value,
+              candidates: value.candidates.map((candidate) =>
+                selected.includes(candidate) ? { ...candidate, isRequested: requested } : candidate,
+              ),
+            })),
+          );
+          const updateReviewers = (actors: ReadonlyArray<PullRequestActor>) =>
+            requested
+              ? [
+                  ...actors,
+                  ...selected
+                    .filter((candidate) => !actors.some((actor) => actor.login === candidate.login))
+                    .map(({ login, name, avatarUrl }) => ({ login, name, avatarUrl })),
+                ]
+              : actors.filter(
+                  (actor) => !selected.some((candidate) => candidate.login === actor.login),
+                );
+          registry.update(
+            detail(target),
+            AsyncResult.map((value) => ({
+              ...value,
+              reviewers: updateReviewers(value.reviewers),
+            })),
+          );
+          registry.update(
+            activity(target),
+            AsyncResult.map((value) => ({
+              ...value,
+              ...(value.reviewers === undefined
+                ? {}
+                : {
+                    reviewers: requested
+                      ? updateReviewers(value.reviewers)
+                      : value.reviewers.filter(
+                          (actor) =>
+                            !selected.some((candidate) => candidate.login === actor.login) ||
+                            value.comments.some(
+                              (comment) =>
+                                comment.kind === "review" && comment.author?.login === actor.login,
+                            ),
+                        ),
+                  }),
+            })),
+          );
+        }),
     }),
     /** Read when the label menu opens, and kept for a minute, like the reviewer candidates. */
-    labelCandidates: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:pull-requests:label-candidates",
-      tag: WS_METHODS.pullRequestsLabelCandidates,
-      staleTimeMs: 60_000,
-    }),
+    labelCandidates,
     setLabels: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:set-labels",
       tag: WS_METHODS.pullRequestsSetLabels,
       scheduler: commandScheduler,
       concurrency: serialPerEnvironment,
+      onSuccess: (
+        { environmentId, input: { projectId, host, repository, number, labels, applied } },
+        registry,
+      ) =>
+        Effect.sync(() => {
+          const target = {
+            environmentId,
+            input: { projectId, ...(host === undefined ? {} : { host }), repository, number },
+          };
+          const candidatesAtom = labelCandidates(target);
+          const candidates = Option.getOrNull(AsyncResult.value(registry.get(candidatesAtom)));
+          const names = new Set(labels);
+          // Replace only reads already in flight; ready caches need no host round trip.
+          if (registry.get(candidatesAtom).waiting) registry.refresh(candidatesAtom);
+          if (registry.get(detail(target)).waiting) registry.refresh(detail(target));
+          registry.update(
+            candidatesAtom,
+            AsyncResult.map((value) => ({
+              ...value,
+              candidates: value.candidates.map((candidate) =>
+                names.has(candidate.name) ? { ...candidate, isApplied: applied } : candidate,
+              ),
+            })),
+          );
+          registry.update(
+            detail(target),
+            AsyncResult.map((value) => ({
+              ...value,
+              labels: applied
+                ? [
+                    ...value.labels,
+                    ...labels
+                      .filter((name) => !value.labels.some((label) => label.name === name))
+                      .map((name) => ({
+                        name,
+                        color:
+                          candidates?.candidates.find((candidate) => candidate.name === name)
+                            ?.color ?? null,
+                      })),
+                  ]
+                : value.labels.filter((label) => !names.has(label.name)),
+            })),
+          );
+        }),
     }),
     setThreadResolution: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:set-thread-resolution",
