@@ -4,9 +4,6 @@ import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 export const EditorLaunchStyle = Schema.Literals(["direct-path", "goto", "line-column"]);
 export type EditorLaunchStyle = typeof EditorLaunchStyle.Type;
 
-/** Deep-link shapes editors use to open a remote workspace over SSH. */
-export type EditorRemoteLinkStyle = "vscode-remote" | "zed-ssh";
-
 type EditorDefinition = {
   readonly id: string;
   readonly label: string;
@@ -14,16 +11,12 @@ type EditorDefinition = {
   readonly baseArgs?: readonly string[];
   readonly launchStyle: EditorLaunchStyle;
   /**
-   * URL scheme for editors that can open a remote workspace over SSH. Only set
-   * for editors that ship the remote machinery; see `remoteLinkStyle` for the
-   * shape of the link the scheme expects.
+   * URL scheme for editors that support VS Code's remote deep links
+   * (`<scheme>://vscode-remote/ssh-remote+<host><path>`). Only set for VS Code
+   * and forks that ship the Remote-SSH machinery, plus Zed, which uses its own
+   * `zed://ssh/<host><path>` shape.
    */
   readonly remoteScheme?: string;
-  /**
-   * Shape of `remoteScheme`'s deep link. Defaults to VS Code's
-   * `<scheme>://vscode-remote/ssh-remote+<host><path>`, which its forks share.
-   */
-  readonly remoteLinkStyle?: EditorRemoteLinkStyle;
 };
 
 export const EDITORS = [
@@ -63,7 +56,6 @@ export const EDITORS = [
     commands: ["zed", "zeditor"],
     launchStyle: "direct-path",
     remoteScheme: "zed",
-    remoteLinkStyle: "zed-ssh",
   },
   { id: "antigravity", label: "Antigravity", commands: ["agy"], launchStyle: "goto" },
   { id: "idea", label: "IntelliJ IDEA", commands: ["idea"], launchStyle: "line-column" },
@@ -99,10 +91,7 @@ export type LaunchEditorInput = typeof LaunchEditorInput.Type;
 
 const remoteSchemeOf = (editor: EditorDefinition): string | undefined => editor.remoteScheme;
 
-const remoteLinkStyleOf = (editor: EditorDefinition): EditorRemoteLinkStyle | undefined =>
-  editor.remoteScheme === undefined ? undefined : (editor.remoteLinkStyle ?? "vscode-remote");
-
-/** Editors that can open a remote workspace via an SSH deep link. */
+/** Editors that can open a remote workspace via `vscode-remote` deep links. */
 export const REMOTE_CAPABLE_EDITOR_IDS: ReadonlyArray<EditorId> = EDITORS.flatMap((editor) =>
   remoteSchemeOf(editor) !== undefined ? [editor.id] : [],
 );
@@ -112,17 +101,11 @@ export const remoteSchemeForEditor = (id: EditorId): string | undefined => {
   return editor === undefined ? undefined : remoteSchemeOf(editor);
 };
 
-/** Link shape `remoteSchemeForEditor` returns a scheme for, if any. */
-export const remoteLinkStyleForEditor = (id: EditorId): EditorRemoteLinkStyle | undefined => {
-  const editor = EDITORS.find((candidate) => candidate.id === id);
-  return editor === undefined ? undefined : remoteLinkStyleOf(editor);
-};
-
 /**
- * Builds the deep link that opens `absolutePath` on `host` in the local editor
- * over SSH: `<scheme>://vscode-remote/ssh-remote+<host><path>` for VS Code and
- * its forks, `zed://ssh/<host><path>` for Zed. Returns undefined for editors
- * without remote deep-link support.
+ * Builds a `<scheme>://vscode-remote/ssh-remote+<host><path>` deep link (Zed
+ * takes `zed://ssh/<host><path>`) that opens `absolutePath` on `host` in the
+ * local editor over SSH. Returns undefined for editors without remote
+ * deep-link support.
  */
 export const buildRemoteOpenUrl = (input: {
   readonly editor: EditorId;
@@ -130,17 +113,15 @@ export const buildRemoteOpenUrl = (input: {
   readonly absolutePath: string;
 }): string | undefined => {
   const scheme = remoteSchemeForEditor(input.editor);
-  const style = remoteLinkStyleForEditor(input.editor);
-  if (scheme === undefined || style === undefined) {
+  if (scheme === undefined) {
     return undefined;
   }
-  // Windows server paths (`C:\...`) appear as `/C:/...` in the remote URI, and
-  // percent-encoding keeps the drive colon out of Zed's SCP-style host split.
+  // Windows server paths (`C:\...`) appear as `/C:/...` in vscode-remote URIs.
   const posixPath = input.absolutePath.replaceAll("\\", "/");
   const rootedPath = posixPath.startsWith("/") ? posixPath : `/${posixPath}`;
   const encodedPath = rootedPath.split("/").map(encodeURIComponent).join("/");
   const encodedHost = encodeURIComponent(input.host);
-  return style === "zed-ssh"
+  return input.editor === "zed"
     ? `${scheme}://ssh/${encodedHost}${encodedPath}`
     : `${scheme}://vscode-remote/ssh-remote+${encodedHost}${encodedPath}`;
 };

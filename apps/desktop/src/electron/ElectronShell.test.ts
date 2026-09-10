@@ -127,9 +127,10 @@ describe("ElectronShell", () => {
         electronShell.openExternal(
           "vscode://:secret@vscode-remote/ssh-remote+example.com/home/user/project",
         ),
+        electronShell.openExternal("zed://ssh/user@example.com/home/user/project"),
       ]);
 
-      assert.deepEqual(results, [false, false]);
+      assert.deepEqual(results, [false, false, false]);
       assert.equal(openExternalMock.mock.calls.length, 0);
     }).pipe(Effect.provide(ElectronShell.layer)),
   );
