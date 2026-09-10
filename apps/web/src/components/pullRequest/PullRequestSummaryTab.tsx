@@ -40,7 +40,6 @@ import {
   pullRequestReviewOutcomeLabel,
   pullRequestReviewOutcomeRingClassName,
   pullRequestReviewOutcomeStaleLabel,
-  summarizePullRequestChecks,
 } from "./pullRequestPresentation";
 import { PullRequestLabelPicker } from "./PullRequestLabelPicker";
 import { PullRequestReviewerPicker } from "./PullRequestReviewerPicker";
@@ -463,10 +462,7 @@ export function PullRequestSummaryTab({
   const [shown, setShown] = useState({ url: detail.url, count: COMMENT_PAGE });
   const checksId = useId();
   const [expandedChecksUrl, setExpandedChecksUrl] = useState<string | null>(null);
-  const showCompletedChecks = expandedChecksUrl === detail.url;
-  const completedCheckCount = detail.checks.filter((check) =>
-    ["success", "skipped"].includes(check.status),
-  ).length;
+  const showChecks = expandedChecksUrl === detail.url;
   const shownComments = shown.url === detail.url ? shown.count : COMMENT_PAGE;
   // Windowed by recency regardless of display order: expanding always reaches further back in
   // time, whether the newest comment currently reads first or last.
@@ -788,33 +784,23 @@ export function PullRequestSummaryTab({
         ) : (
           <div>
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xs">
-              <span className="text-muted-foreground">
-                <span className="mr-2 font-medium">Checks</span>{" "}
-                {summarizePullRequestChecks(detail.checks)}
-              </span>
-              {completedCheckCount > 0 ? (
-                <Button
-                  size="xs"
-                  variant="ghost-muted"
-                  aria-expanded={showCompletedChecks}
-                  aria-controls={checksId}
-                  onClick={() => setExpandedChecksUrl(showCompletedChecks ? null : detail.url)}
-                >
-                  <ChevronRightIcon
-                    className={cn(
-                      "size-3.5 text-muted-foreground/60",
-                      showCompletedChecks && "rotate-90",
-                    )}
-                  />
-                  {showCompletedChecks ? "Hide" : "Show"} {completedCheckCount} completed
-                </Button>
-              ) : null}
+              <span className="font-medium text-muted-foreground">Checks</span>
+              <Button
+                size="icon-xs"
+                variant="ghost-muted"
+                aria-label={showChecks ? "Hide checks" : "Show checks"}
+                aria-expanded={showChecks}
+                aria-controls={checksId}
+                onClick={() => setExpandedChecksUrl(showChecks ? null : detail.url)}
+              >
+                <ChevronRightIcon
+                  aria-hidden
+                  className={cn("size-3.5 text-muted-foreground/60", showChecks && "rotate-90")}
+                />
+              </Button>
             </div>
-            <div id={checksId} className="mt-2">
-              {detail.checks.map((check, index) => {
-                if (!showCompletedChecks && ["success", "skipped"].includes(check.status)) {
-                  return null;
-                }
+            <div id={checksId} className={showChecks ? "mt-2" : "hidden"}>
+              {(showChecks ? detail.checks : []).map((check, index) => {
                 const finding = { kind: "check", check } as const;
                 const failing = check.status === "failure" || check.status === "cancelled";
                 return (
