@@ -14,7 +14,7 @@ import {
   PullRequestActorLabel,
   PullRequestDiffStat,
   PullRequestMetaLine,
-  PullRequestReviewDecisionGlyph,
+  PullRequestApprovalGlyph,
   PullRequestStateGlyph,
 } from "./pullRequestPresentation";
 
@@ -122,7 +122,7 @@ function PullRequestRowImpl({
         <span className="col-start-1 row-start-1 block truncate text-sm font-medium text-foreground">
           {entry.title}
         </span>
-        <span className="col-start-2 row-start-1 flex max-w-36 items-center justify-self-end gap-2 text-xs">
+        <span className="col-start-2 row-start-1 flex items-center justify-self-end gap-2 text-xs">
           {entry.stack ? (
             <PullRequestStackPopover
               environmentId={entry.environmentId}
@@ -138,22 +138,11 @@ function PullRequestRowImpl({
               }
             />
           ) : null}
-          {/* Only a verdict somebody has actually given: "review required" is the absence of
-              one, and saying so on every unreviewed row would say nothing. */}
-          {entry.reviewDecision === "approved" || entry.reviewDecision === "changes-requested" ? (
-            <PullRequestReviewDecisionGlyph decision={entry.reviewDecision} />
-          ) : null}
-          {entry.checksState === undefined ? null : (
-            <PullRequestChecksPopover
-              checksState={entry.checksState}
-              environmentId={entry.environmentId}
-              reference={{
-                projectId: entry.projectId,
-                repository: entry.repository,
-                number: entry.number,
-              }}
-            />
-          )}
+          <PullRequestDiffStat
+            additions={entry.additions}
+            deletions={entry.deletions}
+            className="shrink-0 whitespace-nowrap text-[11px]"
+          />
         </span>
         <PullRequestMetaLine className="@container/pr-row-meta col-start-1 row-start-2 overflow-hidden text-xs text-muted-foreground/70">
           {matchedElsewhere ? (
@@ -207,9 +196,28 @@ function PullRequestRowImpl({
             labelClassName="sr-only @xs/pr-row-meta:not-sr-only @xs/pr-row-meta:truncate"
           />
           {entry.labels.length > 0 ? <PullRequestRowLabels labels={entry.labels} /> : null}
+          {/* Only a verdict somebody has actually given: "review required" is the absence of
+              one, and saying so on every unreviewed row would say nothing. */}
+          {entry.reviewDecision === "approved" ? (
+            <PullRequestApprovalGlyph />
+          ) : entry.reviewDecision === "changes-requested" ? (
+            <span className="min-w-0 truncate text-amber-600/90 dark:text-amber-400/80">
+              Changes requested
+            </span>
+          ) : null}
+          {entry.checksState === undefined ? null : (
+            <PullRequestChecksPopover
+              checksState={entry.checksState}
+              environmentId={entry.environmentId}
+              reference={{
+                projectId: entry.projectId,
+                repository: entry.repository,
+                number: entry.number,
+              }}
+            />
+          )}
         </PullRequestMetaLine>
         <span className="col-start-2 row-start-2 flex items-center justify-self-end gap-3 whitespace-nowrap text-[11px] text-muted-foreground/70 tabular-nums">
-          <PullRequestDiffStat additions={entry.additions} deletions={entry.deletions} />
           <span className="hidden @sm/pr-row:inline">
             {formatRelativeTimeLabel(entry.updatedAt)}
           </span>

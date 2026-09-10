@@ -17,8 +17,7 @@ import {
   GitPullRequestDraftIcon,
   GitPullRequestIcon,
   TriangleAlertIcon,
-  UserRoundCheckIcon,
-  UserRoundXIcon,
+  UserCheckIcon,
 } from "lucide-react";
 import { Children, isValidElement, type ReactNode } from "react";
 
@@ -34,29 +33,17 @@ interface StatePresentation {
   readonly Icon: typeof GitPullRequestIcon;
 }
 
-export function PullRequestReviewDecisionGlyph({
-  decision,
-}: {
-  decision: "approved" | "changes-requested";
-}) {
-  const approved = decision === "approved";
-  const Icon = approved ? UserRoundCheckIcon : UserRoundXIcon;
-  const label = approved ? "Approved" : "Changes requested";
+export function PullRequestApprovalGlyph() {
   return (
     <Tooltip>
       <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
-        <Icon
-          role="img"
-          aria-label={label}
-          className={cn(
-            "size-3.5",
-            approved
-              ? "text-emerald-600/90 dark:text-emerald-400/80"
-              : "text-amber-600/90 dark:text-amber-400/80",
-          )}
+        <UserCheckIcon
+          aria-hidden
+          className="size-3.5 text-emerald-600/90 dark:text-emerald-400/80"
         />
+        <span className="sr-only">Approved</span>
       </TooltipTrigger>
-      <TooltipPopup>{label}</TooltipPopup>
+      <TooltipPopup>Approved</TooltipPopup>
     </Tooltip>
   );
 }
@@ -451,10 +438,8 @@ export function PullRequestDiffStat({
   }
   return (
     <span className={cn("inline-flex items-baseline gap-1 tabular-nums", className)}>
-      <span className="text-emerald-600 dark:text-emerald-300/90">
-        +{additions.toLocaleString()}
-      </span>
-      <span className="text-destructive">-{deletions.toLocaleString()}</span>
+      <span className="text-diff-addition-foreground">+{additions.toLocaleString()}</span>
+      <span className="text-diff-deletion">-{deletions.toLocaleString()}</span>
     </span>
   );
 }
