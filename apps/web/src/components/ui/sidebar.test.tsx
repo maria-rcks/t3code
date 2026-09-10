@@ -53,10 +53,10 @@ describe("sidebar interactive cursors", () => {
     const html = renderSidebarButton();
 
     expect(html).toContain('data-slot="sidebar-menu-button"');
-    expect(html).toContain("h-8");
+    expect(html).toContain("h-7");
     expect(html).toContain("rounded-[var(--control-radius)]");
     expect(html).toContain("px-[var(--sidebar-row-content-inset)]");
-    expect(html).toContain("py-1.5");
+    expect(html).toContain("py-1");
     expect(html).toContain("]:size-4");
     expect(html).toContain("]:shrink-0");
     expect(html).toContain("cursor-pointer");
@@ -74,7 +74,7 @@ describe("sidebar interactive cursors", () => {
       </SidebarProvider>,
     );
 
-    expect(html).toContain("size-8");
+    expect(html).toContain("size-7");
     expect(html).toContain("justify-center");
     expect(html).toContain("p-0");
     expect(html).toContain("font-medium");
