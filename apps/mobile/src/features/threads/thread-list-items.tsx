@@ -458,6 +458,8 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
   readonly onNewThreadOnBranch: (thread: EnvironmentThreadShell) => void;
   readonly onRegenerateThreadTitle: (thread: EnvironmentThreadShell) => void;
   readonly titleRegenerationSupported: boolean;
+  /** Minute-resolution clock so a stale title regeneration re-enables the menu entry. */
+  readonly nowMinute: string;
   readonly onSwipeableWillOpen: (methods: SwipeableMethods) => void;
   readonly onSwipeableClose: (methods: SwipeableMethods) => void;
   readonly simultaneousSwipeGesture?: ComponentProps<
@@ -550,14 +552,11 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
       THREAD_ROW_MENU_ACTIONS[0]!,
       ...buildThreadTitleRegenerationMenuItems({
         supported: props.titleRegenerationSupported,
-        isRegenerating: isTitleRegenerationPending(
-          { titleRegeneration: thread.titleRegeneration },
-          { now: new Date().toISOString() },
-        ),
+        isRegenerating: isTitleRegenerationPending(thread, { now: `${props.nowMinute}:00.000Z` }),
       }),
       THREAD_ROW_MENU_ACTIONS[1]!,
     ],
-    [props.titleRegenerationSupported, thread.branch, thread.titleRegeneration],
+    [props.nowMinute, props.titleRegenerationSupported, thread],
   );
   const primaryAction = useMemo(
     () => ({

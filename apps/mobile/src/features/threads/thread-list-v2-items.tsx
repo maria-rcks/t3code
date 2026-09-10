@@ -563,12 +563,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     () =>
       buildThreadTitleRegenerationMenuItems({
         supported: props.titleRegenerationSupported,
-        isRegenerating: isTitleRegenerationPending(
-          { titleRegeneration: thread.titleRegeneration },
-          { now: new Date().toISOString() },
-        ),
+        isRegenerating: isTitleRegenerationPending(thread, {
+          now: `${props.snoozePresetMinute}:00.000Z`,
+        }),
       }),
-    [props.titleRegenerationSupported, thread.titleRegeneration],
+    [props.snoozePresetMinute, props.titleRegenerationSupported, thread],
   );
   const snoozableCardMenuActions = useMemo<MenuAction[]>(
     () => [
