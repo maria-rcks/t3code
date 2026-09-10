@@ -567,7 +567,10 @@ function RightPanelEmptyState(props: {
                 key={action.label}
                 reason={action.disabledReason}
                 trigger={
-                  <div className="flex h-8 w-full cursor-default items-center gap-2.5 rounded-[var(--control-radius)] px-2.5 text-left text-sm opacity-50">
+                  <div
+                    tabIndex={0}
+                    className="flex h-8 w-full cursor-default items-center gap-2.5 rounded-[var(--control-radius)] px-2.5 text-left text-sm opacity-50"
+                  >
                     {actionIcon(action, "size-4")}
                     <span className="shrink-0">{action.label}</span>
                     <span className="ml-auto min-w-0 truncate text-muted-foreground text-xs">
