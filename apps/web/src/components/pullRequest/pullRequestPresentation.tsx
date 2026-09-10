@@ -17,6 +17,8 @@ import {
   GitPullRequestDraftIcon,
   GitPullRequestIcon,
   TriangleAlertIcon,
+  UserRoundCheckIcon,
+  UserRoundXIcon,
 } from "lucide-react";
 import { Children, isValidElement, type ReactNode } from "react";
 
@@ -30,6 +32,33 @@ interface StatePresentation {
   readonly label: string;
   readonly toneClassName: string;
   readonly Icon: typeof GitPullRequestIcon;
+}
+
+export function PullRequestReviewDecisionGlyph({
+  decision,
+}: {
+  decision: "approved" | "changes-requested";
+}) {
+  const approved = decision === "approved";
+  const Icon = approved ? UserRoundCheckIcon : UserRoundXIcon;
+  const label = approved ? "Approved" : "Changes requested";
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
+        <Icon
+          role="img"
+          aria-label={label}
+          className={cn(
+            "size-3.5",
+            approved
+              ? "text-emerald-600/90 dark:text-emerald-400/80"
+              : "text-amber-600/90 dark:text-amber-400/80",
+          )}
+        />
+      </TooltipTrigger>
+      <TooltipPopup>{label}</TooltipPopup>
+    </Tooltip>
+  );
 }
 
 /**

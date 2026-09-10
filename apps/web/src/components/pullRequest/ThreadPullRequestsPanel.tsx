@@ -29,6 +29,7 @@ import { pullRequestListLines, type PullRequestListLine } from "./pullRequestLis
 import {
   PullRequestActorAvatar,
   PullRequestDiffStat,
+  PullRequestReviewDecisionGlyph,
   PullRequestStateGlyph,
   pullRequestChecksStatePresentation,
 } from "./pullRequestPresentation";
@@ -119,15 +120,7 @@ function LinkRow({
             {snapshot?.state === "open" &&
             (snapshot.reviewDecision === "approved" ||
               snapshot.reviewDecision === "changes-requested") ? (
-              <span
-                className={cn(
-                  snapshot.reviewDecision === "approved"
-                    ? "text-emerald-600/90 dark:text-emerald-400/80"
-                    : "text-amber-600/90 dark:text-amber-400/80",
-                )}
-              >
-                {snapshot.reviewDecision === "approved" ? "Approved" : "Changes requested"}
-              </span>
+              <PullRequestReviewDecisionGlyph decision={snapshot.reviewDecision} />
             ) : null}
             {snapshot?.state === "open" && snapshot.mergeability === "conflicting" ? (
               <span className="text-destructive">Conflicts</span>
