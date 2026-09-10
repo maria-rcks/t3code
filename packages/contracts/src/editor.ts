@@ -122,8 +122,9 @@ export const buildRemoteOpenUrl = (input: {
   const encodedHost = encodeURIComponent(input.host);
   if (input.editor === "zed") {
     // Zed's remote server resolves a rooted path on the system drive, so a
-    // Windows `/C:/Users/x` must become `/Users/x` (verified in #8938).
-    const zedPath = rootedPath.replace(/^\/[A-Za-z]:(?=\/|$)/, "");
+    // Windows `/C:/Users/x` must become `/Users/x` (verified in #8938). Other
+    // drives are untested and kept as is rather than silently remapped.
+    const zedPath = rootedPath.replace(/^\/[Cc]:(?=\/|$)/, "");
     const encodedZedPath = zedPath.split("/").map(encodeURIComponent).join("/");
     return `${scheme}://ssh/${encodedHost}${encodedZedPath || "/"}`;
   }
