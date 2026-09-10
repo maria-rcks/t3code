@@ -1017,7 +1017,7 @@ function PullRequestCodeTab({
    * diff API offers it.
    */
   const toolbar = (
-    <div className="flex h-10 min-h-10 shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-background px-4 text-xs text-muted-foreground">
+    <div className="flex h-9 min-h-9 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-4 text-xs text-muted-foreground">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {/* A host that reports no commits has nothing to scope by, and a dropdown whose only
             entry is the scope already showing is a control that does nothing. */}
