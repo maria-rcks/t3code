@@ -151,6 +151,12 @@ describe("buildRemoteOpenUrl", () => {
     ).toBe("zed://ssh/sol.tail1234.ts.net/home/theo/code/my%20repo");
   });
 
+  it("drops the Windows drive letter for Zed", () => {
+    expect(
+      buildRemoteOpenUrl({ editor: "zed", host: "sol", absolutePath: "C:\\Users\\theo" }),
+    ).toBe("zed://ssh/sol/Users/theo");
+  });
+
   it("returns undefined for editors without remote support", () => {
     expect(buildRemoteOpenUrl({ editor: "idea", host: "sol", absolutePath: "/tmp/x" })).toBe(
       undefined,
