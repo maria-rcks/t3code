@@ -3,10 +3,7 @@ import {
   type PendingApproval,
 } from "@t3tools/client-runtime/pending-requests";
 import { UserInputAttachmentAnswerPayload } from "@t3tools/contracts";
-import {
-  foldUserInputActivities,
-  resolveAsyncAnswerTurnId,
-} from "@t3tools/client-runtime/work-log/user-input";
+import { foldUserInputActivities } from "@t3tools/client-runtime/work-log/user-input";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Arr from "effect/Array";
@@ -58,7 +55,6 @@ export {
 
 export interface WorkLogEntry {
   questionAnswer?: UserInputAttachmentAnswerPayload;
-  questionAnswerSubmittedAt?: string;
   id: string;
   createdAt: string;
   turnId?: TurnId | null;
@@ -157,8 +153,6 @@ export type TimelineEntry =
     };
 
 export interface TimelineEntriesProjection {
-  readonly latestTurn?: OrchestrationLatestTurn | null | undefined;
-  readonly activities?: ReadonlyArray<OrchestrationThreadActivity> | undefined;
   readonly messages: ReadonlyArray<ChatMessage>;
   readonly proposedPlans: ReadonlyArray<ProposedPlan>;
   readonly workEntries: ReadonlyArray<WorkLogEntry>;
@@ -558,8 +552,6 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (activity.kind === "user-input.answer-submitted") {
     const answer = decodeQuestionAttachmentAnswer(payload);
     if (Option.isSome(answer)) entry.questionAnswer = answer.value;
-    if (typeof payload?.questionAnswerSubmittedAt === "string")
-      entry.questionAnswerSubmittedAt = payload.questionAnswerSubmittedAt;
   }
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
@@ -1620,21 +1612,16 @@ export function deriveTimelineEntriesWithState(
   proposedPlans: ReadonlyArray<ProposedPlan>,
   workEntries: ReadonlyArray<WorkLogEntry>,
   previous: TimelineEntriesProjection | null = null,
-  activities?: ReadonlyArray<OrchestrationThreadActivity>,
-  latestTurn?: OrchestrationLatestTurn | null,
 ): TimelineEntriesProjection {
   if (
     previous !== null &&
-    previous.activities === activities &&
-    previous.latestTurn === latestTurn &&
     previous.proposedPlans.length === proposedPlans.length &&
     previous.workEntries.length === workEntries.length &&
     hasExactArrayPrefix(previous.proposedPlans, proposedPlans) &&
     hasExactArrayPrefix(previous.workEntries, workEntries)
   ) {
     const entries = replaceStreamingTimelineMessages(messages, previous);
-    if (entries !== null)
-      return { messages, proposedPlans, workEntries, entries, activities, latestTurn };
+    if (entries !== null) return { messages, proposedPlans, workEntries, entries };
   }
   const foldedAnswerMessageIds = new Set(
     workEntries.flatMap((entry) =>
@@ -1643,49 +1630,8 @@ export function deriveTimelineEntriesWithState(
   );
   const showMessage = (message: ChatMessage) =>
     message.role !== "user" || !foldedAnswerMessageIds.has(message.id);
-  const asyncAnswers = new Map<string, ChatMessage>(
-    messages
-      .filter((message) => message.role === "user" && foldedAnswerMessageIds.has(message.id))
-      .map((message) => [message.id, message]),
-  );
-  const latestProviderActivity = new Map<TurnId, string>();
-  if (asyncAnswers.size > 0) {
-    for (const entry of activities ?? workEntries) {
-      const kind = "kind" in entry ? entry.kind : entry.sourceActivityKind;
-      if (
-        entry.turnId &&
-        (kind?.startsWith("tool.") || kind?.startsWith("task.")) &&
-        entry.createdAt > (latestProviderActivity.get(entry.turnId) ?? "")
-      )
-        latestProviderActivity.set(entry.turnId, entry.createdAt);
-    }
-  }
-  const workRow = (entry: WorkLogEntry) => {
-    const response =
-      entry.questionAnswer && asyncAnswers.get(`async-answer:${entry.questionAnswer.requestId}`);
-    if (!response) return timelineEntryFromWork(entry);
-    const responseTurnId = resolveAsyncAnswerTurnId(
-      response,
-      messages,
-      activities ?? [],
-      latestTurn,
-    );
-    const resumed =
-      responseTurnId !== null &&
-      (latestProviderActivity.get(responseTurnId) ?? "") > response.createdAt;
-    const { questionAnswerSubmittedAt: _submittedAt, ...rest } = entry;
-    return timelineEntryFromWork({
-      ...rest,
-      turnId: responseTurnId,
-      createdAt: response.createdAt,
-      ...(!resumed ? { questionAnswerSubmittedAt: response.createdAt } : {}),
-    });
-  };
   const canAppend =
     previous !== null &&
-    previous.activities === activities &&
-    previous.latestTurn === latestTurn &&
-    asyncAnswers.size === 0 &&
     !previous.entries.some((entry) => entry.kind === "message" && !showMessage(entry.message)) &&
     hasExactArrayPrefix(previous.messages, messages) &&
     hasExactArrayPrefix(previous.proposedPlans, proposedPlans) &&
@@ -1699,7 +1645,7 @@ export function deriveTimelineEntriesWithState(
     const proposedPlanRows = proposedPlans
       .slice(previous.proposedPlans.length)
       .map(timelineEntryFromProposedPlan);
-    const workRows = workEntries.slice(previous.workEntries.length).map(workRow);
+    const workRows = workEntries.slice(previous.workEntries.length).map(timelineEntryFromWork);
     const suffix = [...messageRows, ...proposedPlanRows, ...workRows].toSorted(
       compareTimelineEntriesByCreatedAt,
     );
@@ -1708,14 +1654,12 @@ export function deriveTimelineEntriesWithState(
       proposedPlans,
       workEntries,
       entries: mergeTimelineEntrySuffix(previous.entries, suffix),
-      activities,
-      latestTurn,
     };
   }
 
   const messageRows = messages.filter(showMessage).map(timelineEntryFromMessage);
   const proposedPlanRows = proposedPlans.map(timelineEntryFromProposedPlan);
-  const workRows = workEntries.map(workRow);
+  const workRows = workEntries.map(timelineEntryFromWork);
   return {
     messages,
     proposedPlans,
@@ -1723,8 +1667,6 @@ export function deriveTimelineEntriesWithState(
     entries: [...messageRows, ...proposedPlanRows, ...workRows].toSorted(
       compareTimelineEntriesByCreatedAt,
     ),
-    activities,
-    latestTurn,
   };
 }
 

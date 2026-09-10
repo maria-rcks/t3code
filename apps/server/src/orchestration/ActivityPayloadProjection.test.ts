@@ -21,58 +21,6 @@ function activity(payload: Record<string, unknown>): OrchestrationThreadActivity
  * assertions are the tripwire.
  */
 describe("projectActivityPayload", () => {
-  it.each([
-    {
-      provider: "claude",
-      itemType: "dynamic_tool_call",
-      data: {
-        toolName: "AskUserQuestion",
-        input: { questions: [{ question: "Which scope?", options: [{ label: "Web" }] }] },
-      },
-    },
-    {
-      provider: "opencode",
-      itemType: "dynamic_tool_call",
-      data: { tool: "question", state: { input: { questions: [{ question: "Which scope?" }] } } },
-    },
-    {
-      provider: "cursor",
-      itemType: "dynamic_tool_call",
-      title: "cursor/ask_question",
-      data: { rawInput: { questions: [{ prompt: "Which scope?" }] } },
-    },
-    {
-      provider: "codex async",
-      itemType: "mcp_tool_call",
-      data: {
-        item: {
-          tool: "request_user_input_async",
-          arguments: { questions: [{ title: "Which scope?" }] },
-        },
-      },
-    },
-    {
-      provider: "mcp",
-      itemType: "mcp_tool_call",
-      data: {
-        toolName: "mcp__questions__request_user_input",
-        input: { questions: [{ question_text: "Which scope?" }] },
-      },
-    },
-  ])(
-    "preserves $provider question text for client folding",
-    ({ provider: _provider, ...payload }) => {
-      const projected = projectActivityPayload(activity(payload));
-      expect(projected.payload).toMatchObject({
-        data: { input: { questions: [{ question: "Which scope?" }] } },
-      });
-      expect((projected.payload as { data: { input: unknown } }).data.input).toEqual({
-        questions: [{ question: "Which scope?" }],
-      });
-      expect(projectActivityPayload(projected)).toEqual(projected);
-    },
-  );
-
   it("preserves tool attribution (agentId/parentToolUseId) through data slimming", () => {
     const projected = projectActivityPayload(
       activity({

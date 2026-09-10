@@ -829,6 +829,7 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
                 {answerPreview ? (
                   <Text
                     className={
+                      !expanded &&
                       row.workEntry.questionAnswer &&
                       hasQuestionAnswer(row.workEntry.questionAnswer)
                         ? "text-foreground"

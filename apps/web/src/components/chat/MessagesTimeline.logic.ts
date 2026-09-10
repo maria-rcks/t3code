@@ -878,23 +878,6 @@ export function deriveMessagesTimelineRows(input: {
     input.latestTurn ?? null,
     input.runningTurnId ?? null,
   );
-  const latestAssistantOutputAt = input.timelineEntries.reduce(
-    (latest, entry) =>
-      entry.kind === "message" &&
-      entry.message.role === "assistant" &&
-      entry.message.text.trim().length > 0 &&
-      entry.message.turnId === unsettledTurnId &&
-      entry.message.updatedAt > latest
-        ? entry.message.updatedAt
-        : latest,
-    "",
-  );
-  const answerAwaitingResume = (entry: WorkLogEntry) =>
-    input.isWorking &&
-    unsettledTurnId !== null &&
-    entry.turnId === unsettledTurnId &&
-    entry.questionAnswerSubmittedAt !== undefined &&
-    entry.questionAnswerSubmittedAt >= latestAssistantOutputAt;
   const activeVisualResponseTurnIds = deriveActiveVisualResponseTurnIds({
     timelineEntries: input.timelineEntries,
     unsettledTurnId,
@@ -952,9 +935,6 @@ export function deriveMessagesTimelineRows(input: {
   const latestRunningToolEntry = visibleActiveToolEntries.findLast((entry) =>
     workEntryIsActiveTurnActivity(entry.entry),
   );
-  const submittedAnswer = visibleActiveToolEntries.findLast((entry) =>
-    answerAwaitingResume(entry.entry),
-  );
   const latestToolFailed =
     latestRunningToolEntry === undefined &&
     latestVisibleToolEntry !== undefined &&
@@ -971,16 +951,15 @@ export function deriveMessagesTimelineRows(input: {
           const groupId = workGroupId(activeWorkAnchor.id, activeWorkAnchor.entry);
           return {
             kind: "work-live" as const,
-            id:
-              latestToolKeepsActivityLive && !submittedAnswer
-                ? LIVE_ACTIVITY_ROW_ID
-                : `work-live:${workGroupIdentity(activeWorkAnchor.id, activeWorkAnchor.entry)}`,
+            id: latestToolKeepsActivityLive
+              ? LIVE_ACTIVITY_ROW_ID
+              : `work-live:${workGroupIdentity(activeWorkAnchor.id, activeWorkAnchor.entry)}`,
             createdAt: activeWorkAnchor.createdAt,
-            entry: (submittedAnswer ?? latestRunningToolEntry ?? latestVisibleToolEntry).entry,
+            entry: (latestRunningToolEntry ?? latestVisibleToolEntry).entry,
             groupedEntries: visibleActiveToolEntries.map((entry) => entry.entry),
             groupId,
             expanded: input.expandedWorkGroupIds?.has(groupId) ?? false,
-            active: submittedAnswer ? false : latestToolKeepsActivityLive,
+            active: latestToolKeepsActivityLive,
           };
         })()
       : null;
@@ -1064,11 +1043,7 @@ export function deriveMessagesTimelineRows(input: {
     }
 
     if (timelineEntry.kind === "work") {
-      if (
-        timelineEntry.entry.agentSpawn !== undefined ||
-        timelineEntry.entry.tone === "error" ||
-        answerAwaitingResume(timelineEntry.entry)
-      ) {
+      if (timelineEntry.entry.agentSpawn !== undefined || timelineEntry.entry.tone === "error") {
         nextRows.push({
           kind: "work",
           id: timelineEntry.id,
@@ -1086,7 +1061,6 @@ export function deriveMessagesTimelineRows(input: {
           !nextEntry ||
           nextEntry.kind !== "work" ||
           nextEntry.entry.agentSpawn !== undefined ||
-          answerAwaitingResume(nextEntry.entry) ||
           nextEntry.entry.sourceActivityKind === "context-compaction" ||
           nextEntry.entry.tone === "error" ||
           activeWorkEntryIds.has(nextEntry.id) ||
@@ -1319,25 +1293,6 @@ function replaceStreamingMessageRows(
     replacements.set(previousEntry.message, entry.message);
   }
   if (replacements.size === 0) return previous.rows;
-  for (const row of previous.rows) {
-    const entries =
-      row.kind === "work" ? row.groupedEntries : row.kind === "work-live" ? [row.entry] : [];
-    for (const entry of entries) {
-      const submittedAt = entry.questionAnswerSubmittedAt;
-      if (
-        submittedAt &&
-        [...replacements].some(
-          ([before, after]) =>
-            after.role === "assistant" &&
-            after.turnId === entry.turnId &&
-            after.text.trim().length > 0 &&
-            after.updatedAt > submittedAt &&
-            (before.updatedAt <= submittedAt || before.text.trim().length === 0),
-        )
-      )
-        return null;
-    }
-  }
   return previous.rows.map((row) => {
     if (row.kind !== "message" && row.kind !== "assistant-meta") return row;
     const message = replacements.get(row.message);

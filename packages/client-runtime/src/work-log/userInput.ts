@@ -1,7 +1,5 @@
 import {
   type OrchestrationThreadActivity,
-  type OrchestrationLatestTurn,
-  type TurnId,
   UserInputAttachmentAnswerPayload,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -13,62 +11,6 @@ function record(value: unknown): Record<string, unknown> | undefined {
 }
 
 const isQuestionAnswer = Schema.is(UserInputAttachmentAnswerPayload);
-
-/** User messages have no turn id; associate async answers with the response they started or steered. */
-export function resolveAsyncAnswerTurnId(
-  response: { turnId?: TurnId | null; createdAt: string },
-  messages: ReadonlyArray<{
-    role: string;
-    turnId?: TurnId | null;
-    createdAt: string;
-    updatedAt?: string;
-  }>,
-  activities: ReadonlyArray<{ kind: string; turnId?: TurnId | null; createdAt: string }>,
-  latestTurn?: Pick<OrchestrationLatestTurn, "turnId" | "requestedAt" | "completedAt"> | null,
-): TurnId | null {
-  if (response.turnId) return response.turnId;
-  if (
-    latestTurn &&
-    latestTurn.requestedAt <= response.createdAt &&
-    (latestTurn.completedAt === null || latestTurn.completedAt >= response.createdAt)
-  )
-    return latestTurn.turnId;
-  let boundary: string | undefined;
-  for (const message of messages) {
-    if (
-      message.role === "user" &&
-      message.createdAt > response.createdAt &&
-      (!boundary || message.createdAt < boundary)
-    )
-      boundary = message.createdAt;
-  }
-  let earliest: { turnId: TurnId; createdAt: string } | undefined;
-  for (const entry of [
-    ...messages
-      .filter((message) => message.role === "assistant")
-      .map((message) => ({ ...message, createdAt: message.updatedAt ?? message.createdAt })),
-    ...activities.filter(
-      (activity) => activity.kind.startsWith("tool.") || activity.kind.startsWith("task."),
-    ),
-  ]) {
-    if (
-      entry.turnId &&
-      entry.createdAt >= response.createdAt &&
-      (!boundary || entry.createdAt < boundary) &&
-      (!earliest || entry.createdAt < earliest.createdAt)
-    ) {
-      earliest = { turnId: entry.turnId, createdAt: entry.createdAt };
-    }
-  }
-  if (
-    latestTurn &&
-    latestTurn.requestedAt >= response.createdAt &&
-    (!boundary || latestTurn.requestedAt < boundary) &&
-    (!earliest || latestTurn.requestedAt <= earliest.createdAt)
-  )
-    return latestTurn.turnId;
-  return earliest?.turnId ?? null;
-}
 
 function displayOptionAnswer(value: unknown, labels: ReadonlyMap<string, string>): unknown {
   if (typeof value === "string") return labels.get(value) ?? value;
@@ -155,10 +97,7 @@ export function foldUserInputActivities(
   const result: OrchestrationThreadActivity[] = [];
   const positions = new Map<string, number>();
   const submittedAnswers = new Map<string, Record<string, unknown>>();
-  const submissionOrder = new Map<string, number>();
-  const sourceOrder = new Map<OrchestrationThreadActivity, number>();
-  for (const [index, activity] of activities.entries()) {
-    sourceOrder.set(activity, index);
+  for (const activity of activities) {
     if (
       activity.kind !== "user-input.requested" &&
       activity.kind !== "user-input.resolved" &&
@@ -205,7 +144,6 @@ export function foldUserInputActivities(
     }
     const hasAnswer =
       Object.keys(answers).length > 0 || Object.keys(attachmentsByQuestionId).length > 0;
-    if (hasAnswer && !submissionOrder.has(requestId)) submissionOrder.set(requestId, index);
     const userInputStatus = hasAnswer
       ? "submitted"
       : activity.kind === "user-input.resolved"
@@ -221,18 +159,7 @@ export function foldUserInputActivities(
           : userInputStatus === "dismissed"
             ? "User input dismissed"
             : "User input requested",
-      payload: {
-        ...previousPayload,
-        ...payload,
-        ...questionAnswer,
-        userInputStatus,
-        ...(hasAnswer
-          ? {
-              questionAnswerSubmittedAt:
-                previousPayload?.questionAnswerSubmittedAt ?? activity.createdAt,
-            }
-          : {}),
-      },
+      payload: { ...previousPayload, ...payload, ...questionAnswer, userInputStatus },
     };
     if (position === undefined) {
       positions.set(requestId, result.length);
@@ -264,44 +191,7 @@ export function foldUserInputActivities(
     }
     result[position] = { ...activity, payload: { ...payload, answers } };
   }
-  const folded = withoutDuplicateQuestionTools(result);
-  const latestProviderActivity = new Map<string, number>();
-  for (const activity of folded) {
-    if (
-      activity.turnId &&
-      (activity.kind.startsWith("tool.") || activity.kind.startsWith("task."))
-    ) {
-      latestProviderActivity.set(
-        activity.turnId,
-        Math.max(
-          latestProviderActivity.get(activity.turnId) ?? -1,
-          sourceOrder.get(activity) ?? -1,
-        ),
-      );
-    }
-  }
-  return folded.map((activity) => {
-    const payload = record(activity.payload);
-    const submittedAt = payload?.questionAnswerSubmittedAt;
-    if (
-      typeof submittedAt !== "string" ||
-      !activity.turnId ||
-      typeof payload?.requestId !== "string" ||
-      (latestProviderActivity.get(activity.turnId) ?? -1) <=
-        (submissionOrder.get(payload.requestId) ?? Infinity)
-    )
-      return activity;
-    const nextPayload = { ...payload };
-    delete nextPayload.questionAnswerSubmittedAt;
-    return { ...activity, payload: nextPayload };
-  });
-}
-
-export function hasQuestionAnswer(answer: UserInputAttachmentAnswerPayload): boolean {
-  return (
-    Object.values(answer.answers).some((value) => getQuestionAnswerText(value).trim().length > 0) ||
-    Object.values(answer.attachmentsByQuestionId).some((attachments) => attachments.length > 0)
-  );
+  return withoutDuplicateQuestionTools(result);
 }
 
 export function getQuestionAnswerText(value: unknown): string {
@@ -325,4 +215,11 @@ export function getQuestionAnswerPreview(answer: UserInputAttachmentAnswerPayloa
   )
     .replace(/\s+/g, " ")
     .trim();
+}
+
+export function hasQuestionAnswer(answer: UserInputAttachmentAnswerPayload): boolean {
+  return (
+    Object.values(answer.answers).some(getQuestionAnswerText) ||
+    Object.values(answer.attachmentsByQuestionId).some((attachments) => attachments.length > 0)
+  );
 }

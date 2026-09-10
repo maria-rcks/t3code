@@ -151,7 +151,6 @@ export function useThreadComposerState() {
     },
     [selectedThreadKey],
   );
-  const selectedThread = selectedThreadDetail ?? selectedThreadShell;
   const selectedThreadMessages = selectedThreadDetail?.messages;
   const selectedThreadActivities = selectedThreadDetail?.activities;
   // A thread whose creation has not delivered its turn yet: the prompt only
@@ -170,7 +169,6 @@ export function useThreadComposerState() {
                 ? [...loadedMessages, pendingThreadCreationMessage(pendingCreationMessage)]
                 : loadedMessages,
             activities: selectedThreadActivities ?? [],
-            latestTurn: selectedThread?.latestTurn ?? null,
           })
         : [];
     const pendingAcknowledgments = acknowledgedMessages.filter(
@@ -185,7 +183,6 @@ export function useThreadComposerState() {
   }, [
     selectedThreadActivities,
     selectedThreadMessages,
-    selectedThread?.latestTurn,
     pendingCreationMessage,
     selectedThreadKey,
     selectedThreadQueuedMessages,
@@ -207,6 +204,7 @@ export function useThreadComposerState() {
   const draftMessage = selectedDraft?.text ?? "";
   const draftAttachments = selectedDraft?.attachments ?? [];
   const selectedThreadQueueCount = selectedThreadQueuedMessages.length;
+  const selectedThread = selectedThreadDetail ?? selectedThreadShell;
   const modelSelection = selectedDraft?.modelSelection ?? selectedThread?.modelSelection ?? null;
   const runtimeMode = selectedDraft?.runtimeMode ?? selectedThread?.runtimeMode ?? null;
   const selectedProvider = selectedEnvironmentRuntime?.serverConfig?.providers.find(

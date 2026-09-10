@@ -1,8 +1,5 @@
 import * as Option from "effect/Option";
-import {
-  foldUserInputActivities,
-  resolveAsyncAnswerTurnId,
-} from "@t3tools/client-runtime/work-log/user-input";
+import { foldUserInputActivities } from "@t3tools/client-runtime/work-log/user-input";
 import * as Schema from "effect/Schema";
 import {
   requestKindFromRequestType,
@@ -85,7 +82,6 @@ export interface ThreadFeedActivity {
 
 export interface WorkLogEntry {
   readonly questionAnswer?: UserInputAttachmentAnswerPayload;
-  readonly questionAnswerSubmittedAt?: string;
   id: string;
   createdAt: string;
   turnId: TurnId | null;
@@ -244,17 +240,12 @@ const messageEntriesCache = new WeakMap<
   Extract<RawThreadFeedEntry, { readonly type: "message" }>
 >();
 const activityGroupsCache = new WeakMap<ThreadFeedActivity, ThreadFeedActivityGroup>();
-const asyncAnswerEntriesCache = new WeakMap<
-  ThreadFeedActivity,
-  Extract<RawThreadFeedEntry, { readonly type: "activity" }>
->();
 const presentedActivityGroupsCache = new WeakMap<
   ThreadFeedActivityGroup,
   {
     readonly unsettledTurnId: TurnId | null;
     readonly isWorking: boolean;
     readonly activeTail: boolean;
-    readonly awaitingAnswerIds: ReadonlyArray<string>;
     readonly rows: ReadonlyArray<ThreadFeedEntry>;
   }
 >();
@@ -508,14 +499,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     ...(() => {
       if (activity.kind !== "user-input.answer-submitted") return {};
       const answer = decodeQuestionAttachmentAnswer(activity.payload);
-      return Option.isSome(answer)
-        ? {
-            questionAnswer: answer.value,
-            ...(typeof payload?.questionAnswerSubmittedAt === "string"
-              ? { questionAnswerSubmittedAt: payload.questionAnswerSubmittedAt }
-              : {}),
-          }
-        : {};
+      return Option.isSome(answer) ? { questionAnswer: answer.value } : {};
     })(),
   };
   const toolCallId =
@@ -1764,17 +1748,6 @@ export function deriveThreadFeedPresentation(
   const foldsByAnchorId = deriveThreadFeedTurnFolds(sourceFeed, latestTurn);
   const unsettledTurnId = deriveUnsettledTurnId(latestTurn);
   const isWorking = activeWorkStartedAt !== null;
-  let latestAssistantMessageAt: string | null = null;
-  for (const entry of sourceFeed) {
-    if (
-      entry.type === "message" &&
-      entry.message.role === "assistant" &&
-      entry.message.turnId === unsettledTurnId &&
-      !isEmptyMessage(entry)
-    ) {
-      latestAssistantMessageAt = maxIsoTimestamp(latestAssistantMessageAt, entry.message.updatedAt);
-    }
-  }
   const collapsedEntryIds = new Set<string>();
   for (const fold of foldsByAnchorId.values()) {
     if (!expandedTurnIds.has(fold.turnId)) {
@@ -1824,7 +1797,6 @@ export function deriveThreadFeedPresentation(
         unsettledTurnId,
         isWorking,
         isActiveTailGroup,
-        latestAssistantMessageAt,
       );
     }
   }
@@ -1871,7 +1843,6 @@ function appendPresentedFeedEntry(
   unsettledTurnId: TurnId | null,
   isWorking: boolean,
   activeTail: boolean,
-  latestAssistantMessageAt: string | null,
 ): void {
   if (entry.type !== "activity-group") {
     result.push(entry);
@@ -1882,24 +1853,12 @@ function appendPresentedFeedEntry(
     return;
   }
 
-  const awaitingAnswerIds = entry.activities.flatMap((activity) => {
-    const submittedAt = activity.workEntry.questionAnswerSubmittedAt;
-    return isWorking &&
-      unsettledTurnId !== null &&
-      activity.turnId === unsettledTurnId &&
-      submittedAt !== undefined &&
-      (latestAssistantMessageAt === null || submittedAt >= latestAssistantMessageAt)
-      ? [activity.id]
-      : [];
-  });
   let cached = presentedActivityGroupsCache.get(entry);
   if (
     !cached ||
     cached.unsettledTurnId !== unsettledTurnId ||
     cached.isWorking !== isWorking ||
     cached.activeTail !== activeTail ||
-    cached.awaitingAnswerIds.length !== awaitingAnswerIds.length ||
-    cached.awaitingAnswerIds.some((id, index) => id !== awaitingAnswerIds[index]) ||
     cached.rows.some(
       (row) =>
         (row.type === "work-toggle" && expandedWorkGroupIds.has(row.groupId) !== row.expanded) ||
@@ -1914,9 +1873,8 @@ function appendPresentedFeedEntry(
       unsettledTurnId,
       isWorking,
       activeTail,
-      awaitingAnswerIds,
     );
-    cached = { unsettledTurnId, isWorking, activeTail, awaitingAnswerIds, rows };
+    cached = { unsettledTurnId, isWorking, activeTail, rows };
     presentedActivityGroupsCache.set(entry, cached);
   }
   for (const row of cached.rows) {
@@ -1931,7 +1889,6 @@ function appendActivityGroupRows(
   unsettledTurnId: TurnId | null,
   isWorking: boolean,
   activeTail: boolean,
-  awaitingAnswerIds: ReadonlyArray<string>,
 ): void {
   const activities = omitSupersededLifecycleMarkers(
     entry.activities.filter(
@@ -1962,8 +1919,7 @@ function appendActivityGroupRows(
   };
   for (const activity of activities) {
     const spawn = activity.workEntry.agentSpawn;
-    const awaitingResume = awaitingAnswerIds.includes(activity.id);
-    if (activity.workEntry.tone !== "error" && spawn === undefined && !awaitingResume) {
+    if (activity.workEntry.tone !== "error" && spawn === undefined) {
       groupableRun.push(activity);
       continue;
     }
@@ -2218,8 +2174,7 @@ export function buildPendingUserInputAnswers(
 }
 
 export function buildThreadFeed(
-  thread: Pick<OrchestrationThread, "messages" | "activities"> &
-    Partial<Pick<OrchestrationThread, "latestTurn">>,
+  thread: Pick<OrchestrationThread, "messages" | "activities">,
   options?: {
     readonly loadedMessages?: ReadonlyArray<OrchestrationThread["messages"][number]>;
     readonly localMessages?: ReadonlyArray<OrchestrationThread["messages"][number]>;
@@ -2231,74 +2186,10 @@ export function buildThreadFeed(
     : loadedMessages;
   const oldestLoadedMessageCreatedAt =
     options?.loadedMessages !== undefined ? (loadedMessages[0]?.createdAt ?? null) : null;
-  const asyncAnswerMessages = new Map(
-    messages
-      .filter((message) => message.role === "user" && message.id.startsWith("async-answer:"))
-      .map((message) => [message.id as string, message]),
+  const activityEntries = getThreadFeedActivityEntries(thread.activities).filter(
+    (entry) =>
+      oldestLoadedMessageCreatedAt === null || entry.createdAt >= oldestLoadedMessageCreatedAt,
   );
-  const latestProviderActivityAt = new Map<TurnId, string>();
-  if (asyncAnswerMessages.size > 0) {
-    for (const activity of thread.activities) {
-      if (
-        activity.turnId &&
-        (activity.kind.startsWith("tool.") || activity.kind.startsWith("task."))
-      ) {
-        const previous = latestProviderActivityAt.get(activity.turnId);
-        if (!previous || activity.createdAt > previous)
-          latestProviderActivityAt.set(activity.turnId, activity.createdAt);
-      }
-    }
-  }
-  const activityEntries = getThreadFeedActivityEntries(thread.activities)
-    .map((entry) => {
-      const answer = entry.activity.workEntry.questionAnswer;
-      const message = answer
-        ? asyncAnswerMessages.get(`async-answer:${answer.requestId}`)
-        : undefined;
-      if (!message) return entry;
-      const responseTurnId = resolveAsyncAnswerTurnId(
-        message,
-        messages,
-        thread.activities,
-        thread.latestTurn,
-      );
-      if (!responseTurnId) return entry;
-      const resumedAt = latestProviderActivityAt.get(responseTurnId);
-      const submittedAt =
-        resumedAt && resumedAt > message.createdAt ? undefined : message.createdAt;
-      const cached = asyncAnswerEntriesCache.get(entry.activity);
-      if (
-        cached &&
-        cached.turnId === responseTurnId &&
-        cached.createdAt === message.createdAt &&
-        cached.activity.workEntry.questionAnswerSubmittedAt === submittedAt
-      )
-        return cached;
-      const workEntry = {
-        ...entry.activity.workEntry,
-        turnId: responseTurnId,
-        createdAt: message.createdAt,
-      };
-      if (submittedAt) workEntry.questionAnswerSubmittedAt = submittedAt;
-      else delete workEntry.questionAnswerSubmittedAt;
-      const relocated = {
-        ...entry,
-        turnId: responseTurnId,
-        createdAt: message.createdAt,
-        activity: {
-          ...entry.activity,
-          turnId: responseTurnId,
-          createdAt: message.createdAt,
-          workEntry,
-        },
-      };
-      asyncAnswerEntriesCache.set(entry.activity, relocated);
-      return relocated;
-    })
-    .filter(
-      (entry) =>
-        oldestLoadedMessageCreatedAt === null || entry.createdAt >= oldestLoadedMessageCreatedAt,
-    );
   const foldedAnswerMessageIds = new Set(
     activityEntries.flatMap((entry) =>
       entry.activity.workEntry.questionAnswer

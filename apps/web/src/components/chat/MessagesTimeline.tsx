@@ -2114,7 +2114,6 @@ function toolIconAcceptsTint(
 function LiveActivityRow({
   label,
   preview,
-  previewIsAnswer = false,
   iconName,
   toolIcon,
   failed = false,
@@ -2122,8 +2121,7 @@ function LiveActivityRow({
   shimmer = false,
 }: {
   label: string;
-  preview?: string | undefined;
-  previewIsAnswer?: boolean;
+  preview?: ReactNode;
   iconName?: WorkEntryIconName;
   toolIcon?: ToolActivityIcon | undefined;
   failed?: boolean;
@@ -2140,7 +2138,6 @@ function LiveActivityRow({
       <LiveActivityContent
         label={label}
         preview={preview}
-        previewIsAnswer={previewIsAnswer}
         iconName={iconName}
         toolIcon={toolIcon}
         failed={failed}
@@ -2152,7 +2149,6 @@ function LiveActivityRow({
           <LiveActivityContent
             label={label}
             preview={preview}
-            previewIsAnswer={previewIsAnswer}
             iconName={iconName}
             toolIcon={toolIcon}
             highlighted
@@ -2166,7 +2162,6 @@ function LiveActivityRow({
 function LiveActivityContent({
   label,
   preview,
-  previewIsAnswer = false,
   iconName,
   toolIcon,
   failed = false,
@@ -2175,8 +2170,7 @@ function LiveActivityContent({
   highlighted = false,
 }: {
   label: string;
-  preview?: string | undefined;
-  previewIsAnswer?: boolean;
+  preview?: ReactNode;
   iconName: WorkEntryIconName | undefined;
   toolIcon?: ToolActivityIcon | undefined;
   failed?: boolean;
@@ -2220,16 +2214,7 @@ function LiveActivityContent({
       >
         {label}
       </span>
-      {preview ? (
-        <span
-          className={cn(
-            "min-w-0 truncate",
-            previewIsAnswer ? "text-foreground" : "text-muted-foreground",
-          )}
-        >
-          {preview}
-        </span>
-      ) : null}
+      {preview ? <span className="min-w-0 truncate text-muted-foreground">{preview}</span> : null}
       {showTrailingFailureMark ? (
         <XIcon aria-hidden className={cn("size-3 shrink-0", failedToolIconClassName)} />
       ) : null}
@@ -2252,11 +2237,18 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
     >
       <LiveActivityRow
         label={label}
-        previewIsAnswer={
-          row.entry.questionAnswer ? hasQuestionAnswer(row.entry.questionAnswer) : false
-        }
         preview={
-          row.entry.questionAnswer ? getQuestionAnswerPreview(row.entry.questionAnswer) : undefined
+          row.entry.questionAnswer ? (
+            <span
+              className={
+                !row.expanded && hasQuestionAnswer(row.entry.questionAnswer)
+                  ? "text-foreground"
+                  : undefined
+              }
+            >
+              {getQuestionAnswerPreview(row.entry.questionAnswer)}
+            </span>
+          ) : undefined
         }
         iconName={workEntryIconName(row.entry)}
         toolIcon={row.entry.toolIcon ?? row.entry.toolSource?.icon}
@@ -3465,7 +3457,9 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
                 <span
                   className={cn(
                     "min-w-0 truncate",
-                    workEntry.questionAnswer && hasQuestionAnswer(workEntry.questionAnswer)
+                    !expanded &&
+                      workEntry.questionAnswer &&
+                      hasQuestionAnswer(workEntry.questionAnswer)
                       ? "text-foreground"
                       : "text-muted-foreground",
                   )}
@@ -3561,7 +3555,7 @@ function QuestionAnswerHistory({
             </p>
           ) : null}
           {getQuestionAnswerText(answer.answers[questionId]) ? (
-            <p className="whitespace-pre-wrap text-sm">
+            <p className="ms-3 whitespace-pre-wrap text-sm text-muted-foreground">
               {getQuestionAnswerText(answer.answers[questionId])}
             </p>
           ) : null}

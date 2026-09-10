@@ -54,7 +54,7 @@ export function QuestionAnswerHistory(props: {
             </Text>
           ) : null}
           {getQuestionAnswerText(props.answer.answers[questionId]) ? (
-            <Text className="text-sm text-foreground">
+            <Text className="ml-3 text-sm text-foreground-muted">
               {getQuestionAnswerText(props.answer.answers[questionId])}
             </Text>
           ) : null}
