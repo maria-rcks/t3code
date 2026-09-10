@@ -480,10 +480,6 @@ function RightPanelEmptyState(props: {
     );
   };
 
-  const cardShellClass =
-    "rounded-lg border border-border/80 bg-card dark:border-transparent dark:shadow-none dark:inset-ring-1 dark:inset-ring-white/5";
-  const highlightedCardClass = "bg-accent/60 dark:inset-ring-white/20";
-
   return (
     <div
       ref={focusOnMount}
@@ -494,24 +490,19 @@ function RightPanelEmptyState(props: {
       className={cn(
         "flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 pt-6 outline-none",
         // The panel topbar sits above this container; matching bottom padding
-        // keeps the cards centered against the full panel, not the leftover.
+        // keeps the list centered against the full panel, not the leftover.
         "pb-[calc(var(--workspace-topbar-height)+--spacing(6))]",
       )}
     >
-      <div className="relative w-full max-w-lg">
-        <div className="absolute inset-x-0 bottom-full mb-5 text-center">
-          <h3 className="font-medium text-foreground text-sm">Open a surface</h3>
-          <p className="mt-1 text-muted-foreground text-xs">
-            Choose what to show in the right panel.
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
+      <div className="w-full max-w-xs">
+        <h3 className="mb-3 text-center font-medium text-foreground text-sm">Open a surface</h3>
+        <div className="flex flex-col gap-0.5">
           {actions.map((action) =>
             action.available ? (
-              // The card is itself a button, so the profile chooser sits beside
+              // The row is itself a button, so the profile chooser sits beside
               // it in a wrapper rather than inside it. Hover lives on the
-              // wrapper: the chooser overlays the card, and a pointer moving
-              // onto it must not read as leaving the card.
+              // wrapper: the chooser overlays the row, and a pointer moving
+              // onto it must not read as leaving the row.
               <div
                 key={action.label}
                 className="group relative"
@@ -526,25 +517,16 @@ function RightPanelEmptyState(props: {
                   type="button"
                   onClick={action.onClick}
                   className={cn(
-                    // Full height: the wrapper is the grid item that stretches
-                    // to the row, so the button must fill it to stay level with
-                    // its neighbour and keep the chooser anchored inside.
-                    "relative flex h-full w-full cursor-pointer flex-col items-start p-4 text-left transition group-hover:border-border group-hover:bg-accent/60",
-                    cardShellClass,
-                    isHighlighted(action) && highlightedCardClass,
+                    "flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-[var(--control-radius)] px-2.5 text-left text-sm transition-colors group-hover:bg-accent/60",
+                    isHighlighted(action) && "bg-accent/60",
                   )}
                 >
-                  <Kbd className="absolute top-3 right-3">{action.shortcut}</Kbd>
-                  <span className="flex items-center gap-2 pe-8">
-                    {actionIcon(action)}
-                    <span className="font-medium text-sm">{action.label}</span>
-                  </span>
-                  <span className="mt-1.5 text-muted-foreground text-xs leading-relaxed">
-                    {action.description}
-                  </span>
+                  {actionIcon(action, "size-4")}
+                  <span className="min-w-0 flex-1 truncate">{action.label}</span>
+                  <Kbd>{action.shortcut}</Kbd>
                 </button>
                 {/*
-                  Same choice the tab bar's "+" menu offers: the card opens the
+                  Same choice the tab bar's "+" menu offers: the row opens the
                   default profile, the chevron picks another. Only worth showing
                   once there is something to choose between.
                 */}
@@ -554,7 +536,7 @@ function RightPanelEmptyState(props: {
                       render={
                         <Button
                           aria-label="Open browser in a profile"
-                          className="absolute right-3 bottom-3 [--control-icon-color:currentColor]"
+                          className="absolute top-1/2 right-8 -translate-y-1/2 [--control-icon-color:currentColor]"
                           size="icon-xs"
                           variant="ghost-muted"
                         />
@@ -583,17 +565,11 @@ function RightPanelEmptyState(props: {
             ) : (
               <div
                 key={action.label}
-                className={cn(
-                  "relative flex w-full flex-col items-start p-4 opacity-40",
-                  cardShellClass,
-                )}
+                className="flex h-8 w-full cursor-default items-center gap-2.5 rounded-[var(--control-radius)] px-2.5 text-left text-sm opacity-50"
               >
-                <Kbd className="absolute top-3 right-3">{action.shortcut}</Kbd>
-                <span className="flex items-center gap-2 pe-8">
-                  {actionIcon(action)}
-                  <span className="font-medium text-sm">{action.label}</span>
-                </span>
-                <span className="mt-1.5 text-muted-foreground text-xs leading-relaxed">
+                {actionIcon(action, "size-4")}
+                <span className="min-w-0 flex-1 truncate">{action.label}</span>
+                <span className="ml-auto truncate text-muted-foreground text-xs">
                   {action.disabledReason}
                 </span>
               </div>

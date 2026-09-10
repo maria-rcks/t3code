@@ -161,7 +161,7 @@ export default function ProjectScriptsControl({
               render={
                 <Button
                   size="xs"
-                  variant="outline"
+                  variant="ghost-muted"
                   className="w-7 px-0 sm:w-6 @3xl/header-actions:w-auto! @3xl/header-actions:px-[calc(--spacing(2)-1px)]"
                   aria-label={`Run ${primaryScript.name}`}
                   // The tooltip wrapper replaces data-slot="button", so themed
@@ -185,7 +185,7 @@ export default function ProjectScriptsControl({
             onOpenChange={(open) => setActionsMenuOpen({ scripts: open, imports: false })}
           >
             <MenuTrigger
-              render={<Button size="icon-xs" variant="outline" aria-label="Script actions" />}
+              render={<Button size="icon-xs" variant="ghost-muted" aria-label="Script actions" />}
             >
               <ChevronDownIcon className="size-4" />
             </MenuTrigger>
@@ -247,7 +247,9 @@ export default function ProjectScriptsControl({
           open={actionsMenuOpen.imports}
           onOpenChange={(open) => setActionsMenuOpen({ scripts: false, imports: open })}
         >
-          <MenuTrigger render={<Button size="xs" variant="outline" aria-label="Project actions" />}>
+          <MenuTrigger
+            render={<Button size="xs" variant="ghost-muted" aria-label="Project actions" />}
+          >
             <PlusIcon className="size-3.5" />
             <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
               Add action
@@ -268,7 +270,7 @@ export default function ProjectScriptsControl({
             render={
               <Button
                 size="xs"
-                variant="outline"
+                variant="ghost-muted"
                 className="w-7 px-0 sm:w-6 @3xl/header-actions:w-auto! @3xl/header-actions:px-[calc(--spacing(2)-1px)]"
                 aria-label="Add action"
                 // The tooltip wrapper replaces data-slot="button", so themed

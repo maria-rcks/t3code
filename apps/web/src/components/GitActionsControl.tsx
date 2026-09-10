@@ -1653,7 +1653,7 @@ export default function GitActionsControl({
                     aria-disabled="true"
                     className="cursor-not-allowed rounded-e-none border-e-0 ps-[8.5px] opacity-64 before:rounded-e-none"
                     size="xs"
-                    variant="outline"
+                    variant="ghost-muted"
                   />
                 }
               >
@@ -1671,7 +1671,7 @@ export default function GitActionsControl({
             </Popover>
           ) : (
             <Button
-              variant="outline"
+              variant="ghost-muted"
               size="xs"
               className="ps-[8.5px]"
               disabled={isGitActionRunning || quickAction.disabled}
@@ -1692,7 +1692,9 @@ export default function GitActionsControl({
             }}
           >
             <MenuTrigger
-              render={<Button aria-label="Git action options" size="icon-xs" variant="outline" />}
+              render={
+                <Button aria-label="Git action options" size="icon-xs" variant="ghost-muted" />
+              }
               disabled={isGitActionRunning}
             >
               <ChevronDownIcon aria-hidden="true" className="size-4" />

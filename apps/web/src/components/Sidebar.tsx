@@ -753,14 +753,11 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
         onClick={handleActivate}
         onKeyDown={handleKeyDown}
       >
-        <div className="relative z-10 px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]">
+        <div className="relative z-10 h-[3.25rem] px-[var(--sidebar-row-content-inset)] py-1.5">
           <div className="flex h-5 min-w-0 items-center gap-1.5">
             <SquarePenIcon aria-hidden className={draftPenClassName} />
-            {props.project ? (
-              <ProjectFavicon project={props.project} className="size-4 shrink-0" />
-            ) : null}
-            <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
-              {props.projectDisplayName}
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground/90">
+              {preview}
             </span>
             <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end">
               <Tooltip>
@@ -780,7 +777,12 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
               </Tooltip>
             </span>
           </div>
-          <div className="mt-0.5 truncate text-sm font-medium text-foreground/90">{preview}</div>
+          <div className="flex h-5 min-w-0 items-center gap-1.5 text-secondary-label text-xs">
+            {props.project ? (
+              <ProjectFavicon project={props.project} className="size-3.5 shrink-0" />
+            ) : null}
+            <span className="min-w-0 truncate">{props.projectDisplayName}</span>
+          </div>
         </div>
       </div>
     </li>
@@ -1730,8 +1732,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       {...sortableRootProps}
       {...(fileDropHandlers ?? {})}
       className={cn(
-        // Matches the h-[4.5rem] content box; the py-0.5 padding is added on top.
-        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_72px]",
+        // Matches the h-[3.25rem] content box; the py-0.5 padding is added on top.
+        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_52px]",
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -1752,24 +1754,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             />
           }
         >
-          <div className="relative z-10 h-[4.5rem] px-[var(--sidebar-row-content-inset)] py-1.5">
+          <div className="relative z-10 h-[3.25rem] px-[var(--sidebar-row-content-inset)] py-1.5">
             <div className="flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
-              {props.project ? (
-                <ProjectFavicon project={props.project} className="size-4 shrink-0" />
-              ) : null}
-              {props.projectDisplayName ? (
-                <span
-                  className={cn(
-                    "min-w-0 flex-1 truncate text-secondary-label text-xs",
-                    shouldRecede ? "font-normal" : "font-medium",
-                  )}
-                >
-                  {props.projectDisplayName}
+              {title}
+              {isRegeneratingTitle ? (
+                <span role="status" className="sr-only">
+                  Regenerating title
                 </span>
-              ) : (
-                <span className="flex-1" />
-              )}
+              ) : null}
               {pinIndicator}
               {/* The visible state owns this slot's width: status at rest,
                   actions on hover/keyboard focus or while the popover is open. Keeping
@@ -1899,15 +1892,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 </span>
               )}
             </div>
-            <div className="mt-0.5 flex min-w-0">
-              {title}
-              {isRegeneratingTitle ? (
-                <span role="status" className="sr-only">
-                  Regenerating title
-                </span>
+            <div className="flex h-5 min-w-0 items-center gap-1.5 text-secondary-label text-xs">
+              {props.project ? (
+                <ProjectFavicon project={props.project} className="size-3.5 shrink-0" />
               ) : null}
-            </div>
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
+              {props.projectDisplayName ? (
+                <span className="max-w-[45%] shrink-0 truncate">{props.projectDisplayName}</span>
+              ) : null}
               {/* Always the branch. The plan step used to take this slot while
                   working, but it truncated to a half-sentence and dropped the
                   branch, so the row lost its most stable identifier. */}
@@ -4332,7 +4323,7 @@ export default function Sidebar() {
           // header and would otherwise paint across the search row's outline.
           <SidebarGroup className="relative z-[1] gap-1 p-[var(--sidebar-content-inset)]">
             <div className="flex items-center gap-1">
-              <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
+              <div className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-[var(--control-radius)] px-2 py-1 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
                 <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
                 <Input
                   ref={threadSearchInputRef}

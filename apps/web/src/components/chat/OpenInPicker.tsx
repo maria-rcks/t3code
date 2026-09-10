@@ -271,7 +271,7 @@ export const OpenInPicker = memo(function OpenInPicker({
         aria-label={compact ? "Open file in preferred editor" : undefined}
         className="ps-[8.5px]"
         size="xs"
-        variant="outline"
+        variant="ghost-muted"
         disabled={!preferredEditor || !openInCwd || remote.mode === "remote-unavailable"}
         onClick={() => openInEditor(preferredEditor)}
       >
@@ -294,7 +294,7 @@ export const OpenInPicker = memo(function OpenInPicker({
       <GroupSeparator {...(!compact ? { className: "hidden @3xl/header-actions:block" } : {})} />
       <Menu>
         <MenuTrigger
-          render={<Button aria-label="Choose editor" size="icon-xs" variant="outline" />}
+          render={<Button aria-label="Choose editor" size="icon-xs" variant="ghost-muted" />}
         >
           <ChevronDownIcon aria-hidden="true" className="size-4" />
         </MenuTrigger>

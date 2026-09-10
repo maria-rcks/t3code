@@ -104,7 +104,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --glass-opacity: 100%;
   --glass-saturation: 1.14;
   --desktop-window-right-resize-inset: 0px;
-  --workspace-topbar-height: 44px;
+  --workspace-topbar-height: 40px;
   --workspace-controls-top: 0px;
   --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
   --workspace-controls-right: calc(env(safe-area-inset-right) + 0.75rem);
@@ -123,7 +123,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 }
 
 .wco {
-  --workspace-topbar-height: env(titlebar-area-height, 44px);
+  --workspace-topbar-height: env(titlebar-area-height, 40px);
   --workspace-controls-top: env(titlebar-area-y, 0px);
   --workspace-controls-left: calc(env(titlebar-area-x, 0px) + 0.75rem);
   --workspace-controls-right: calc(
@@ -138,6 +138,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
    the variables and Settings -> Appearance can override them at runtime. The
    default stacks are mirrored in `appearanceFonts.ts`. */
 @theme {
+  /* Interface copy is 13px, the density most editors settle on; --text-base stays for prose. */
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono:
     ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
