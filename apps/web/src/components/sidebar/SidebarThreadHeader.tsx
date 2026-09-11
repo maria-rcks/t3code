@@ -176,7 +176,7 @@ export function SidebarHeaderIconButton({
   tooltip?: ReactNode;
   className?: string | undefined;
   children?: ReactNode;
-} & Omit<ComponentProps<typeof SidebarMenuButton>, "children" | "className">) {
+} & Omit<ComponentProps<typeof SidebarMenuButton>, "children" | "className" | "tooltip">) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -200,7 +200,7 @@ export function SidebarHeaderIconButton({
           className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
         />
       </TooltipTrigger>
-      <TooltipPopup side="bottom">{tooltip}</TooltipPopup>
+      <TooltipPopup side="right">{tooltip}</TooltipPopup>
     </Tooltip>
   );
 }

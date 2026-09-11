@@ -49,7 +49,6 @@ import {
   PinIcon,
   PinOffIcon,
   PlusIcon,
-  SearchIcon,
   SettingsIcon,
   SquarePenIcon,
   TerminalIcon,
@@ -214,7 +213,6 @@ import {
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
 import {
   Combobox,
   ComboboxEmpty,
@@ -225,7 +223,7 @@ import {
   ComboboxTrigger,
   useComboboxFilter,
 } from "./ui/combobox";
-import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./ui/sidebar";
+import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
@@ -2443,10 +2441,10 @@ export default function Sidebar() {
     },
     [isMobile, router, setOpenMobile],
   );
-  // Safari can send a click after Ctrl+click opens settings. Ignore that one
-  // selection, then clear the guard when the picker opens again.
   // Anchor for the scope popup: the header search field, not its icon trigger.
   const headerSearchRef = useRef<HTMLDivElement | null>(null);
+  // Safari can send a click after Ctrl+click opens settings. Ignore that one
+  // selection, then clear the guard when the picker opens again.
   const suppressNextScopeChangeRef = useRef(false);
   const highlightedProjectScopeKeyRef = useRef<string | null>(null);
   const handleProjectSettings = useCallback(
@@ -4363,9 +4361,10 @@ export default function Sidebar() {
                     align="start"
                     // Anchored to the search field, not the 28px trigger: the
                     // popup opens under the field, is at least as wide as it,
-                    // and grows to fit project names.
+                    // and grows to fit project names up to a cap, past which
+                    // the rows truncate.
                     anchor={headerSearchRef}
-                    className="overflow-hidden"
+                    className="max-w-[min(18rem,var(--available-width))] overflow-hidden"
                   >
                     <ComboboxSearchInput
                       aria-label="Search projects"
