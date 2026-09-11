@@ -426,12 +426,14 @@ const make = Effect.gen(function* () {
   ) {
     const queued = turnsAfterCompaction.get(threadId) ?? [];
     while (queued.length > 0 && turnsAfterCompaction.get(threadId) === queued) {
-      // In flight from here on: a cancellation reports it when the replay runs, not from the queue.
-      const event = queued.shift()!;
+      const event = queued[0]!;
       const turnStart = yield* projectionSnapshotQuery.getTurnStartMessage({
         threadId,
         messageId: event.payload.messageId,
       });
+      if (turnsAfterCompaction.get(threadId) !== queued) return;
+      // In flight from here on: a cancellation reports it when the replay runs, not from the queue.
+      queued.shift();
       if (Option.isNone(turnStart)) continue;
       // Reissue the durable request after restoration clears compaction's
       // pending slot. Reusing the message id preserves a single user bubble.
