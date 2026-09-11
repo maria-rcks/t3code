@@ -4,7 +4,7 @@
  * Search owns the row's text and spans it. Project scope collapses to an icon
  * that sits with new-project and new-thread as a segmented group at the end.
  * The scope icon swaps to the project favicon while a project is selected,
- * so narrowing to a project is never invisible state.
+ * so the header still names the scope after the row that showed it is gone.
  *
  * The scope picker itself is passed in: its combobox state lives with the rest
  * of the sidebar's scope logic. `searchFieldRef` lands on the search field so
@@ -175,7 +175,10 @@ export function SidebarHeaderIconButton({
   tooltip?: ReactNode;
   className?: string | undefined;
   children?: ReactNode;
-} & Omit<ComponentProps<typeof SidebarMenuButton>, "children" | "className" | "tooltip">) {
+} & Omit<
+  ComponentProps<typeof SidebarMenuButton>,
+  "children" | "className" | "tooltip" | "isActive"
+>) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -199,7 +202,7 @@ export function SidebarHeaderIconButton({
           className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
         />
       </TooltipTrigger>
-      <TooltipPopup side="right">{tooltip}</TooltipPopup>
+      <TooltipPopup side="top">{tooltip}</TooltipPopup>
     </Tooltip>
   );
 }
