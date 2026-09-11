@@ -54,6 +54,7 @@ function group(
     allRemoteMembersAreDesktopLocal: false,
     allRemoteMembersAreWsl: false,
     remoteEnvironmentLabels: [],
+    environmentLabels: ["Local"],
   };
 }
 

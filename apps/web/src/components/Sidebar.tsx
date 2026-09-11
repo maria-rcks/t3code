@@ -104,6 +104,7 @@ import {
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
 import {
   buildSidebarProjectSnapshots,
+  projectGroupsSpanEnvironments,
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
@@ -141,6 +142,7 @@ import type { SidebarThreadSummary } from "../types";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { cn } from "~/lib/utils";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
+import { ProjectEnvironmentLabel, resolveProjectGroupMachine } from "./ProjectEnvironmentLabel";
 import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
 import {
   animateSidebarLayoutChanges,
@@ -2333,12 +2335,20 @@ export default function Sidebar() {
   // while the popup search filters the same collection.
   const projectScopeItems = useMemo(
     () => [
-      { value: "all", label: "All projects" },
+      { value: "all", label: "All projects", environmentLabels: [] as readonly string[] },
       ...projectGroups.map((project) => ({
         value: project.projectKey,
         label: project.displayName,
+        environmentLabels: project.environmentLabels,
       })),
     ],
+    [projectGroups],
+  );
+  // Same-named projects on two machines are only told apart by where they
+  // live, so rows carry their environment once the catalog spans more than
+  // one; a single-machine catalog stays as it was.
+  const showProjectEnvironments = useMemo(
+    () => projectGroupsSpanEnvironments(projectGroups),
     [projectGroups],
   );
   const projectGroupByScopeKey = useMemo(
@@ -2370,9 +2380,19 @@ export default function Sidebar() {
         activeScopeKey: projectScopeKey,
         query: projectScopeMenuState.query,
         matches: (item, query) =>
-          projectScopeFilter.contains(item, query, (candidate) => candidate.label),
+          projectScopeFilter.contains(item, query, (candidate) => candidate.label) ||
+          (showProjectEnvironments &&
+            item.environmentLabels.some((label) =>
+              projectScopeFilter.contains(label, query, (candidate) => candidate),
+            )),
       }),
-    [projectScopeFilter, projectScopeItems, projectScopeKey, projectScopeMenuState.query],
+    [
+      projectScopeFilter,
+      projectScopeItems,
+      projectScopeKey,
+      projectScopeMenuState.query,
+      showProjectEnvironments,
+    ],
   );
   const scopedProjectGroup = useMemo(
     () =>
@@ -4449,11 +4469,29 @@ export default function Sidebar() {
                     <span className="min-w-0 flex-1 truncate">
                       {scopedProjectGroup?.displayName ?? "All projects"}
                     </span>
+                    {scopedProjectGroup && showProjectEnvironments ? (
+                      <ProjectEnvironmentLabel
+                        labels={scopedProjectGroup.environmentLabels}
+                        machine={resolveProjectGroupMachine({
+                          group: scopedProjectGroup,
+                          primaryEnvironmentId,
+                          machineByEnvironmentId: environmentMachineById,
+                        })}
+                      />
+                    ) : null}
                     <ChevronDownIcon className="-mr-px size-4 shrink-0" />
                   </ComboboxTrigger>
                   <ComboboxPopup
                     align="start"
-                    className="w-(--anchor-width) min-w-0 overflow-hidden"
+                    // Anchor-wide by default; grows past the trigger only when
+                    // rows carry environment labels, up to 20rem, so a project
+                    // name and where it lives both stay readable.
+                    className={cn(
+                      "min-w-0 overflow-hidden",
+                      showProjectEnvironments
+                        ? "w-max min-w-(--anchor-width) max-w-80"
+                        : "w-(--anchor-width)",
+                    )}
                   >
                     <ComboboxSearchInput
                       aria-label="Search projects"
@@ -4504,6 +4542,16 @@ export default function Sidebar() {
                               <FolderIcon className="size-4 shrink-0" />
                             )}
                             <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
+                            {project && showProjectEnvironments ? (
+                              <ProjectEnvironmentLabel
+                                labels={project.environmentLabels}
+                                machine={resolveProjectGroupMachine({
+                                  group: project,
+                                  primaryEnvironmentId,
+                                  machineByEnvironmentId: environmentMachineById,
+                                })}
+                              />
+                            ) : null}
                             {project ? (
                               <Button
                                 size="icon-xs"

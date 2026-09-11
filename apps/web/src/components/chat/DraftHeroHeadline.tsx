@@ -1,6 +1,6 @@
 import type { DraftId } from "~/composerDraftStore";
 import { useComposerDraftStore } from "~/composerDraftStore";
-import type { ScopedProjectRef } from "@t3tools/contracts";
+import { resolveEnvironmentMachineKind, type ScopedProjectRef } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { FolderPlusIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
@@ -12,9 +12,11 @@ import { selectProjectGroupingSettings } from "~/logicalProject";
 import {
   buildSidebarProjectPickerEntries,
   buildSidebarProjectSnapshots,
+  projectGroupsSpanEnvironments,
 } from "~/sidebarProjectGrouping";
 import { useProjects, useThreadShells } from "~/state/entities";
 import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
+import { ProjectEnvironmentLabel, resolveProjectGroupMachine } from "../ProjectEnvironmentLabel";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { sortLogicalProjectsForSidebar } from "../Sidebar.logic";
 import {
@@ -82,6 +84,26 @@ export function DraftHeroHeadline({
       projects,
       threads,
     ],
+  );
+  // Same-named projects on two machines are only told apart by where they
+  // live, so rows carry their environment once the catalog spans more than
+  // one; a single-machine catalog stays as it was.
+  const showProjectEnvironments = useMemo(
+    () => projectGroupsSpanEnvironments(projectGroups),
+    [projectGroups],
+  );
+  const environmentMachineById = useMemo(
+    () =>
+      new Map(
+        environments.map(
+          (environment) =>
+            [
+              environment.environmentId,
+              resolveEnvironmentMachineKind(environment.serverConfig),
+            ] as const,
+        ),
+      ),
+    [environments],
   );
   const projectPickerEntries = useMemo(
     () =>
@@ -167,6 +189,10 @@ export function DraftHeroHeadline({
           }}
         >
           {projectPickerEntries.map(({ group }) => {
+            const environmentLabel =
+              showProjectEnvironments && group.environmentLabels.length > 0
+                ? group.environmentLabels.join(" · ")
+                : null;
             return (
               <MenuRadioItem
                 key={group.projectKey}
@@ -180,9 +206,21 @@ export function DraftHeroHeadline({
                     {group.displayName}
                   </TooltipTrigger>
                   <TooltipPopup side="top" className="max-w-80">
-                    {group.displayName}
+                    {environmentLabel
+                      ? `${group.displayName} · ${environmentLabel}`
+                      : group.displayName}
                   </TooltipPopup>
                 </Tooltip>
+                {environmentLabel ? (
+                  <ProjectEnvironmentLabel
+                    labels={group.environmentLabels}
+                    machine={resolveProjectGroupMachine({
+                      group,
+                      primaryEnvironmentId,
+                      machineByEnvironmentId: environmentMachineById,
+                    })}
+                  />
+                ) : null}
               </MenuRadioItem>
             );
           })}

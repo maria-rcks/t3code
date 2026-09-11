@@ -12,6 +12,7 @@ import {
   buildPhysicalToLogicalProjectKeyMap,
   buildSidebarProjectPickerEntries,
   buildSidebarProjectSnapshots,
+  projectGroupsSpanEnvironments,
 } from "./sidebarProjectGrouping";
 import { orderItemsByPreferredIds } from "./components/Sidebar.logic";
 import { legacyProjectCwdPreferenceKey } from "./uiStateStore";
@@ -79,6 +80,43 @@ describe("environment grouping", () => {
     }).length;
 
     expect(projectGroupCount).toBe(1);
+  });
+
+  it("labels where each project group lives once the catalog spans environments", () => {
+    const grouped = makeProject({ repositoryIdentity });
+    const groupedRemote = makeProject({
+      id: ProjectId.make("project-remote"),
+      environmentId: remoteEnvironmentId,
+      repositoryIdentity,
+    });
+    const separateLocal = makeProject({
+      id: ProjectId.make("workbench-local"),
+      title: "workbench",
+      workspaceRoot: "/tmp/workbench",
+    });
+    const separateRemote = makeProject({
+      id: ProjectId.make("workbench-remote"),
+      environmentId: remoteEnvironmentId,
+      title: "workbench",
+      workspaceRoot: "/tmp/workbench",
+    });
+    const build = (projects: Project[]) =>
+      buildSidebarProjectSnapshots({
+        projects,
+        settings: defaultGroupingSettings,
+        primaryEnvironmentId,
+        resolveEnvironmentLabel: (environmentId) =>
+          environmentId === remoteEnvironmentId ? "Mac mini" : "Primary",
+      });
+
+    const groups = build([grouped, groupedRemote, separateLocal, separateRemote]);
+    expect(groups.map((group) => group.environmentLabels)).toEqual([
+      ["Local", "Mac mini"],
+      ["Local"],
+      ["Mac mini"],
+    ]);
+    expect(projectGroupsSpanEnvironments(groups)).toBe(true);
+    expect(projectGroupsSpanEnvironments(build([grouped, separateLocal]))).toBe(false);
   });
 
   it("keeps projects without repository identity physically scoped", () => {

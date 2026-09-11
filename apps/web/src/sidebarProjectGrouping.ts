@@ -24,6 +24,24 @@ export interface SidebarProjectSnapshot extends Project {
   memberProjects: readonly SidebarProjectGroupMember[];
   memberProjectRefs: readonly ScopedProjectRef[];
   remoteEnvironmentLabels: readonly string[];
+  // Where the group lives, in member order: "Local" for the primary
+  // environment, the saved label for every other one. Project pickers show
+  // this when the catalog spans environments so two projects with the same
+  // name stay apart; see projectGroupsSpanEnvironments.
+  environmentLabels: readonly string[];
+}
+
+export function projectGroupsSpanEnvironments(
+  groups: ReadonlyArray<Pick<SidebarProjectSnapshot, "memberProjects">>,
+): boolean {
+  const environmentIds = new Set<EnvironmentId>();
+  for (const group of groups) {
+    for (const member of group.memberProjects) {
+      environmentIds.add(member.environmentId);
+      if (environmentIds.size > 1) return true;
+    }
+  }
+  return false;
 }
 
 export interface SidebarProjectPickerEntry {
@@ -96,6 +114,15 @@ export function buildSidebarProjectSnapshots(input: {
     const remoteEnvironmentLabels = remoteMembers
       .flatMap((member) => (member.environmentLabel ? [member.environmentLabel] : []))
       .filter((label, index, labels) => labels.indexOf(label) === index);
+    const environmentLabels = members
+      .flatMap((member) =>
+        member.environmentId === input.primaryEnvironmentId
+          ? ["Local"]
+          : member.environmentLabel
+            ? [member.environmentLabel]
+            : [],
+      )
+      .filter((label, index, labels) => labels.indexOf(label) === index);
     const isDesktopLocal = input.isDesktopLocalEnvironment ?? (() => false);
     const isWsl = input.isWslEnvironment ?? (() => false);
     const allRemoteMembersAreDesktopLocal =
@@ -116,6 +143,7 @@ export function buildSidebarProjectSnapshots(input: {
       memberProjects: members,
       memberProjectRefs: group.memberProjectRefs,
       remoteEnvironmentLabels,
+      environmentLabels,
     };
   });
 }
