@@ -170,8 +170,11 @@ function makeHarness(config?: {
   readonly instanceId?: ProviderInstanceId;
   readonly scopedLimitNames?: ClaudeAdapterLiveOptions["scopedLimitNames"];
   readonly environment?: ClaudeAdapterLiveOptions["environment"];
+  readonly getSessionMessages?: ClaudeAdapterLiveOptions["getSessionMessages"];
+  readonly forkSession?: ClaudeAdapterLiveOptions["forkSession"];
 }) {
   const query = new FakeClaudeQuery();
+  const queries = [query];
   let createInput:
     | {
         readonly prompt: AsyncIterable<SDKUserMessage>;
@@ -184,9 +187,12 @@ function makeHarness(config?: {
     ...(config?.instanceId ? { instanceId: config.instanceId } : {}),
     ...(config?.scopedLimitNames ? { scopedLimitNames: config.scopedLimitNames } : {}),
     modelCatalog: Effect.succeed(SYNTHETIC_CLAUDE_MODEL_CATALOG),
+    ...(config?.getSessionMessages ? { getSessionMessages: config.getSessionMessages } : {}),
+    ...(config?.forkSession ? { forkSession: config.forkSession } : {}),
     createQuery: (input) => {
+      if (createInput && config?.getSessionMessages) queries.push(new FakeClaudeQuery());
       createInput = input;
-      return query;
+      return queries.at(-1)!;
     },
     ...(config?.nativeEventLogger
       ? {
@@ -6257,9 +6263,65 @@ describe("ClaudeAdapterLive", () => {
   });
 
   it.effect(
-    "supports rollbackThread by trimming in-memory turns and preserving earlier turns",
+    "forks Claude history at the retained turn and resets to a fresh session at zero",
     () => {
-      const harness = makeHarness();
+      const forkCalls: Array<Parameters<NonNullable<ClaudeAdapterLiveOptions["forkSession"]>>> = [];
+      const harness = makeHarness({
+        forkSession: async (...args) => {
+          forkCalls.push(args);
+          return { sessionId: "550e8400-e29b-41d4-a716-446655440020" };
+        },
+        getSessionMessages: async () => [
+          {
+            type: "user",
+            uuid: "user-1",
+            session_id: "550e8400-e29b-41d4-a716-446655440010",
+            parent_tool_use_id: null,
+            parent_agent_id: null,
+            message: { content: "first" },
+          },
+          {
+            type: "assistant",
+            uuid: "assistant-1",
+            session_id: "550e8400-e29b-41d4-a716-446655440010",
+            parent_tool_use_id: null,
+            parent_agent_id: null,
+            message: { content: [] },
+          },
+          {
+            type: "user",
+            uuid: "tool-result-1",
+            session_id: "550e8400-e29b-41d4-a716-446655440010",
+            parent_tool_use_id: null,
+            parent_agent_id: null,
+            message: { content: [{ type: "tool_result" }] },
+          },
+          {
+            type: "assistant",
+            uuid: "assistant-1-final",
+            session_id: "550e8400-e29b-41d4-a716-446655440010",
+            parent_tool_use_id: null,
+            parent_agent_id: null,
+            message: { content: [] },
+          },
+          {
+            type: "user",
+            uuid: "user-2",
+            session_id: "550e8400-e29b-41d4-a716-446655440010",
+            parent_tool_use_id: null,
+            parent_agent_id: null,
+            message: { content: "second" },
+          },
+          {
+            type: "assistant",
+            uuid: "assistant-2",
+            session_id: "550e8400-e29b-41d4-a716-446655440010",
+            parent_tool_use_id: null,
+            parent_agent_id: null,
+            message: { content: [] },
+          },
+        ],
+      });
       return Effect.gen(function* () {
         const adapter = yield* ClaudeAdapter;
 
@@ -6285,7 +6347,7 @@ describe("ClaudeAdapterLive", () => {
           subtype: "success",
           is_error: false,
           errors: [],
-          session_id: "sdk-session-rollback",
+          session_id: "550e8400-e29b-41d4-a716-446655440010",
           uuid: "result-first",
         } as unknown as SDKMessage);
 
@@ -6311,7 +6373,7 @@ describe("ClaudeAdapterLive", () => {
           subtype: "success",
           is_error: false,
           errors: [],
-          session_id: "sdk-session-rollback",
+          session_id: "550e8400-e29b-41d4-a716-446655440010",
           uuid: "result-second",
         } as unknown as SDKMessage);
 
@@ -6331,6 +6393,21 @@ describe("ClaudeAdapterLive", () => {
         const threadAfterRollback = yield* adapter.readThread(session.threadId);
         assert.equal(threadAfterRollback.turns.length, 1);
         assert.equal(threadAfterRollback.turns[0]?.id, firstTurn.turnId);
+        assert.equal(harness.query.closeCalls, 1);
+        const forkOptions = harness.getLastCreateQueryInput()?.options;
+        assert.deepEqual(forkCalls, [
+          ["550e8400-e29b-41d4-a716-446655440010", { upToMessageId: "assistant-1-final" }],
+        ]);
+        assert.equal(forkOptions?.resume, "550e8400-e29b-41d4-a716-446655440020");
+        assert.equal(forkOptions?.resumeSessionAt, undefined);
+        assert.equal(forkOptions?.forkSession, undefined);
+
+        yield* adapter.rollbackThread(session.threadId, 2);
+        const resetOptions = harness.getLastCreateQueryInput()?.options;
+        assert.equal(resetOptions?.resume, undefined);
+        assert.equal(resetOptions?.resumeSessionAt, undefined);
+        assert.equal(resetOptions?.forkSession, undefined);
+        assert.ok(resetOptions?.sessionId);
       }).pipe(
         Effect.provideService(Random.Random, makeDeterministicRandomService()),
         Effect.provide(harness.layer),
