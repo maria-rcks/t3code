@@ -1,3 +1,4 @@
+import { projectQuestionToolInput } from "@t3tools/shared/toolActivity";
 import type {
   OrchestrationEvent,
   OrchestrationThreadActivity,
@@ -268,9 +269,9 @@ function projectPreviewToolMetadata(data: Record<string, unknown>, status: unkno
   let page = asRecord(record?.structuredContent);
   if (!page) {
     const text = extractMcpResultText(result);
-    if (!text || text.length > 2 * 1024 * 1024) return {};
+    if (!text) return {};
     try {
-      page = asRecord(JSON.parse(extractJsonObject(text)));
+      page = asRecord(JSON.parse(extractJsonObject(text.slice(0, 2 * 1024 * 1024))));
     } catch {
       return {};
     }
@@ -423,18 +424,19 @@ export function projectActivityPayload(
     ...projectPreviewToolMetadata(data, statusPayload.status),
     ...statusPayload,
   };
+  const questionInput = projectQuestionToolInput(data, payload.title);
 
   if (payload.itemType === "mcp_tool_call") {
     return {
       ...activity,
       payload: {
         ...projectedPayload,
-        data: projectMcpToolCallData(data),
+        data: { ...projectMcpToolCallData(data), ...questionInput },
       },
     };
   }
 
-  const projectedData: Record<string, unknown> = {};
+  const projectedData: Record<string, unknown> = { ...questionInput };
   const item = projectCommandData(data);
   if (item) {
     projectedData.item = item;
