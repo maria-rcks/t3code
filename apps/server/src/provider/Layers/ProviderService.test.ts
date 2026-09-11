@@ -1654,6 +1654,9 @@ routing.layer("ProviderServiceLive routing", (it) => {
   it.effect("routes provider operations and rollback conversation", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService.ProviderService;
+      const modelSelection = createModelSelection(codexInstanceId, "gpt-5.6-sol", [
+        { id: "reasoningEffort", value: "high" },
+      ]);
 
       const session = yield* provider.startSession(asThreadId("thread-1"), {
         provider: ProviderDriverKind.make("codex"),
@@ -1671,6 +1674,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         threadId: session.threadId,
         input: "hello",
         attachments: [],
+        modelSelection,
       });
       assert.equal(routing.codex.sendTurn.mock.calls.length, 1);
 
@@ -1717,6 +1721,10 @@ routing.layer("ProviderServiceLive routing", (it) => {
       const rewoundBinding = yield* directory.getBinding(session.threadId);
       assert(Option.isSome(rewoundBinding));
       assert.deepEqual(rewoundBinding.value.resumeCursor, rewindCursor);
+      assert.deepEqual(
+        (rewoundBinding.value.runtimePayload as { modelSelection?: unknown }).modelSelection,
+        modelSelection,
+      );
 
       yield* provider.stopSession({ threadId: session.threadId });
       routing.codex.startSession.mockClear();
@@ -1737,10 +1745,12 @@ routing.layer("ProviderServiceLive routing", (it) => {
           cwd?: string;
           resumeCursor?: unknown;
           threadId?: string;
+          modelSelection?: unknown;
         };
         assert.equal(startPayload.provider, "codex");
         assert.equal(startPayload.cwd, fixtureCwd("project"));
         assert.deepEqual(startPayload.resumeCursor, rewindCursor);
+        assert.deepEqual(startPayload.modelSelection, modelSelection);
         assert.equal(startPayload.threadId, session.threadId);
       }
       assert.equal(routing.codex.sendTurn.mock.calls.length, 1);
