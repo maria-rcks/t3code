@@ -1713,9 +1713,10 @@ routing.layer("ProviderServiceLive routing", (it) => {
       });
 
       const rewindCursor = { threadId: "rewound-provider-thread" };
-      routing.codex.listSessions.mockReturnValueOnce(
-        Effect.succeed([{ ...session, resumeCursor: rewindCursor }]),
-      );
+      routing.codex.updateSession(session.threadId, (session) => ({
+        ...session,
+        resumeCursor: rewindCursor,
+      }));
       yield* provider.rollbackConversation({ threadId: session.threadId, numTurns: 1 });
       const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
       const rewoundBinding = yield* directory.getBinding(session.threadId);
@@ -1754,6 +1755,50 @@ routing.layer("ProviderServiceLive routing", (it) => {
         assert.equal(startPayload.threadId, session.threadId);
       }
       assert.equal(routing.codex.sendTurn.mock.calls.length, 1);
+    }),
+  );
+
+  it.effect("preserves background turn boundaries when stopping before rollback recovery", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-background-rewind");
+      yield* provider.startSession(threadId, {
+        provider: CLAUDE_AGENT_DRIVER,
+        providerInstanceId: claudeAgentInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const cursor = {
+        resume: "550e8400-e29b-41d4-a716-446655440010",
+        turnCount: 2,
+        turnStartMessageIds: ["user-prompt", "background-assistant"],
+      };
+      routing.claude.updateSession(threadId, (session) => ({ ...session, resumeCursor: cursor }));
+      const completed = yield* provider.streamEvents.pipe(
+        Stream.filter((event) => event.eventId === "evt-background-rewind"),
+        Stream.take(1),
+        Stream.runDrain,
+        Effect.forkChild,
+      );
+      yield* Effect.yieldNow;
+      routing.claude.emit({
+        type: "turn.completed",
+        eventId: asEventId("evt-background-rewind"),
+        provider: CLAUDE_AGENT_DRIVER,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        threadId,
+        turnId: asTurnId("background-turn"),
+        payload: { state: "completed" },
+      });
+      yield* Fiber.join(completed);
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const binding = yield* directory.getBinding(threadId);
+      assert(Option.isSome(binding));
+      assert.deepEqual(binding.value.resumeCursor, cursor);
+      yield* provider.stopSession({ threadId });
+      routing.claude.startSession.mockClear();
+      yield* provider.rollbackConversation({ threadId, numTurns: 1 });
+      assert.deepEqual(routing.claude.startSession.mock.calls[0]?.[0].resumeCursor, cursor);
     }),
   );
 

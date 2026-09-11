@@ -1100,6 +1100,28 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         canonicalEvent.type === "turn.aborted"
       ) {
         yield* recordTurnCompletedAnalytics(source, canonicalEvent);
+        if (source.provider === "claudeAgent") {
+          // Background Claude turns have no sendTurn response to persist their
+          // new native boundary. Save it before clients can checkpoint the turn.
+          yield* Effect.gen(function* () {
+            const adapter = yield* registry.getByInstance(source.instanceId);
+            const session = (yield* adapter.listSessions()).find(
+              (session) => session.threadId === canonicalEvent.threadId,
+            );
+            if (session?.resumeCursor !== undefined) {
+              yield* directory.upsert({
+                threadId: session.threadId,
+                provider: source.provider,
+                providerInstanceId: source.instanceId,
+                resumeCursor: session.resumeCursor,
+              });
+            }
+          }).pipe(
+            Effect.catch((cause) =>
+              Effect.logWarning("failed to persist Claude turn resume state", { cause }),
+            ),
+          );
+        }
       } else if (canonicalEvent.type === "session.exited") {
         yield* clearTurnAnalyticsSession(source.instanceId, canonicalEvent.threadId);
       }
@@ -2006,6 +2028,15 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           "provider.thread_id": input.threadId,
         });
         if (routed.isActive) {
+          const session = (yield* routed.adapter.listSessions()).find(
+            (session) => session.threadId === routed.threadId,
+          );
+          if (session) {
+            yield* upsertSessionBinding(
+              { ...session, providerInstanceId: routed.instanceId },
+              input.threadId,
+            );
+          }
           yield* routed.adapter.stopSession(routed.threadId);
         }
         const pendingCompaction = pendingCompactions.get(input.threadId);

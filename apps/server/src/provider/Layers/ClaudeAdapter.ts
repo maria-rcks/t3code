@@ -3212,6 +3212,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         activeTurnId: turnId,
         updatedAt: startedAt,
       };
+      yield* updateResumeCursor(context);
       const turnStartedStamp = yield* makeEventStamp();
       yield* offerRuntimeEvent({
         type: "turn.started",
@@ -5108,6 +5109,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       }
       if (
         context.turnStartMessageIds.length > 0 &&
+        context.turnStartMessageIds.every((id) => id !== null) &&
         numTurns >= context.turnStartMessageIds.length
       ) {
         yield* stopSessionInternal(context, { emitExitEvent: false });
@@ -5219,12 +5221,16 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const retainedCount = Math.max(0, boundaries.length - numTurns);
       const firstRemovedId = boundaries[retainedCount];
       const firstRemoved = messages.findIndex((message) => message.uuid === firstRemovedId);
-      if (boundaries.length === 0 || (retainedCount > 0 && firstRemoved < 1)) {
+      if (
+        boundaries.length === 0 ||
+        boundaries.some((id) => id === null) ||
+        (retainedCount > 0 && firstRemoved < 1)
+      ) {
         return yield* new ProviderAdapterRequestError({
           provider: PROVIDER,
           method: "thread/rollback",
           detail:
-            "The exact Claude turn boundary is unavailable, possibly after compaction. Rewind to the beginning instead.",
+            "The exact Claude turn boundary is unavailable, possibly after compaction or recovery of older history. Start a new thread instead.",
         });
       }
       const rollbackAt = retainedCount > 0 ? messages[firstRemoved - 1]?.uuid : undefined;

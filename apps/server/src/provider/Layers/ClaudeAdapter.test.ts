@@ -6267,6 +6267,7 @@ describe("ClaudeAdapterLive", () => {
     let firstTurnId = "";
     let secondTurnId = "";
     let missingBoundary = false;
+    let legacyHistory = false;
     const harness = makeHarness({
       forkSession: async (...args) => {
         forkCalls.push(args);
@@ -6343,9 +6344,11 @@ describe("ClaudeAdapterLive", () => {
         ];
         return sessionId.endsWith("0020")
           ? history.slice(0, 4).map((message) => ({ ...message, uuid: `fork-${message.uuid}` }))
-          : missingBoundary
-            ? history.filter((message) => message.uuid !== secondTurnId)
-            : history;
+          : legacyHistory
+            ? history.slice(0, 6)
+            : missingBoundary
+              ? history.filter((message) => message.uuid !== secondTurnId)
+              : history;
       },
     });
     return Effect.gen(function* () {
@@ -6421,6 +6424,24 @@ describe("ClaudeAdapterLive", () => {
       assert.equal(threadBeforeRollback.turns.length, 2);
       const cursor = (yield* adapter.listSessions())[0]?.resumeCursor;
       yield* adapter.stopSession(session.threadId);
+      legacyHistory = true;
+      yield* adapter.startSession({
+        threadId: session.threadId,
+        runtimeMode: "full-access",
+        resumeCursor: {
+          threadId: session.threadId,
+          resume: "550e8400-e29b-41d4-a716-446655440010",
+          turnCount: 1,
+        },
+      });
+      const legacyOptions = harness.getLastCreateQueryInput();
+      const ambiguousLegacy = yield* adapter.rollbackThread(session.threadId, 1).pipe(Effect.flip);
+      assert.match(ambiguousLegacy.message, /exact Claude turn boundary is unavailable/);
+      assert.equal(forkCalls.length, 0);
+      assert.equal(harness.getLastCreateQueryInput(), legacyOptions);
+      assert.equal((yield* adapter.listSessions()).length, 1);
+      yield* adapter.stopSession(session.threadId);
+      legacyHistory = false;
       yield* adapter.startSession({
         threadId: session.threadId,
         runtimeMode: "full-access",
