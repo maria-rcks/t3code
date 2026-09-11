@@ -62,7 +62,11 @@ const invoke = Effect.fn("PreviewToolkit.invoke")(function* <A>(
 > {
   const scope = yield* McpInvocationContext.requireMcpCapability("preview");
   const broker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
+  let targetTabId = tabId;
   const result = yield* broker.invoke<A>({
+    onTargetTab: (resolvedTabId) => {
+      targetTabId = resolvedTabId;
+    },
     scope,
     operation,
     input,
@@ -73,7 +77,7 @@ const invoke = Effect.fn("PreviewToolkit.invoke")(function* <A>(
   const statusTabId =
     (operation !== "evaluate" && typeof result === "object" && result !== null
       ? (result as { tabId?: PreviewTabId }).tabId
-      : undefined) ?? tabId;
+      : undefined) ?? targetTabId;
   const page = yield* broker
     .invoke<PreviewAutomationStatus>({
       scope,

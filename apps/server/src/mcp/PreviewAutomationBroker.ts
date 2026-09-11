@@ -46,6 +46,8 @@ export interface PreviewAutomationInvokeInput {
   readonly timeoutMs?: number;
   /** Background metadata reads must not change the agent's current tab. */
   readonly updateCurrentTab?: boolean;
+  /** Capture the routed tab before another request changes the current assignment. */
+  readonly onTargetTab?: (tabId: PreviewTabId | undefined) => void;
 }
 
 export class PreviewAutomationBroker extends Context.Service<
@@ -543,6 +545,7 @@ export const make = Effect.gen(function* PreviewAutomationBrokerMake() {
       });
     }
     const { connection, requestId, requestContext, requestSequence } = route;
+    input.onTargetTab?.(requestContext.tabId);
     const removePending = SynchronizedRef.update(state, (next) => {
       if (!next.pending.has(requestId)) return next;
       const pending = new Map(next.pending);
