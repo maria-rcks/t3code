@@ -226,6 +226,8 @@ it.effect("updates cached labels after successful edits without rereading the ho
       let candidateReads = 0;
       let refuse = false;
       let failDetail = false;
+      const existing = { name: "existing", color: "111111" };
+      const addedLabel = { name: "new", color: "abcdef" };
       const detailRefreshStarted = yield* Latch.make();
       const releaseDetailRefresh = yield* Latch.make();
       const client = {
@@ -238,20 +240,15 @@ it.effect("updates cached labels after successful edits without rereading the ho
               yield* releaseDetailRefresh.await;
               return yield* Effect.fail(new MutationRefused());
             }
-            return { title: "keep this title", labels: [{ name: "existing", color: "111111" }] };
+            return { title: "keep this title", labels: [existing] };
           }),
         [WS_METHODS.pullRequestsLabelCandidates]: () =>
           Effect.sync(() => {
             candidateReads++;
             return {
               candidates: [
-                { name: "existing", color: "111111", description: null, isApplied: true },
-                {
-                  name: "new",
-                  color: "abcdef",
-                  description: "keep this description",
-                  isApplied: false,
-                },
+                { ...existing, description: null, isApplied: true },
+                { ...addedLabel, description: "description", isApplied: false },
               ],
               truncated: false,
             };
@@ -271,14 +268,8 @@ it.effect("updates cached labels after successful edits without rereading the ho
       };
       const detail = atoms.detail(target);
       const candidates = atoms.labelCandidates(target);
-      const unmountDetail = registry.mount(detail);
-      let unmountCandidates = registry.mount(candidates);
-      yield* Effect.addFinalizer(() =>
-        Effect.sync(() => {
-          unmountDetail();
-          unmountCandidates();
-        }),
-      );
+      registry.mount(detail);
+      const unmountCandidates = registry.mount(candidates);
       yield* AtomRegistry.getResult(registry, detail, { suspendOnWaiting: true });
       yield* AtomRegistry.getResult(registry, candidates, { suspendOnWaiting: true });
 
@@ -296,48 +287,33 @@ it.effect("updates cached labels after successful edits without rereading the ho
         }),
       );
       expect(AsyncResult.isSuccess(added)).toBe(true);
-      expect((yield* AtomRegistry.getResult(registry, detail)).labels).toEqual([
-        { name: "existing", color: "111111" },
-        { name: "new", color: "abcdef" },
-      ]);
-      expect((yield* AtomRegistry.getResult(registry, detail)).title).toBe("keep this title");
+      expect(yield* AtomRegistry.getResult(registry, detail)).toEqual({
+        title: "keep this title",
+        labels: [existing, addedLabel],
+      });
       unmountCandidates();
-      unmountCandidates = registry.mount(atoms.labelCandidates(target));
+      registry.mount(atoms.labelCandidates(target));
       expect((yield* AtomRegistry.getResult(registry, candidates)).candidates[1]).toEqual({
-        name: "new",
-        color: "abcdef",
-        description: "keep this description",
+        ...addedLabel,
+        description: "description",
         isApplied: true,
       });
 
-      const removed = yield* Effect.promise(() =>
-        atoms.setLabels.run(registry, {
-          ...target,
-          input: { ...target.input, labels: ["existing"], applied: false },
-        }),
-      );
-      expect(AsyncResult.isSuccess(removed)).toBe(true);
-      expect((yield* AtomRegistry.getResult(registry, detail)).labels).toEqual([
-        { name: "new", color: "abcdef" },
-      ]);
-      expect((yield* AtomRegistry.getResult(registry, candidates)).candidates[0]?.isApplied).toBe(
-        false,
-      );
-
-      refuse = true;
-      const failed = yield* Effect.promise(() =>
-        atoms.setLabels.run(registry, {
-          ...target,
-          input: { ...target.input, labels: ["new"], applied: false },
-        }),
-      );
-      expect(AsyncResult.isFailure(failed)).toBe(true);
-      expect((yield* AtomRegistry.getResult(registry, detail)).labels).toEqual([
-        { name: "new", color: "abcdef" },
-      ]);
-      expect((yield* AtomRegistry.getResult(registry, candidates)).candidates[1]?.isApplied).toBe(
-        true,
-      );
+      for (const name of ["existing", "new"]) {
+        refuse = name === "new";
+        const result = yield* Effect.promise(() =>
+          atoms.setLabels.run(registry, {
+            ...target,
+            input: { ...target.input, labels: [name], applied: false },
+          }),
+        );
+        expect(result._tag).toBe(refuse ? "Failure" : "Success");
+        expect((yield* AtomRegistry.getResult(registry, detail)).labels).toEqual([addedLabel]);
+        expect((yield* AtomRegistry.getResult(registry, candidates)).candidates).toMatchObject([
+          { name: "existing", isApplied: false },
+          { name: "new", isApplied: true },
+        ]);
+      }
       expect(detailReads).toBe(1);
       expect(candidateReads).toBe(1);
 
@@ -346,19 +322,19 @@ it.effect("updates cached labels after successful edits without rereading the ho
       yield* detailRefreshStarted.await;
       expect(registry.get(detail).waiting).toBe(true);
       expect(Option.getOrThrow(AsyncResult.value(registry.get(detail))).labels).toEqual([
-        { name: "new", color: "abcdef" },
+        addedLabel,
       ]);
       yield* releaseDetailRefresh.open;
       yield* Effect.exit(AtomRegistry.getResult(registry, detail, { suspendOnWaiting: true }));
       expect(AsyncResult.isFailure(registry.get(detail))).toBe(true);
       expect(Option.getOrThrow(AsyncResult.value(registry.get(detail))).labels).toEqual([
-        { name: "new", color: "abcdef" },
+        addedLabel,
       ]);
       failDetail = false;
       registry.refresh(detail);
       expect(
         (yield* AtomRegistry.getResult(registry, detail, { suspendOnWaiting: true })).labels,
-      ).toEqual([{ name: "existing", color: "111111" }]);
+      ).toEqual([existing]);
       expect(detailReads).toBe(3);
     }),
   ),
@@ -425,39 +401,29 @@ it.effect("updates reviewer requests and enriched reviewers without rereading th
       const detail = atoms.detail(target);
       const activity = atoms.activity(target);
       const candidates = atoms.reviewerCandidates(target);
-      for (const unmount of [
-        registry.mount(detail),
-        registry.mount(activity),
-        registry.mount(candidates),
-      ]) {
-        yield* Effect.addFinalizer(() => Effect.sync(unmount));
-      }
+      registry.mount(detail);
+      registry.mount(activity);
+      registry.mount(candidates);
       yield* AtomRegistry.getResult(registry, detail, { suspendOnWaiting: true });
       yield* AtomRegistry.getResult(registry, activity, { suspendOnWaiting: true });
       yield* AtomRegistry.getResult(registry, candidates, { suspendOnWaiting: true });
-      const request = (requested: boolean) =>
+      const request = (requested: boolean, reference = target) =>
         Effect.promise(() =>
           atoms.requestReviewers.run(registry, {
-            ...target,
-            input: { ...target.input, reviewers: [{ id: "12", kind: "user" }], requested },
+            ...reference,
+            input: { ...reference.input, reviewers: [{ id: "12", kind: "user" }], requested },
           }),
         );
-      expect(AsyncResult.isSuccess(yield* request(true))).toBe(true);
-      expect((yield* AtomRegistry.getResult(registry, detail)).reviewers).toEqual([actor]);
-      expect((yield* AtomRegistry.getResult(registry, activity)).reviewers).toEqual([actor]);
-      expect((yield* AtomRegistry.getResult(registry, candidates)).candidates[0]?.isRequested).toBe(
-        true,
-      );
-      refuse = true;
-      expect(AsyncResult.isFailure(yield* request(false))).toBe(true);
-      expect((yield* AtomRegistry.getResult(registry, detail)).reviewers).toEqual([actor]);
-      refuse = false;
-      expect(AsyncResult.isSuccess(yield* request(false))).toBe(true);
-      expect((yield* AtomRegistry.getResult(registry, detail)).reviewers).toEqual([]);
-      expect((yield* AtomRegistry.getResult(registry, activity)).reviewers).toEqual([]);
-      expect((yield* AtomRegistry.getResult(registry, candidates)).candidates[0]?.isRequested).toBe(
-        false,
-      );
+      for (const operation of ["request", "refuse", "remove"]) {
+        refuse = operation === "refuse";
+        expect((yield* request(operation === "request"))._tag).toBe(refuse ? "Failure" : "Success");
+        const expected = operation === "remove" ? [] : [actor];
+        expect((yield* AtomRegistry.getResult(registry, detail)).reviewers).toEqual(expected);
+        expect((yield* AtomRegistry.getResult(registry, activity)).reviewers).toEqual(expected);
+        expect((yield* AtomRegistry.getResult(registry, candidates)).candidates).toMatchObject([
+          { isRequested: operation !== "remove" },
+        ]);
+      }
       expect(reads).toBe(3);
       // A slow activity read started before the write must not hide the new request.
       pauseActivity = true;
@@ -481,15 +447,9 @@ it.effect("updates reviewer requests and enriched reviewers without rereading th
       // A caller without an open picker still needs authoritative reviewer identities.
       const otherTarget = { ...target, input: { ...target.input, number: 2 } };
       const otherDetail = atoms.detail(otherTarget);
-      const unmount = registry.mount(otherDetail);
-      yield* Effect.addFinalizer(() => Effect.sync(unmount));
+      registry.mount(otherDetail);
       yield* AtomRegistry.getResult(registry, otherDetail, { suspendOnWaiting: true });
-      yield* Effect.promise(() =>
-        atoms.requestReviewers.run(registry, {
-          ...otherTarget,
-          input: { ...otherTarget.input, reviewers: [{ id: "12", kind: "user" }], requested: true },
-        }),
-      );
+      yield* request(true, otherTarget);
       expect(
         (yield* AtomRegistry.getResult(registry, otherDetail, { suspendOnWaiting: true }))
           .reviewers,

@@ -12,7 +12,7 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
 
 import {
   createAtomCommandScheduler,
@@ -65,16 +65,24 @@ function writableQueryFamily<A, E>(
   return ({
     environmentId,
     input: { projectId, host, repository, number },
-  }: {
-    readonly environmentId: EnvironmentId;
-    readonly input: PullRequestRef;
-  }) =>
+  }: Parameters<typeof family>[0]) =>
     writable(
       family({
         environmentId,
         input: { projectId, ...(host === undefined ? {} : { host }), repository, number },
       }),
     );
+}
+
+/** Restart pre-mutation reads before patching so they cannot restore stale values. */
+function updateCached<A, E>(
+  registry: AtomRegistry.AtomRegistry,
+  atom: Atom.Writable<AsyncResult.AsyncResult<A, E>>,
+  update: (value: A) => A,
+  refresh = false,
+) {
+  if (refresh || registry.get(atom).waiting) registry.refresh(atom);
+  registry.update(atom, AsyncResult.map(update));
 }
 
 function createPullRequestRefreshAtomFamily<R, E>(
@@ -307,15 +315,9 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       tag: WS_METHODS.pullRequestsRequestReviewers,
       scheduler: commandScheduler,
       concurrency: serialPerEnvironment,
-      onSuccess: (
-        { environmentId, input: { projectId, host, repository, number, reviewers, requested } },
-        registry,
-      ) =>
+      onSuccess: (target, registry) =>
         Effect.sync(() => {
-          const target = {
-            environmentId,
-            input: { projectId, ...(host === undefined ? {} : { host }), repository, number },
-          };
+          const { reviewers, requested } = target.input;
           const candidatesAtom = reviewerCandidates(target);
           const candidates = Option.getOrNull(AsyncResult.value(registry.get(candidatesAtom)));
           const selected =
@@ -324,28 +326,20 @@ export function createPullRequestEnvironmentAtoms<R, E>(
                 (reviewer) => reviewer.id === candidate.id && reviewer.kind === candidate.kind,
               ),
             ) ?? [];
-          // A read started before this write can still return the old reviewers.
-          if (registry.get(candidatesAtom).waiting) registry.refresh(candidatesAtom);
           const missingIdentities = selected.length < reviewers.length;
-          if (missingIdentities || registry.get(detail(target)).waiting) {
-            registry.refresh(detail(target));
-          }
-          if (missingIdentities || registry.get(activity(target)).waiting) {
-            registry.refresh(activity(target));
-          }
-          registry.update(
-            candidatesAtom,
-            AsyncResult.map((value) => ({
-              ...value,
-              candidates: value.candidates.map((candidate) =>
-                selected.includes(candidate) ? { ...candidate, isRequested: requested } : candidate,
-              ),
-            })),
-          );
+          updateCached(registry, candidatesAtom, (value) => ({
+            ...value,
+            candidates: value.candidates.map((candidate) =>
+              selected.includes(candidate) ? { ...candidate, isRequested: requested } : candidate,
+            ),
+          }));
           const selectedLogins = new Set(
             selected.map((candidate) => candidate.login.toLowerCase()),
           );
-          const updateReviewers = (actors: ReadonlyArray<PullRequestActor>) =>
+          const updateReviewers = (
+            actors: ReadonlyArray<PullRequestActor>,
+            keep = (_actor: PullRequestActor) => false,
+          ) =>
             requested
               ? [
                   ...actors,
@@ -358,34 +352,35 @@ export function createPullRequestEnvironmentAtoms<R, E>(
                     )
                     .map(({ login, name, avatarUrl }) => ({ login, name, avatarUrl })),
                 ]
-              : actors.filter((actor) => !selectedLogins.has(actor.login.toLowerCase()));
-          registry.update(
+              : actors.filter(
+                  (actor) => !selectedLogins.has(actor.login.toLowerCase()) || keep(actor),
+                );
+          updateCached(
+            registry,
             detail(target),
-            AsyncResult.map((value) => ({
+            (value) => ({
               ...value,
               reviewers: updateReviewers(value.reviewers),
-            })),
+            }),
+            missingIdentities,
           );
-          registry.update(
+          updateCached(
+            registry,
             activity(target),
-            AsyncResult.map((value) => ({
+            (value) => ({
               ...value,
-              ...(value.reviewers === undefined
-                ? {}
-                : {
-                    reviewers: requested
-                      ? updateReviewers(value.reviewers)
-                      : value.reviewers.filter(
-                          (actor) =>
-                            !selectedLogins.has(actor.login.toLowerCase()) ||
-                            value.comments.some(
-                              (comment) =>
-                                (comment.kind === "review" || comment.kind === "review-comment") &&
-                                comment.author?.login.toLowerCase() === actor.login.toLowerCase(),
-                            ),
-                        ),
-                  }),
-            })),
+              reviewers:
+                value.reviewers === undefined
+                  ? undefined
+                  : updateReviewers(value.reviewers, (actor) =>
+                      value.comments.some(
+                        (comment) =>
+                          (comment.kind === "review" || comment.kind === "review-comment") &&
+                          comment.author?.login.toLowerCase() === actor.login.toLowerCase(),
+                      ),
+                    ),
+            }),
+            missingIdentities,
           );
         }),
     }),
@@ -396,49 +391,34 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       tag: WS_METHODS.pullRequestsSetLabels,
       scheduler: commandScheduler,
       concurrency: serialPerEnvironment,
-      onSuccess: (
-        { environmentId, input: { projectId, host, repository, number, labels, applied } },
-        registry,
-      ) =>
+      onSuccess: (target, registry) =>
         Effect.sync(() => {
-          const target = {
-            environmentId,
-            input: { projectId, ...(host === undefined ? {} : { host }), repository, number },
-          };
+          const { labels, applied } = target.input;
           const candidatesAtom = labelCandidates(target);
           const candidates = Option.getOrNull(AsyncResult.value(registry.get(candidatesAtom)));
           const names = new Set(labels);
-          // Replace only reads already in flight; ready caches need no host round trip.
-          if (registry.get(candidatesAtom).waiting) registry.refresh(candidatesAtom);
-          if (registry.get(detail(target)).waiting) registry.refresh(detail(target));
-          registry.update(
-            candidatesAtom,
-            AsyncResult.map((value) => ({
-              ...value,
-              candidates: value.candidates.map((candidate) =>
-                names.has(candidate.name) ? { ...candidate, isApplied: applied } : candidate,
-              ),
-            })),
-          );
-          registry.update(
-            detail(target),
-            AsyncResult.map((value) => ({
-              ...value,
-              labels: applied
-                ? [
-                    ...value.labels,
-                    ...labels
-                      .filter((name) => !value.labels.some((label) => label.name === name))
-                      .map((name) => ({
-                        name,
-                        color:
-                          candidates?.candidates.find((candidate) => candidate.name === name)
-                            ?.color ?? null,
-                      })),
-                  ]
-                : value.labels.filter((label) => !names.has(label.name)),
-            })),
-          );
+          updateCached(registry, candidatesAtom, (value) => ({
+            ...value,
+            candidates: value.candidates.map((candidate) =>
+              names.has(candidate.name) ? { ...candidate, isApplied: applied } : candidate,
+            ),
+          }));
+          updateCached(registry, detail(target), (value) => ({
+            ...value,
+            labels: applied
+              ? [
+                  ...value.labels,
+                  ...labels
+                    .filter((name) => !value.labels.some((label) => label.name === name))
+                    .map((name) => ({
+                      name,
+                      color:
+                        candidates?.candidates.find((candidate) => candidate.name === name)
+                          ?.color ?? null,
+                    })),
+                ]
+              : value.labels.filter((label) => !names.has(label.name)),
+          }));
         }),
     }),
     setThreadResolution: createEnvironmentRpcCommand(runtime, {
