@@ -1,5 +1,10 @@
 import { GitPullRequestIcon } from "lucide-react";
 import {
+  getQuestionAnswerPreview,
+  getQuestionAnswerText,
+  hasQuestionAnswer,
+} from "@t3tools/client-runtime/work-log/user-input";
+import {
   type AssistantCitation,
   type EnvironmentId,
   type MessageId,
@@ -97,6 +102,7 @@ import {
   MousePointerClickIcon,
   PaintbrushIcon,
   SearchIcon,
+  SmartphoneIcon,
   SquarePenIcon,
   TerminalIcon,
   Undo2Icon,
@@ -2114,7 +2120,7 @@ function LiveActivityRow({
   active = false,
   shimmer = false,
 }: {
-  label: string;
+  label: ReactNode;
   iconName?: WorkEntryIconName;
   toolIcon?: ToolActivityIcon | undefined;
   failed?: boolean;
@@ -2154,7 +2160,7 @@ function LiveActivityContent({
   active = false,
   highlighted = false,
 }: {
-  label: string;
+  label: ReactNode;
   iconName: WorkEntryIconName | undefined;
   toolIcon?: ToolActivityIcon | undefined;
   failed?: boolean;
@@ -2212,7 +2218,25 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
       onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
     >
       <LiveActivityRow
-        label={label}
+        label={
+          row.entry.questionAnswer ? (
+            <span className="flex min-w-0 gap-1.5">
+              <span className="shrink-0">{label}</span>
+              <span
+                className={cn(
+                  "truncate",
+                  !row.expanded && hasQuestionAnswer(row.entry.questionAnswer)
+                    ? "text-foreground"
+                    : "text-muted-foreground",
+                )}
+              >
+                {getQuestionAnswerPreview(row.entry.questionAnswer)}
+              </span>
+            </span>
+          ) : (
+            label
+          )
+        }
         iconName={workEntryIconName(row.entry)}
         toolIcon={row.entry.toolIcon ?? row.entry.toolSource?.icon}
         failed={failed}
@@ -2239,6 +2263,8 @@ function toolGroupSummaryIconName(
       return "terminal";
     case "browser":
       return "browser";
+    case "device":
+      return "device";
     case "search":
       return "globe";
     case "code-search":
@@ -2800,6 +2826,7 @@ type WorkEntryIconName =
   | "check"
   | "circle-alert"
   | "computer"
+  | "device"
   | "eye"
   | "globe"
   | "hammer"
@@ -3022,6 +3049,8 @@ function WorkEntryIcon({ name, className }: { name: WorkEntryIconName; className
       return <BrowserAppIcon className={className} />;
     case "computer":
       return <ComputerUseAppIcon className={className} />;
+    case "device":
+      return <SmartphoneIcon className={className} aria-hidden />;
     case "t3-code":
       return <T3Wordmark className={className} aria-hidden />;
     case "check":
@@ -3142,6 +3171,7 @@ const toolCallExpandedBodyClassName =
 
 function workEntryIconName(workEntry: TimelineWorkEntry): WorkEntryIconName {
   if (
+    workEntry.questionAnswer ||
     workEntry.sourceActivityKind === "user-input.requested" ||
     workEntry.sourceActivityKind === "user-input.resolved"
   ) {
@@ -3171,6 +3201,18 @@ function workEntryIconName(workEntry: TimelineWorkEntry): WorkEntryIconName {
 }
 
 const stopRowToggle = (e: { stopPropagation: () => void }) => e.stopPropagation();
+
+/**
+ * Click handler for expanded row labels, which turn text selection back on.
+ * Only a click that ends a real selection is withheld from the row toggle, so
+ * an ordinary click on the label still bubbles and collapses the row it opened.
+ */
+const stopRowToggleWhileSelectingText = (e: MouseEvent<HTMLElement>) => {
+  const selection = e.currentTarget.ownerDocument.getSelection();
+  if (selection && !selection.isCollapsed) {
+    e.stopPropagation();
+  }
+};
 
 /**
  * A1 spawn CTA: one anchored row per workflow run (or per-turn direct-spawn
@@ -3307,9 +3349,10 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
     showWarningIndicator || showDestructiveRowStyle
       ? undefined
       : (workEntry.toolIcon ?? workEntry.toolSource?.icon);
-  const previewText = workEntry.questionAnswer
-    ? "Question answer submitted"
-    : (displayLabel ?? workEntryDisplayLabel(workEntry, workspaceRoot));
+  const previewText = displayLabel ?? workEntryDisplayLabel(workEntry, workspaceRoot);
+  const answerPreview = workEntry.questionAnswer
+    ? getQuestionAnswerPreview(workEntry.questionAnswer)
+    : null;
   const viewedImagePath = workEntryViewedImagePath(workEntry);
   const viewedImage =
     viewedImagePath && threadRef
@@ -3319,6 +3362,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
         })
       : null;
   const canExpand =
+    Boolean(workEntry.questionAnswer) ||
     (showFailedIndicator && previewText.trim().length > 0) ||
     (workEntry.itemType === "mcp_tool_call" && workEntry.toolData !== undefined) ||
     Boolean(
@@ -3356,9 +3400,10 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
       : workLogEntryIsToolLike(workEntry)
         ? "text-secondary-label"
         : "text-foreground/80";
+  const accessiblePreview = [previewText, answerPreview].filter(Boolean).join(": ");
   const accessibleDisplayText = showFailedIndicator
-    ? `${previewText}, tool call failed`
-    : previewText;
+    ? `${accessiblePreview}, tool call failed`
+    : accessiblePreview;
   const rowToggleProps = canExpand
     ? {
         role: "button" as const,
@@ -3403,15 +3448,29 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
             <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
               <span
                 className={cn(
-                  "min-w-0 flex-1",
+                  answerPreview ? "shrink-0" : "min-w-0 flex-1",
                   expanded ? "whitespace-pre-wrap break-words select-text" : "truncate",
                   headingClass,
                 )}
-                onClick={expanded ? stopRowToggle : undefined}
+                onClick={expanded ? stopRowToggleWhileSelectingText : undefined}
                 onPointerDown={expanded ? stopRowToggle : undefined}
               >
                 {previewText}
               </span>
+              {answerPreview ? (
+                <span
+                  className={cn(
+                    "min-w-0 truncate",
+                    !expanded &&
+                      workEntry.questionAnswer &&
+                      hasQuestionAnswer(workEntry.questionAnswer)
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {answerPreview}
+                </span>
+              ) : null}
             </p>
           </div>
           {showFailedIndicator &&
@@ -3452,10 +3511,10 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
           />
         </div>
       ) : null}
-      {workEntry.questionAnswer ? (
+      {expanded && workEntry.questionAnswer ? (
         <QuestionAnswerHistory answer={workEntry.questionAnswer} />
       ) : null}
-      {expanded && canExpand && expandedBody ? (
+      {expanded && canExpand && expandedBody && !workEntry.questionAnswer ? (
         <div
           className="mt-1 ms-7 cursor-default rounded-md bg-muted/40 px-3 py-2"
           onClick={stopRowToggle}
@@ -3488,20 +3547,22 @@ function QuestionAnswerHistory({
     <div className="ms-7 mt-2 space-y-2" onClick={stopRowToggle}>
       {[
         ...new Set([
+          ...Object.keys(answer.questionTextById ?? {}),
           ...Object.keys(answer.answers),
           ...Object.keys(answer.attachmentsByQuestionId),
         ]),
       ].map((questionId) => (
         <div key={questionId} className="space-y-1">
           {answer.questionTextById?.[questionId] ? (
-            <p className="text-sm text-muted-foreground">{answer.questionTextById[questionId]}</p>
+            <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+              {answer.questionTextById[questionId]}
+            </p>
           ) : null}
-          <p className="whitespace-pre-wrap text-sm">
-            {[answer.answers[questionId]]
-              .flat()
-              .filter((value): value is string => typeof value === "string")
-              .join(", ")}
-          </p>
+          {getQuestionAnswerText(answer.answers[questionId]) ? (
+            <p className="ms-3 whitespace-pre-wrap text-sm text-muted-foreground">
+              {getQuestionAnswerText(answer.answers[questionId])}
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             {(answer.attachmentsByQuestionId[questionId] ?? []).map((attachment) => {
               const url = urls[attachments.indexOf(attachment)];
