@@ -160,7 +160,7 @@ export function ThreadPullRequestBadgeControl({
     ? `Stack of ${badge.layers} pull requests, ${badge.state}`
     : `${status?.tooltip ?? `PR #${number}, status pending`}${
         badge?.kind === "pull-request" && badge.others > 0
-          ? `, and ${badge.others} more linked`
+          ? `, and ${badge.others} more linked; overall ${badge.state}`
           : ""
       }`;
   const className = cn(
