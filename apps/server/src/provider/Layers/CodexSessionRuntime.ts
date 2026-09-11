@@ -1231,8 +1231,17 @@ export const readCodexThread = Effect.fn("readCodexThread")(function* (
     );
   }
   const turns: Array<CodexThreadTurnSnapshot> = [];
+  const requestedCursors = new Set<string | null>();
   let cursor: string | null = null;
   do {
+    if (requestedCursors.has(cursor)) {
+      return yield* CodexErrors.CodexAppServerRequestError.internalError(
+        "Thread history pagination repeated a cursor.",
+        undefined,
+        { method: "thread/turns/list", operation: "decode-payload" },
+      );
+    }
+    requestedCursors.add(cursor);
     const response: unknown = yield* client.raw.request("thread/turns/list", {
       threadId,
       cursor,
