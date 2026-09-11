@@ -82,7 +82,7 @@ describe("environment grouping", () => {
     expect(projectGroupCount).toBe(1);
   });
 
-  it("labels where each project group lives once the catalog spans environments", () => {
+  it("reports whether the project groups span more than one environment", () => {
     const grouped = makeProject({ repositoryIdentity });
     const groupedRemote = makeProject({
       id: ProjectId.make("project-remote"),
@@ -110,21 +110,10 @@ describe("environment grouping", () => {
       });
 
     const groups = build([groupedRemote, grouped, separateLocal, separateRemote]);
-    expect(groups.map((group) => group.environmentLabels)).toEqual([
-      ["Local", "Mac mini"],
-      ["Local"],
-      ["Mac mini"],
-    ]);
+    expect(groups).toHaveLength(3);
     expect(projectGroupsSpanEnvironments(groups)).toBe(true);
     expect(projectGroupsSpanEnvironments(build([grouped, separateLocal]))).toBe(false);
-
-    const unlabeled = buildSidebarProjectSnapshots({
-      projects: [grouped, groupedRemote],
-      settings: defaultGroupingSettings,
-      primaryEnvironmentId,
-      resolveEnvironmentLabel: () => null,
-    });
-    expect(unlabeled[0]?.environmentLabels).toEqual(["Local", "Remote"]);
+    expect(projectGroupsSpanEnvironments(build([separateRemote]))).toBe(false);
   });
 
   it("keeps projects without repository identity physically scoped", () => {

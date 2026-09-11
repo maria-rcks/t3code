@@ -16,7 +16,7 @@ import {
 } from "~/sidebarProjectGrouping";
 import { useProjects, useThreadShells } from "~/state/entities";
 import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
-import { ProjectEnvironmentLabel, resolveProjectGroupMachine } from "../ProjectEnvironmentLabel";
+import { ProjectEnvironmentBadge } from "../ProjectEnvironmentBadge";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { sortLogicalProjectsForSidebar } from "../Sidebar.logic";
 import {
@@ -86,8 +86,8 @@ export function DraftHeroHeadline({
     ],
   );
   // Same-named projects on two machines are only told apart by where they
-  // live, so rows carry their environment once the catalog spans more than
-  // one; a single-machine catalog stays as it was.
+  // live, so rows on another machine carry its icon once the catalog spans
+  // more than one environment; a single-machine catalog stays as it was.
   const showProjectEnvironments = useMemo(
     () => projectGroupsSpanEnvironments(projectGroups),
     [projectGroups],
@@ -189,10 +189,6 @@ export function DraftHeroHeadline({
           }}
         >
           {projectPickerEntries.map(({ group }) => {
-            const environmentLabel =
-              showProjectEnvironments && group.environmentLabels.length > 0
-                ? group.environmentLabels.join(" · ")
-                : null;
             return (
               <MenuRadioItem
                 key={group.projectKey}
@@ -206,19 +202,14 @@ export function DraftHeroHeadline({
                     {group.displayName}
                   </TooltipTrigger>
                   <TooltipPopup side="top" className="max-w-80">
-                    {environmentLabel
-                      ? `${group.displayName} · ${environmentLabel}`
-                      : group.displayName}
+                    {group.displayName}
                   </TooltipPopup>
                 </Tooltip>
-                {environmentLabel ? (
-                  <ProjectEnvironmentLabel
-                    labels={group.environmentLabels}
-                    machine={resolveProjectGroupMachine({
-                      group,
-                      primaryEnvironmentId,
-                      machineByEnvironmentId: environmentMachineById,
-                    })}
+                {showProjectEnvironments ? (
+                  <ProjectEnvironmentBadge
+                    group={group}
+                    primaryEnvironmentId={primaryEnvironmentId}
+                    machineByEnvironmentId={environmentMachineById}
                   />
                 ) : null}
               </MenuRadioItem>
