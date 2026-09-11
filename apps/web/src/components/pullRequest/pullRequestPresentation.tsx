@@ -39,7 +39,7 @@ export function PullRequestApprovalGlyph() {
       <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
         <UserCheckIcon
           aria-hidden
-          className="size-3.5 text-emerald-600/90 dark:text-emerald-400/80"
+          className={cn("size-3.5", CHECK_STATUS_PRESENTATION.success.toneClassName)}
         />
         <span className="sr-only">Approved</span>
       </TooltipTrigger>
@@ -189,7 +189,7 @@ const CHECKS_STATE_PRESENTATION = {
   passing: {
     label: "All checks have passed",
     Icon: CircleCheckIcon,
-    toneClassName: "text-emerald-600 dark:text-emerald-300/90",
+    toneClassName: CHECK_STATUS_PRESENTATION.success.toneClassName,
   },
   failing: {
     label: "Some checks were not successful",
