@@ -164,14 +164,14 @@ function LinkRow({
               <span className="max-w-28 truncate">{snapshot.author.login}</span>
             </span>
           ) : null}
-          {snapshot?.updatedAt ? (
-            <span className="shrink-0">{formatRelativeTimeLabel(snapshot.updatedAt)}</span>
-          ) : null}
           <span className="truncate font-mono">
             {snapshot !== null
               ? `${snapshot.headBranch} → ${snapshot.baseBranch}`
               : `${link.host}/${link.repository}`}
           </span>
+          {snapshot?.updatedAt ? (
+            <span className="ml-auto shrink-0">{formatRelativeTimeLabel(snapshot.updatedAt)}</span>
+          ) : null}
         </span>
       </a>
       <Menu>
