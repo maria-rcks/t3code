@@ -109,7 +109,7 @@ describe("environment grouping", () => {
           environmentId === remoteEnvironmentId ? "Mac mini" : "Primary",
       });
 
-    const groups = build([grouped, groupedRemote, separateLocal, separateRemote]);
+    const groups = build([groupedRemote, grouped, separateLocal, separateRemote]);
     expect(groups.map((group) => group.environmentLabels)).toEqual([
       ["Local", "Mac mini"],
       ["Local"],
@@ -117,6 +117,14 @@ describe("environment grouping", () => {
     ]);
     expect(projectGroupsSpanEnvironments(groups)).toBe(true);
     expect(projectGroupsSpanEnvironments(build([grouped, separateLocal]))).toBe(false);
+
+    const unlabeled = buildSidebarProjectSnapshots({
+      projects: [grouped, groupedRemote],
+      settings: defaultGroupingSettings,
+      primaryEnvironmentId,
+      resolveEnvironmentLabel: () => null,
+    });
+    expect(unlabeled[0]?.environmentLabels).toEqual(["Local", "Remote"]);
   });
 
   it("keeps projects without repository identity physically scoped", () => {

@@ -2382,8 +2382,10 @@ export default function Sidebar() {
         matches: (item, query) =>
           projectScopeFilter.contains(item, query, (candidate) => candidate.label) ||
           (showProjectEnvironments &&
-            item.environmentLabels.some((label) =>
-              projectScopeFilter.contains(label, query, (candidate) => candidate),
+            projectScopeFilter.contains(
+              item.environmentLabels.join(" · "),
+              query,
+              (candidate) => candidate,
             )),
       }),
     [
@@ -4471,6 +4473,9 @@ export default function Sidebar() {
                     </span>
                     {scopedProjectGroup && showProjectEnvironments ? (
                       <ProjectEnvironmentLabel
+                        // The trigger has no tooltip, so at narrow sidebar
+                        // widths the label yields to the project name.
+                        className="shrink"
                         labels={scopedProjectGroup.environmentLabels}
                         machine={resolveProjectGroupMachine({
                           group: scopedProjectGroup,
@@ -4489,7 +4494,7 @@ export default function Sidebar() {
                     className={cn(
                       "min-w-0 overflow-hidden",
                       showProjectEnvironments
-                        ? "w-max min-w-(--anchor-width) max-w-80"
+                        ? "w-max min-w-(--anchor-width) max-w-[min(20rem,var(--available-width))]"
                         : "w-(--anchor-width)",
                     )}
                   >

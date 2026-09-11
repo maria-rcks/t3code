@@ -114,15 +114,14 @@ export function buildSidebarProjectSnapshots(input: {
     const remoteEnvironmentLabels = remoteMembers
       .flatMap((member) => (member.environmentLabel ? [member.environmentLabel] : []))
       .filter((label, index, labels) => labels.indexOf(label) === index);
-    const environmentLabels = members
-      .flatMap((member) =>
-        member.environmentId === input.primaryEnvironmentId
-          ? ["Local"]
-          : member.environmentLabel
-            ? [member.environmentLabel]
-            : [],
-      )
-      .filter((label, index, labels) => labels.indexOf(label) === index);
+    // "Local" leads regardless of member order, which follows registration
+    // order and so can differ between sessions.
+    const environmentLabels = [
+      ...(hasLocal ? ["Local"] : []),
+      ...members
+        .filter((member) => member.environmentId !== input.primaryEnvironmentId)
+        .map((member) => member.environmentLabel ?? "Remote"),
+    ].filter((label, index, labels) => labels.indexOf(label) === index);
     const isDesktopLocal = input.isDesktopLocalEnvironment ?? (() => false);
     const isWsl = input.isWslEnvironment ?? (() => false);
     const allRemoteMembersAreDesktopLocal =
