@@ -177,7 +177,7 @@ export function SidebarHeaderIconButton({
   children?: ReactNode;
 } & Omit<
   ComponentProps<typeof SidebarMenuButton>,
-  "children" | "className" | "tooltip" | "isActive"
+  "children" | "className" | "tooltip" | "isActive" | "aria-label"
 >) {
   return (
     <Tooltip>
