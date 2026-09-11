@@ -4311,7 +4311,7 @@ export default function Sidebar() {
         fixedHeader={
           // Lifted above the stage backdrop, whose fade bleeds below the
           // header and would otherwise paint across the search row's outline.
-          <SidebarGroup className="relative z-[1] gap-1 p-[var(--sidebar-content-inset)]">
+          <SidebarGroup className="relative z-[1] p-[var(--sidebar-content-inset)]">
             <SidebarThreadHeader
               searchFieldRef={headerSearchRef}
               hasProjects={projectGroups.length > 0}
@@ -4352,7 +4352,11 @@ export default function Sidebar() {
                     }
                   >
                     {scopedProjectGroup ? (
-                      <ProjectFavicon project={scopedProjectGroup} className="size-4" />
+                      // Wrapped so the button's direct-child svg color rule cannot override
+                      // a project's own icon color.
+                      <span className="flex shrink-0">
+                        <ProjectFavicon project={scopedProjectGroup} className="size-4" />
+                      </span>
                     ) : (
                       <FolderIcon className="size-4" />
                     )}
