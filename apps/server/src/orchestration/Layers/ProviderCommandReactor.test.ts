@@ -433,20 +433,19 @@ describe("ProviderCommandReactor", () => {
                 return Effect.die(new Error("Injected title regeneration completion failure"));
               }
             }
-            return (
+            const isReplay =
+              command.type === "thread.turn.start" &&
+              command.commandId.startsWith("server:after-compaction:");
+            const before =
               command.type === "thread.session.set" && command.session.status === "ready"
-                ? (input?.beforeReadySessionDispatch?.() ?? Effect.void)
-                : command.type === "thread.turn.start" &&
-                    command.commandId.startsWith("server:after-compaction:")
-                  ? (input?.beforeTurnStartDispatch?.() ?? Effect.void)
-                  : Effect.void
-            ).pipe(
+                ? input?.beforeReadySessionDispatch
+                : isReplay
+                  ? input?.beforeTurnStartDispatch
+                  : undefined;
+            return (before?.() ?? Effect.void).pipe(
               Effect.andThen(engine.dispatch(command)),
               Effect.tap(() =>
-                command.type === "thread.turn.start" &&
-                command.commandId.startsWith("server:after-compaction:")
-                  ? (input?.afterTurnStartDispatch?.() ?? Effect.void)
-                  : Effect.void,
+                isReplay ? (input?.afterTurnStartDispatch?.() ?? Effect.void) : Effect.void,
               ),
             );
           },

@@ -347,16 +347,17 @@ const make = Effect.gen(function* () {
 
   const threadModelSelections = new Map<string, ModelSelection>();
   const compactingThreadIds = new Set<ThreadId>();
-  type CompactionTurnQueue = Array<
-    Extract<ProviderIntentEvent, { type: "thread.turn-start-requested" }>
-  >;
-  const turnsAfterCompaction = new Map<ThreadId, CompactionTurnQueue>();
+  type QueuedTurnStart = Extract<ProviderIntentEvent, { type: "thread.turn-start-requested" }>;
+  // Turn starts received while a thread compacts, replayed in order once its session is restored.
+  const turnsAfterCompaction = new Map<ThreadId, Array<QueuedTurnStart>>();
+  // Replay command id → the queued turn start it re-requests. `sent` settles once the replay's
+  // provider send finishes, which is what lets the next queued turn follow it in order.
   const resumedTurnStarts = new Map<
     CommandId,
     {
+      readonly event: QueuedTurnStart;
+      readonly queued: Array<QueuedTurnStart>;
       readonly sent: Deferred.Deferred<void>;
-      readonly queued: CompactionTurnQueue;
-      readonly event: CompactionTurnQueue[number];
     }
   >();
   const stoppingThreadIds = new Set<ThreadId>();
@@ -405,7 +406,7 @@ const make = Effect.gen(function* () {
     threadId: ThreadId,
     detail: string,
   ) {
-    const queued = [...(turnsAfterCompaction.get(threadId) ?? [])];
+    const queued = turnsAfterCompaction.get(threadId) ?? [];
     turnsAfterCompaction.delete(threadId);
     for (const event of queued) {
       yield* appendProviderFailureActivity({
@@ -416,17 +417,7 @@ const make = Effect.gen(function* () {
         turnId: null,
         createdAt: DateTime.formatIso(yield* DateTime.now),
         requestId: event.payload.messageId,
-      }).pipe(
-        Effect.catchCause((cause) =>
-          Cause.hasInterruptsOnly(cause)
-            ? Effect.interrupt
-            : Effect.logWarning("failed to report canceled queued message", {
-                threadId,
-                messageId: event.payload.messageId,
-                cause: Cause.pretty(cause),
-              }),
-        ),
-      );
+      }).pipe(Effect.ignore({ log: true, message: "failed to report canceled queued message" }));
     }
   });
 
@@ -435,52 +426,40 @@ const make = Effect.gen(function* () {
   ) {
     const queued = turnsAfterCompaction.get(threadId) ?? [];
     while (queued.length > 0 && turnsAfterCompaction.get(threadId) === queued) {
-      const event = queued[0]!;
-      const thread = yield* resolveThreadShell(threadId);
-      if (!thread || stoppingThreadIds.has(threadId) || thread.session?.status === "stopped") {
-        yield* cancelTurnsAfterCompaction(
-          threadId,
-          "The session was stopped during context compaction. Send this message again to continue.",
-        );
-        return;
-      }
+      // In flight from here on: a cancellation reports it when the replay runs, not from the queue.
+      const event = queued.shift()!;
       const turnStart = yield* projectionSnapshotQuery.getTurnStartMessage({
         threadId,
         messageId: event.payload.messageId,
       });
-      if (Option.isNone(turnStart)) {
-        queued.shift();
-        continue;
-      }
+      if (Option.isNone(turnStart)) continue;
       // Reissue the durable request after restoration clears compaction's
       // pending slot. Reusing the message id preserves a single user bubble.
       const commandId = yield* serverCommandId("after-compaction");
       const sent = yield* Deferred.make<void>();
-      resumedTurnStarts.set(commandId, { sent, queued, event });
+      resumedTurnStarts.set(commandId, { event, queued, sent });
+      const { messageId, ...request } = event.payload;
       yield* orchestrationEngine
         .dispatch({
           type: "thread.turn.start",
           commandId,
-          threadId,
+          ...request,
           message: {
-            messageId: event.payload.messageId,
+            messageId,
             role: "user",
             text: turnStart.value.message.text,
             attachments: turnStart.value.message.attachments ?? [],
           },
-          ...(event.payload.modelSelection !== undefined
-            ? { modelSelection: event.payload.modelSelection }
-            : {}),
-          ...(event.payload.sourceProposedPlan !== undefined
-            ? { sourceProposedPlan: event.payload.sourceProposedPlan }
-            : {}),
-          interactionMode: event.payload.interactionMode,
-          runtimeMode: event.payload.runtimeMode,
-          createdAt: event.payload.createdAt,
         })
-        .pipe(Effect.onError(() => Effect.sync(() => void resumedTurnStarts.delete(commandId))));
+        .pipe(
+          Effect.onError(() =>
+            Effect.sync(() => {
+              resumedTurnStarts.delete(commandId);
+              queued.unshift(event);
+            }),
+          ),
+        );
       yield* Deferred.await(sent);
-      if (queued[0] === event) queued.shift();
       resumedTurnStarts.delete(commandId);
     }
     if (turnsAfterCompaction.get(threadId) === queued) turnsAfterCompaction.delete(threadId);
@@ -1288,19 +1267,6 @@ const make = Effect.gen(function* () {
     if (yield* hasHandledTurnStartRecently(key)) {
       return;
     }
-    if (resumed && turnsAfterCompaction.get(event.payload.threadId) !== resumed.queued) {
-      yield* appendProviderFailureActivity({
-        threadId: event.payload.threadId,
-        kind: "provider.turn.start.failed",
-        summary: "Canceled queued message was not resumed",
-        detail:
-          "This queued message was canceled before it could resume. Send it again to continue.",
-        turnId: null,
-        createdAt: event.payload.createdAt,
-        requestId: event.payload.messageId,
-      });
-      return;
-    }
 
     const thread = yield* resolveThreadShell(event.payload.threadId);
     if (!thread) {
@@ -1333,6 +1299,12 @@ const make = Effect.gen(function* () {
         createdAt: event.payload.createdAt,
         requestId: event.payload.messageId,
       });
+    if (resumed && turnsAfterCompaction.get(event.payload.threadId) !== resumed.queued) {
+      return yield* appendTurnStartFailure(
+        "Queued message was not sent",
+        "The queued message was canceled before it could resume. Send it again to continue.",
+      );
+    }
 
     const handleTurnStartFailure = (cause: Cause.Cause<unknown>) => {
       if (Cause.hasInterruptsOnly(cause)) {
@@ -1506,6 +1478,9 @@ const make = Effect.gen(function* () {
         return;
       }
       compactingThreadIds.add(event.payload.threadId);
+      const clearCompacting = Effect.sync(
+        () => void compactingThreadIds.delete(event.payload.threadId),
+      );
       yield* Effect.gen(function* () {
         yield* ensureSessionForThread(
           event.payload.threadId,
@@ -1525,13 +1500,11 @@ const make = Effect.gen(function* () {
         );
       }).pipe(
         Effect.andThen(restoreCompaction(event.payload.threadId, true)),
-        Effect.andThen(Effect.sync(() => void compactingThreadIds.delete(event.payload.threadId))),
+        Effect.andThen(clearCompacting),
         Effect.andThen(resumeTurnsAfterCompaction(event.payload.threadId)),
         Effect.catchCause((cause) =>
           recoverCompactionFailure(cause).pipe(
-            Effect.ensuring(
-              Effect.sync(() => void compactingThreadIds.delete(event.payload.threadId)),
-            ),
+            Effect.ensuring(clearCompacting),
             Effect.andThen(
               cancelTurnsAfterCompaction(
                 event.payload.threadId,
@@ -1545,9 +1518,9 @@ const make = Effect.gen(function* () {
       return;
     }
     if (
+      !resumed &&
       (compactingThreadIds.has(event.payload.threadId) ||
-        turnsAfterCompaction.has(event.payload.threadId)) &&
-      (event.commandId === null || !resumedTurnStarts.has(event.commandId))
+        turnsAfterCompaction.has(event.payload.threadId))
     ) {
       const queued = turnsAfterCompaction.get(event.payload.threadId) ?? [];
       queued.push(event);
@@ -1575,16 +1548,12 @@ const make = Effect.gen(function* () {
     const send = providerService
       .sendTurn(sendTurnRequest.value)
       .pipe(Effect.asVoid, Effect.catchCause(recoverTurnStartFailure));
-    if (resumed && event.commandId !== null) {
-      resumed.queued.shift();
-      resumedTurnStarts.delete(event.commandId);
-      yield* send.pipe(
-        Effect.ensuring(Deferred.succeed(resumed.sent, undefined)),
-        Effect.forkScoped,
-      );
-    } else {
-      yield* Effect.forkScoped(send);
-    }
+    // The forked send settles `sent` from here on, so drop the entry the post-processing hook uses.
+    if (resumed && event.commandId !== null) resumedTurnStarts.delete(event.commandId);
+    yield* send.pipe(
+      Effect.ensuring(resumed ? Deferred.succeed(resumed.sent, undefined) : Effect.void),
+      Effect.forkScoped,
+    );
   });
 
   const processTurnInterruptRequested = Effect.fn("processTurnInterruptRequested")(function* (
@@ -1789,15 +1758,15 @@ const make = Effect.gen(function* () {
     const wasCompacting = compactingThreadIds.has(thread.id);
     stoppingThreadIds.add(thread.id);
     const clearStopping = Effect.sync(() => void stoppingThreadIds.delete(thread.id));
-    yield* Effect.gen(function* () {
-      yield* cancelTurnsAfterCompaction(
-        thread.id,
-        "The session was stopped during context compaction. Send this message again to continue.",
-      );
-      if (thread.session && thread.session.status !== "stopped") {
-        yield* providerService.stopSession({ threadId: thread.id });
-      }
-    }).pipe(
+    yield* cancelTurnsAfterCompaction(
+      thread.id,
+      "The session was stopped during context compaction. Send this message again to continue.",
+    ).pipe(
+      Effect.andThen(
+        thread.session && thread.session.status !== "stopped"
+          ? providerService.stopSession({ threadId: thread.id })
+          : Effect.void,
+      ),
       Effect.matchCauseEffect({
         onFailure: (cause) => {
           if (Cause.hasInterruptsOnly(cause)) {
@@ -1911,11 +1880,12 @@ const make = Effect.gen(function* () {
 
   const processDomainEventSafely = (event: ProviderIntentEvent) =>
     processDomainEvent(event).pipe(
+      // A replay that returned before forking its send still holds its entry; settle it so
+      // the compaction queue moves on. Forked sends drop the entry first and settle it themselves.
       Effect.ensuring(
-        Effect.gen(function* () {
-          const sent =
-            event.commandId !== null ? resumedTurnStarts.get(event.commandId)?.sent : undefined;
-          if (sent) yield* Deferred.succeed(sent, undefined);
+        Effect.suspend(() => {
+          const resumed = event.commandId !== null && resumedTurnStarts.get(event.commandId);
+          return resumed ? Deferred.succeed(resumed.sent, undefined) : Effect.void;
         }),
       ),
       Effect.catchCause((cause) => {
