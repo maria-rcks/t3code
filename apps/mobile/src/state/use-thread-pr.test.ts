@@ -101,6 +101,7 @@ describe("presentThreadLinkedPullRequests", () => {
     ["open", true, "open", false, "open", false, "text-adaptive-emerald-600-400"],
     ["closed", false, "open", false, "open", false, "text-adaptive-emerald-600-400"],
     ["merged", false, "merged", false, "merged", false, "text-adaptive-violet-600-400"],
+    ["closed", false, "merged", false, "closed", false, "text-adaptive-rose-600-400"],
   ] as const)(
     "colors linked %s (draft %s) and %s (draft %s) by their aggregate state",
     (firstState, firstDraft, secondState, secondDraft, state, isDraft, textClassName) => {
@@ -114,7 +115,13 @@ describe("presentThreadLinkedPullRequests", () => {
             snapshot: { ...second.snapshot!, state: secondState, isDraft: secondDraft },
           },
         ]),
-      ).toMatchObject({ label: "+2", state, isDraft, textClassName });
+      ).toMatchObject({
+        label: "+2",
+        state,
+        isDraft,
+        textClassName,
+        accessibilityLabel: `2 linked pull requests, overall ${isDraft ? "draft" : state}`,
+      });
     },
   );
 

@@ -91,7 +91,9 @@ export function presentThreadLinkedPullRequests(
     accessibilityLabel:
       badge.kind === "stack"
         ? `${badge.layers} pull requests in stack, ${isDraft ? "draft" : (state ?? "status pending")}`
-        : `#${link.number} pull request ${state === null ? "status pending" : isDraft ? "draft" : state}${badge.others > 0 ? `, ${badge.others} more linked` : ""}`,
+        : linkedCount !== null
+          ? `${linkedCount} linked pull requests, overall ${badge.state}`
+          : `#${link.number} pull request ${state === null ? "status pending" : isDraft ? "draft" : state}`,
     textClassName:
       state === null || isDraft
         ? "text-foreground-muted"
