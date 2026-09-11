@@ -4350,9 +4350,6 @@ export default function Sidebar() {
                             ? `Filter threads by project: ${scopedProjectGroup.displayName}`
                             : "Filter threads by project"
                         }
-                        // A pressed look while scoped: the icon is the only
-                        // chrome that says the list is narrowed to one project.
-                        isActive={scopedProjectGroup !== null}
                       />
                     }
                   >

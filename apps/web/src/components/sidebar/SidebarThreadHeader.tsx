@@ -3,8 +3,8 @@
  *
  * Search owns the row's text and spans it. Project scope collapses to an icon
  * that sits with new-project and new-thread as a segmented group at the end.
- * The scope icon takes a pressed look while a project is selected, so
- * narrowing to a project is never invisible state.
+ * The scope icon swaps to the project favicon while a project is selected,
+ * so narrowing to a project is never invisible state.
  *
  * The scope picker itself is passed in: its combobox state lives with the rest
  * of the sidebar's scope logic. `searchFieldRef` lands on the search field so
@@ -85,7 +85,7 @@ export function SidebarThreadHeader({
         ref={searchFieldRef}
         className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
       >
-        <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
+        <SearchIcon className="size-4 shrink-0 text-[var(--sidebar-icon-color)]" />
         <Input
           ref={searchInputRef}
           nativeInput
@@ -105,7 +105,7 @@ export function SidebarThreadHeader({
               ? `sidebar-thread-search-result-${activeSearchResultIndex}`
               : undefined
           }
-          className="min-w-0 flex-1 [&_[data-slot=input]]:h-auto [&_[data-slot=input]]:p-0 [&_[data-slot=input]]:leading-normal [&_[data-slot=input]]:text-sm [&_[data-slot=input]]:font-medium [&_[data-slot=input]]:text-sidebar-foreground [&_[data-slot=input]]:placeholder:text-sidebar-muted-foreground"
+          className="min-w-0 flex-1 [&_[data-slot=input]]:h-auto [&_[data-slot=input]]:p-0 [&_[data-slot=input]]:leading-normal [&_[data-slot=input]]:text-sm [&_[data-slot=input]]:font-medium [&_[data-slot=input]]:text-sidebar-foreground [&_[data-slot=input]]:placeholder:text-[var(--sidebar-icon-color)]"
         />
         {isSearching ? (
           <Button
@@ -125,7 +125,7 @@ export function SidebarThreadHeader({
       </div>
       {/* Segmented well: the icons read as one control instead of three loose
           buttons competing with the search field beside them. */}
-      <div className="flex shrink-0 items-center rounded-md bg-sidebar-control-surface/60 p-px ring-1 ring-sidebar-border/50">
+      <div className="flex shrink-0 items-center rounded-md bg-sidebar-control-surface/60 p-px">
         {hasProjects ? (
           <>
             {projectScope}
@@ -168,7 +168,6 @@ export function SidebarHeaderIconButton({
   label,
   tooltip = label,
   className,
-  isActive,
   children,
   ...rest
 }: {
@@ -176,7 +175,6 @@ export function SidebarHeaderIconButton({
   label: string;
   tooltip?: ReactNode;
   className?: string | undefined;
-  isActive?: boolean | undefined;
   children?: ReactNode;
 } & Omit<ComponentProps<typeof SidebarMenuButton>, "children" | "className">) {
   return (
@@ -187,7 +185,6 @@ export function SidebarHeaderIconButton({
             size="icon"
             type="button"
             aria-label={label}
-            {...(isActive === undefined ? {} : { isActive })}
             {...rest}
             className={cn(
               "relative size-7 shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
