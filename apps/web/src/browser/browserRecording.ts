@@ -141,9 +141,8 @@ const activeBrowserRecordingTabIdsAtom = Atom.make<ActiveBrowserRecordingIndex>(
   tabIds: new Set<string>(),
 }).pipe(Atom.keepAlive, Atom.withLabel("preview:active-browser-recording-tabs"));
 
-export function useActiveBrowserRecordingTabIds(threadRef?: ScopedThreadRef): ReadonlySet<string> {
-  const tabIds = useAtomValue(activeBrowserRecordingTabIdsAtom).tabIds;
-  return threadRef ? readActiveBrowserRecordingTabIds(threadRef) : tabIds;
+export function useActiveBrowserRecordingTabIds(): ReadonlySet<string> {
+  return useAtomValue(activeBrowserRecordingTabIdsAtom).tabIds;
 }
 
 const activeRecordings = new Map<string, ActiveRecording>();
