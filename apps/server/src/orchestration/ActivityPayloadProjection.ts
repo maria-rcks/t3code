@@ -266,15 +266,31 @@ function projectPreviewToolMetadata(data: Record<string, unknown>, status: unkno
   )
     return {};
 
-  let page = asRecord(record?.structuredContent);
-  if (!page) {
-    const text = extractMcpResultText(result);
-    if (!text) return {};
-    try {
-      page = asRecord(JSON.parse(extractJsonObject(text.slice(0, 2 * 1024 * 1024))));
-    } catch {
-      return {};
+  let page = record;
+  let output: unknown = result;
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (page?.isError === true || page?.is_error === true) return {};
+    const structured = asRecord(page?.structuredContent);
+    if (structured) {
+      page = structured;
+      break;
     }
+    const text = extractMcpResultText(output)?.slice(0, 2 * 1024 * 1024);
+    if (!text) break;
+    try {
+      page = asRecord(JSON.parse(extractJsonObject(text)));
+    } catch {
+      // A truncated MCP envelope can still contain a complete first text block.
+      const firstBlock = /^\s*\{\s*"content"\s*:\s*\[\s*/.exec(text);
+      if (!firstBlock) return {};
+      try {
+        const block = asRecord(JSON.parse(extractJsonObject(text.slice(firstBlock[0].length))));
+        page = block?.type === "text" ? { content: [block] } : null;
+      } catch {
+        return {};
+      }
+    }
+    output = page;
   }
   const rawUrl = asTrimmedString(
     asRecord(page?.toolIcon)?.pageUrl ??

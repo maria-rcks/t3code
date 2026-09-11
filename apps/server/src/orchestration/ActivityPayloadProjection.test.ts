@@ -279,6 +279,15 @@ describe("projectActivityPayload", () => {
       toolName: "mcp__t3_code__preview_snapshot",
       result: { content: '{"url":"https://example.com/"}\n{"accessibilityTree":"truncated' },
     },
+    ...[false, true].map((truncated) => ({
+      toolName: "mcp__t3_code__preview_snapshot",
+      result: {
+        content: JSON.stringify({
+          content: [{ type: "text", text: '{"url":"https://example.com/"}' }],
+          structuredContent: { url: "https://example.com/", visibleText: "page" },
+        }).slice(0, truncated ? -5 : undefined),
+      },
+    })),
     ...[
       "type",
       "press",
