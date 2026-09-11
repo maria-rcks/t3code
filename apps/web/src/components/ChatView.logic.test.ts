@@ -32,6 +32,7 @@ import {
   branchMismatchKey,
   buildExpiredTerminalContextToastCopy,
   buildLoadingThreadFromShell,
+  buildRunningThreadTurnInterruptInput,
   buildThreadTurnInterruptInput,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
@@ -42,9 +43,12 @@ import {
   getStartedThreadModelChangeBlockReason,
   hasEnvironmentReconnectWarningGraceElapsed,
   hasServerAcknowledgedLocalDispatch,
+  shouldRefocusComposerOnWindowFocus,
   isBranchMismatchDismissedForSession,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
+  recallCheckoutIsRepo,
+  rememberCheckoutIsRepo,
   resolveBackgroundDraftWorkspaceOptions,
   resolveComposerInteractionMode,
   resolveComposerProviderSelection,
@@ -53,6 +57,7 @@ import {
   resolveProactiveTurnDiffAction,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
+  threadShellHasStarted,
   resolveDraftHeroState,
   scheduleEnvironmentReconnectWarning,
   startNewThreadForProject,
@@ -188,7 +193,7 @@ describe("proactive panels", () => {
     expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, ref)).toEqual(
       oldPr,
     );
-    expect(shouldOpenProactivePullRequest(loaded.targetKey, "owner/repo:2")).toBe(false);
+    expect(shouldOpenProactivePullRequest(loaded.targetKey, "owner/repo:2")).toBe(true);
     expect(
       shouldOpenProactiveTurnDiff({
         previousRunningTurnId: loaded.runningTurnId,
@@ -196,7 +201,10 @@ describe("proactive panels", () => {
         settledTurnId: turnId,
         turnCompleted: true,
       }),
-    ).toBe(false);
+    ).toBe(true);
+    expect(panels.openProactive(ref, { id: "diff", kind: "diff" }, loaded.userActionRevision)).toBe(
+      false,
+    );
   });
 
   it.each(["idle", "loading", "observed"] as const)(
@@ -243,8 +251,9 @@ describe("proactive panels", () => {
     },
   );
 
-  it("opens a pull request only after a newly observed link appears", () => {
-    expect(shouldOpenProactivePullRequest(undefined, "project:repo:42")).toBe(false);
+  it("opens an existing pull request on entry and follows newly observed links", () => {
+    expect(shouldOpenProactivePullRequest(undefined, "project:repo:42")).toBe(true);
+    expect(shouldOpenProactivePullRequest(undefined, null)).toBe(false);
     expect(shouldOpenProactivePullRequest(null, "project:repo:42")).toBe(true);
     expect(shouldOpenProactivePullRequest("project:repo:42", "project:repo:42")).toBe(false);
     expect(shouldOpenProactivePullRequest("project:repo:42", null)).toBe(false);
@@ -284,7 +293,7 @@ describe("proactive panels", () => {
     ).toBe(false);
   });
 
-  it("opens the diff only when the observed running turn settles", () => {
+  it("opens a completed diff on entry or when the observed running turn settles", () => {
     const turnId = TurnId.make("turn-1");
     expect(
       shouldOpenProactiveTurnDiff({
@@ -293,7 +302,7 @@ describe("proactive panels", () => {
         settledTurnId: turnId,
         turnCompleted: true,
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldOpenProactiveTurnDiff({
         previousRunningTurnId: turnId,
@@ -717,6 +726,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     proposedPlans: [],
     activities: [],
     checkpoints: [],
+    pullRequests: [],
     createdAt: now,
     updatedAt: now,
     archivedAt: null,
@@ -834,6 +844,7 @@ describe("buildLoadingThreadFromShell", () => {
       snoozedUntil: null,
       snoozedAt: null,
       session: null,
+      pullRequests: [],
       latestUserMessageAt: now,
       hasPendingApprovals: false,
       hasPendingUserInput: false,
@@ -904,6 +915,20 @@ describe("buildThreadTurnInterruptInput", () => {
     expect(buildThreadTurnInterruptInput(makeThread({ session: readySession }))).toEqual({
       threadId,
     });
+  });
+
+  it("omits a turn id when a running session has not projected its active turn yet", () => {
+    expect(
+      buildThreadTurnInterruptInput(
+        makeThread({
+          session: {
+            ...readySession,
+            status: "running",
+            activeTurnId: null,
+          },
+        }),
+      ),
+    ).toEqual({ threadId });
   });
 });
 
@@ -1262,6 +1287,41 @@ describe("resolveComposerInteractionMode", () => {
         interactionMode: "plan",
       }),
     ).toEqual({ enabled: false, interactionMode: "default" });
+  });
+});
+
+describe("buildRunningThreadTurnInterruptInput", () => {
+  it("targets only the active turn of a running thread", () => {
+    const activeTurnId = TurnId.make("turn-running");
+    const runningThread = makeThread({
+      session: {
+        ...readySession,
+        status: "running",
+        activeTurnId,
+      },
+    });
+
+    expect(buildRunningThreadTurnInterruptInput(runningThread, "running")).toEqual({
+      threadId,
+      turnId: activeTurnId,
+    });
+    expect(buildRunningThreadTurnInterruptInput(runningThread, "ready")).toBeNull();
+    expect(
+      buildRunningThreadTurnInterruptInput(makeThread({ session: readySession }), "ready"),
+    ).toBeNull();
+    expect(buildRunningThreadTurnInterruptInput(null, "disconnected")).toBeNull();
+  });
+
+  it("targets a running thread before its active turn has been projected", () => {
+    const runningThread = makeThread({
+      session: {
+        ...readySession,
+        status: "running",
+        activeTurnId: null,
+      },
+    });
+
+    expect(buildRunningThreadTurnInterruptInput(runningThread, "running")).toEqual({ threadId });
   });
 });
 
@@ -1859,5 +1919,106 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
         latestTurnStartFailureId: "turn-start-failure-new",
       }),
     ).toBe(true);
+  });
+});
+
+describe("shouldRefocusComposerOnWindowFocus", () => {
+  function element(
+    tagName: string,
+    options?: { editable?: boolean; role?: string; within?: string },
+  ) {
+    return {
+      tagName,
+      isContentEditable: options?.editable ?? false,
+      getAttribute: (name: string) => (name === "role" ? (options?.role ?? null) : null),
+      closest: (selector: string) =>
+        options?.within !== undefined && selector.includes(options.within) ? ({} as Element) : null,
+    };
+  }
+
+  it("refocuses when nothing or the body holds focus", () => {
+    expect(shouldRefocusComposerOnWindowFocus(null)).toBe(true);
+    expect(shouldRefocusComposerOnWindowFocus(element("BODY"))).toBe(true);
+  });
+
+  it("refocuses away from a plain button, such as a pull request tab", () => {
+    expect(shouldRefocusComposerOnWindowFocus(element("BUTTON"))).toBe(true);
+  });
+
+  it("leaves other text fields alone", () => {
+    expect(shouldRefocusComposerOnWindowFocus(element("INPUT"))).toBe(false);
+    expect(shouldRefocusComposerOnWindowFocus(element("TEXTAREA"))).toBe(false);
+    expect(shouldRefocusComposerOnWindowFocus(element("DIV", { editable: true }))).toBe(false);
+    expect(shouldRefocusComposerOnWindowFocus(element("DIV", { role: "textbox" }))).toBe(false);
+  });
+
+  it("leaves a focused terminal alone in the drawer and the right panel", () => {
+    expect(
+      shouldRefocusComposerOnWindowFocus(element("BUTTON", { within: "data-terminal-owner" })),
+    ).toBe(false);
+  });
+
+  it("leaves focus inside a dialog or popup alone", () => {
+    expect(shouldRefocusComposerOnWindowFocus(element("BUTTON", { within: "dialog" }))).toBe(false);
+    expect(shouldRefocusComposerOnWindowFocus(element("BUTTON", { within: "-popup" }))).toBe(false);
+  });
+});
+
+describe("checkout Git memory", () => {
+  it("answers from the last status seen for the same checkout", () => {
+    rememberCheckoutIsRepo(environmentId, "/repo/plain-folder", false);
+    expect(recallCheckoutIsRepo(environmentId, "/repo/plain-folder")).toBe(false);
+    rememberCheckoutIsRepo(environmentId, "/repo/plain-folder", true);
+    expect(recallCheckoutIsRepo(environmentId, "/repo/plain-folder")).toBe(true);
+  });
+
+  it("does not answer for a checkout it has not seen", () => {
+    expect(recallCheckoutIsRepo(environmentId, "/repo/never-opened")).toBeUndefined();
+    expect(recallCheckoutIsRepo(environmentId, null)).toBeUndefined();
+  });
+
+  it("keeps environments apart", () => {
+    rememberCheckoutIsRepo(environmentId, "/repo/shared-path", false);
+    expect(
+      recallCheckoutIsRepo(EnvironmentId.make("env-other"), "/repo/shared-path"),
+    ).toBeUndefined();
+  });
+
+  it("does not confuse an environment id containing the separator with a path", () => {
+    rememberCheckoutIsRepo(EnvironmentId.make("env"), "a:b", false);
+    expect(recallCheckoutIsRepo(EnvironmentId.make("env:a"), "b")).toBeUndefined();
+  });
+});
+
+describe("threadShellHasStarted", () => {
+  it("counts a thread that has a user message but no latest turn", () => {
+    expect(
+      threadShellHasStarted({ latestTurn: null, latestUserMessageAt: now, session: null }),
+    ).toBe(true);
+  });
+
+  it("counts a thread with a live session and nothing else", () => {
+    expect(
+      threadShellHasStarted({
+        latestTurn: null,
+        latestUserMessageAt: null,
+        session: {
+          threadId,
+          status: "starting",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: now,
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("does not count a thread that never sent anything", () => {
+    expect(
+      threadShellHasStarted({ latestTurn: null, latestUserMessageAt: null, session: null }),
+    ).toBe(false);
+    expect(threadShellHasStarted(null)).toBe(false);
   });
 });

@@ -1,3 +1,4 @@
+import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
 import {
   buildProjectGroups,
   derivePhysicalProjectKey,
@@ -24,7 +25,7 @@ import * as Arr from "effect/Array";
 import * as Option from "effect/Option";
 import * as Order from "effect/Order";
 
-import { scopedProjectKey } from "../../lib/scopedEntities";
+import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 
 export type HomeProjectSortOrder = Exclude<SidebarProjectSortOrder, "manual">;
@@ -190,10 +191,15 @@ function selectRecentThreads(
   sortedThreads: ReadonlyArray<EnvironmentThreadShell>,
   threadSortOrder: SidebarThreadSortOrder,
   now: number,
+  queuedThreadKeys: ReadonlySet<string> | undefined,
 ): ReadonlyArray<EnvironmentThreadShell> {
   const cutoff = now - RECENT_THREAD_WINDOW_MS;
+  // A thread with a message waiting in the outbox has work the user is
+  // waiting on, however old its last activity; it never trims away.
   const recent = sortedThreads.filter(
-    (thread) => getThreadSortTimestamp(thread, threadSortOrder) >= cutoff,
+    (thread) =>
+      getThreadSortTimestamp(thread, threadSortOrder) >= cutoff ||
+      queuedThreadKeys?.has(scopedThreadKey(thread.environmentId, thread.id)) === true,
   );
   return recent.length > 0 ? recent : sortedThreads.slice(0, RECENT_THREAD_FALLBACK_COUNT);
 }
@@ -202,6 +208,8 @@ export function buildHomeThreadGroups(input: {
   readonly projects: ReadonlyArray<EnvironmentProject>;
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   readonly pendingTasks?: ReadonlyArray<PendingNewTask>;
+  /** Thread keys with a message waiting in the outbox; kept in the default view. */
+  readonly queuedThreadKeys?: ReadonlySet<string>;
   readonly environmentId: EnvironmentId | null;
   readonly searchQuery: string;
   readonly matchedThreadKeys?: ReadonlySet<string>;
@@ -304,6 +312,9 @@ export function buildHomeThreadGroups(input: {
       : group.threads.filter(
           (thread) =>
             thread.title.toLocaleLowerCase().includes(query) ||
+            threadPullRequestSearchTerms(thread).some((term) =>
+              term.toLocaleLowerCase().includes(query),
+            ) ||
             input.matchedThreadKeys?.has(
               threadSearchMatchKey({
                 environmentId: thread.environmentId,
@@ -326,7 +337,7 @@ export function buildHomeThreadGroups(input: {
     // only trims the default (no-query) view.
     const recentThreads =
       query.length === 0
-        ? selectRecentThreads(sortedThreads, input.threadSortOrder, now)
+        ? selectRecentThreads(sortedThreads, input.threadSortOrder, now, input.queuedThreadKeys)
         : sortedThreads;
 
     // A stale project id still resolves to the canonical member with the same

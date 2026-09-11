@@ -175,12 +175,6 @@ const TIMESTAMP_FORMAT_LABELS = {
   "24-hour": "24-hour",
 } as const;
 
-const COMPOSER_COLLAPSE_TRIGGER_LABELS = {
-  blur: "On unfocus",
-  scroll: "On scroll",
-} as const;
-type ComposerCollapseTrigger = keyof typeof COMPOSER_COLLAPSE_TRIGGER_LABELS;
-
 const DIFF_LAYOUT_LABELS: Record<DiffLayout, string> = {
   stacked: "Stacked",
   split: "Split",
@@ -518,6 +512,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.timelineBackgroundBlur !== DEFAULT_UNIFIED_SETTINGS.timelineBackgroundBlur
         ? ["Wallpaper"]
         : []),
+      ...(settings.diffColorScheme !== DEFAULT_UNIFIED_SETTINGS.diffColorScheme
+        ? ["Diff colors"]
+        : []),
       ...(settings.panelAnimationDurationMs !== DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs
         ? ["Panel animations"]
         : []),
@@ -554,9 +551,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.showSkillsInSlashMenu !== DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu
         ? ["Show skills in slash menu"]
         : []),
-      ...(settings.composerCollapseOnBlur !== DEFAULT_UNIFIED_SETTINGS.composerCollapseOnBlur ||
-      settings.composerCollapseOnScroll !== DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll
-        ? ["Collapse composer"]
+      ...(settings.composerCollapseOnScroll !== DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll
+        ? ["Collapse composer on scroll"]
         : []),
       ...(settings.contextWindowMeterEnabled !== DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled
         ? ["Context window indicator"]
@@ -613,12 +609,12 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.timelineBackgroundImage,
       settings.timelineBackgroundOpacity,
       settings.timelineBackgroundBlur,
+      settings.diffColorScheme,
       settings.enableAgentBrowserAccess,
       settings.confirmQuit,
       settings.confirmThreadArchive,
       settings.confirmThreadDelete,
       settings.confirmThreadUnpin,
-      settings.composerCollapseOnBlur,
       settings.composerCollapseOnScroll,
       settings.addProjectBaseDirectory,
       settings.defaultThreadEnvMode,
@@ -721,13 +717,13 @@ export function useSettingsRestore(onRestored?: () => void) {
       timelineBackgroundImage: DEFAULT_UNIFIED_SETTINGS.timelineBackgroundImage,
       timelineBackgroundOpacity: DEFAULT_UNIFIED_SETTINGS.timelineBackgroundOpacity,
       timelineBackgroundBlur: DEFAULT_UNIFIED_SETTINGS.timelineBackgroundBlur,
+      diffColorScheme: DEFAULT_UNIFIED_SETTINGS.diffColorScheme,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       diffLayout: DEFAULT_UNIFIED_SETTINGS.diffLayout,
       proactivePanelsEnabled: DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
-      composerCollapseOnBlur: DEFAULT_UNIFIED_SETTINGS.composerCollapseOnBlur,
       composerCollapseOnScroll: DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll,
       contextWindowMeterEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
@@ -1261,6 +1257,52 @@ export function AppearanceSettingsPanel() {
             }
           />
         ) : null}
+        <SettingsRow
+          {...searchableSetting("diff-color-scheme")}
+          description="Choose colors for additions and deletions, including change counts."
+          resetAction={
+            settings.diffColorScheme !== DEFAULT_UNIFIED_SETTINGS.diffColorScheme ? (
+              <SettingResetButton
+                label="diff colors"
+                onClick={() =>
+                  updateSettings({ diffColorScheme: DEFAULT_UNIFIED_SETTINGS.diffColorScheme })
+                }
+              />
+            ) : null
+          }
+          control={
+            <div className="w-full sm:w-40">
+              <Select
+                value={settings.diffColorScheme}
+                onValueChange={(value) => {
+                  if (value === "red-green" || value === "blue-orange")
+                    updateSettings({ diffColorScheme: value });
+                }}
+              >
+                <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Diff colors">
+                  <span
+                    aria-hidden="true"
+                    className={
+                      settings.diffColorScheme === "blue-orange"
+                        ? "flex shrink-0 flex-row-reverse gap-1"
+                        : "flex shrink-0 gap-1"
+                    }
+                  >
+                    <span className="size-2 rounded-full bg-[var(--diff-deletion)]" />
+                    <span className="size-2 rounded-full bg-[var(--diff-addition)]" />
+                  </span>
+                  <SelectValue>
+                    {settings.diffColorScheme === "blue-orange" ? "Blue & orange" : "Red & green"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  <SelectItem value="red-green">Red & green (default)</SelectItem>
+                  <SelectItem value="blue-orange">Blue & orange</SelectItem>
+                </SelectPopup>
+              </Select>
+            </div>
+          }
+        />
       </SettingsSection>
 
       <SettingsSection id="motion" title="Motion">
@@ -2042,13 +2084,6 @@ export function GeneralSettingsPanel() {
   const serverProviders = useAtomValue(primaryServerProvidersAtom);
   const supportsAutoSettlement =
     useAtomValue(primaryServerConfigAtom)?.environment.capabilities.threadAutoSettlement === true;
-  const composerCollapseTriggers = useMemo<ComposerCollapseTrigger[]>(
-    () => [
-      ...(settings.composerCollapseOnBlur ? (["blur"] as const) : []),
-      ...(settings.composerCollapseOnScroll ? (["scroll"] as const) : []),
-    ],
-    [settings.composerCollapseOnBlur, settings.composerCollapseOnScroll],
-  );
   const diagnosticsDescription = formatDiagnosticsDescription({
     localTracingEnabled: observability?.localTracingEnabled ?? false,
     otlpTracesEnabled: observability?.otlpTracesEnabled ?? false,
@@ -2375,16 +2410,14 @@ export function GeneralSettingsPanel() {
 
         <SettingsRow
           {...searchableSetting("composer-collapse")}
-          description="Rest the composer of an existing thread into a single line when it loses focus, when you scroll the conversation, or both. Pick neither to keep it expanded."
+          description="Rest the composer of an existing thread into a single line when you scroll the conversation. Focus the composer or start typing to expand it again."
           resetAction={
-            settings.composerCollapseOnBlur !== DEFAULT_UNIFIED_SETTINGS.composerCollapseOnBlur ||
             settings.composerCollapseOnScroll !==
-              DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll ? (
+            DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll ? (
               <SettingResetButton
-                label="collapse composer"
+                label="collapse composer on scroll"
                 onClick={() =>
                   updateSettings({
-                    composerCollapseOnBlur: DEFAULT_UNIFIED_SETTINGS.composerCollapseOnBlur,
                     composerCollapseOnScroll: DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll,
                   })
                 }
@@ -2392,34 +2425,13 @@ export function GeneralSettingsPanel() {
             ) : null
           }
           control={
-            <Select
-              multiple
-              value={composerCollapseTriggers}
-              onValueChange={(next) =>
-                updateSettings({
-                  composerCollapseOnBlur: next.includes("blur"),
-                  composerCollapseOnScroll: next.includes("scroll"),
-                })
+            <Switch
+              checked={settings.composerCollapseOnScroll}
+              onCheckedChange={(checked) =>
+                updateSettings({ composerCollapseOnScroll: Boolean(checked) })
               }
-            >
-              <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Collapse composer">
-                <SelectValue>
-                  {composerCollapseTriggers.length === 0
-                    ? "Never"
-                    : composerCollapseTriggers
-                        .map((trigger) => COMPOSER_COLLAPSE_TRIGGER_LABELS[trigger])
-                        .join(", ")}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectPopup align="end" alignItemWithTrigger={false}>
-                <SelectItem showCheck value="blur">
-                  {COMPOSER_COLLAPSE_TRIGGER_LABELS.blur}
-                </SelectItem>
-                <SelectItem showCheck value="scroll">
-                  {COMPOSER_COLLAPSE_TRIGGER_LABELS.scroll}
-                </SelectItem>
-              </SelectPopup>
-            </Select>
+              aria-label="Collapse composer on scroll"
+            />
           }
         />
 
@@ -2771,7 +2783,7 @@ export function GeneralSettingsPanel() {
         <SettingsRow
           serverScoped
           {...searchableSetting("text-generation-model")}
-          description="Used for thread titles and other generated text. Source control can override it."
+          description="Used for thread titles and other generated text on connected devices with this provider. Source control can override it."
           resetAction={
             isTextGenerationModelDirty ? (
               <SettingResetButton
@@ -2906,18 +2918,7 @@ export function ArchivedThreadsPanel() {
     const projectsByEnvironmentAndId = new Map(
       archivedSnapshots.flatMap(({ environmentId, snapshot }) =>
         snapshot.projects.map(
-          (project) =>
-            [
-              `${environmentId}:${project.id}`,
-              {
-                id: project.id,
-                environmentId,
-                name: project.title,
-                cwd: project.workspaceRoot,
-                faviconPath: project.faviconPath,
-                projectIcon: project.projectIcon,
-              },
-            ] as const,
+          (project) => [`${environmentId}:${project.id}`, { ...project, environmentId }] as const,
         ),
       ),
     );
@@ -3036,16 +3037,8 @@ export function ArchivedThreadsPanel() {
           <SettingsSection
             key={project.id}
             id={index === 0 ? searchableSetting("archive").id : undefined}
-            title={project.name}
-            icon={
-              <ProjectFavicon
-                environmentId={project.environmentId}
-                cwd={project.cwd}
-                projectName={project.name}
-                faviconPath={project.faviconPath}
-                projectIcon={project.projectIcon}
-              />
-            }
+            title={project.title}
+            icon={<ProjectFavicon project={project} />}
           >
             {projectThreads.map((thread) => (
               <SettingsRow
