@@ -47,6 +47,7 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { cn } from "~/lib/utils";
+import { BrowserRecordingIndicator } from "../preview/BrowserRecordingIndicator";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -347,7 +348,7 @@ export const ChatHeader = memo(function ChatHeader({
             <WorkspaceBreadcrumbSeparator />
           </>
         ) : null}
-        <WorkspaceBreadcrumbItem current className="min-w-10 flex-1">
+        <WorkspaceBreadcrumbItem current className="min-w-10 flex-1 gap-2">
           {renamingTitle !== null ? (
             <input
               autoFocus
@@ -398,6 +399,9 @@ export const ChatHeader = memo(function ChatHeader({
               <TooltipPopup side="top">{activeThreadTitle}</TooltipPopup>
             </Tooltip>
           )}
+          <BrowserRecordingIndicator
+            threadRef={scopeThreadRef(activeThreadEnvironmentId, activeThreadId)}
+          />
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
       <div
