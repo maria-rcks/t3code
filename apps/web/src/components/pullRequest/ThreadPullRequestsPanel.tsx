@@ -112,11 +112,10 @@ function LinkRow({
           <span className="min-w-0 flex-1 truncate text-sm">
             {snapshot?.title ?? link.repository}
           </span>
-          {/* Right-aligned signals, in the order a reviewer scans them: are checks green,
-              has someone ruled, how big is it. Each is absent rather than neutral when the
+          {/* Match the full PR list: review verdict, checks, then diff counts.
+              Each is absent rather than neutral when the
               host said nothing, so a row without them reads as unknown, not as fine. */}
           <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px]">
-            {snapshot?.checksState ? <ChecksGlyph state={snapshot.checksState} /> : null}
             {snapshot?.state === "open" &&
             (snapshot.reviewDecision === "approved" ||
               snapshot.reviewDecision === "changes-requested") ? (
@@ -129,6 +128,7 @@ function LinkRow({
             {snapshot?.state === "open" && snapshot.mergeability === "conflicting" ? (
               <span className="text-destructive">Conflicts</span>
             ) : null}
+            {snapshot?.checksState ? <ChecksGlyph state={snapshot.checksState} /> : null}
             <PullRequestDiffStat
               additions={snapshot?.additions ?? 0}
               deletions={snapshot?.deletions ?? 0}
