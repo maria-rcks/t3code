@@ -134,7 +134,7 @@ export function forgejoChangeRequest(pr: typeof ForgejoPullRequest.Type) {
     baseBranch: pr.base.ref,
     headRepositoryNameWithOwner: pr.head.repo?.full_name ?? null,
     state: pr.merged ? "merged" : pr.state === "closed" ? "closed" : "open",
-    isDraft: pr.draft ?? false,
+    isDraft: pr.draft ?? /^(?:\[WIP\]|WIP:)/i.test(pr.title),
     mergeability:
       pr.mergeable === undefined ? "unknown" : pr.mergeable ? "mergeable" : "conflicting",
     additions: pr.additions ?? 0,

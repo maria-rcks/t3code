@@ -89,6 +89,7 @@ const resolveTarget = Effect.fn("PullRequestsToolkit.resolveTarget")(function* (
       host,
       repository,
       input.number,
+      project?.repositoryIdentity?.locator.remoteUrl,
     ) ?? `https://${host}/${repository}/pull/${input.number}`;
   return { host, repository, number: input.number, url } satisfies ResolvedTarget;
 });

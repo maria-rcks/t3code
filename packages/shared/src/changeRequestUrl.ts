@@ -86,12 +86,25 @@ export function changeRequestUrlFor(
   host: string,
   repository: string,
   number: number,
+  remoteUrl?: string,
 ): string | null {
   switch (kind) {
     case "github":
       return `https://${host}/${repository}/pull/${number}`;
-    case "forgejo":
+    case "forgejo": {
+      try {
+        const remote = new URL(remoteUrl ?? "");
+        if (
+          (remote.protocol === "http:" || remote.protocol === "https:") &&
+          remote.hostname.toLowerCase() === host.toLowerCase()
+        ) {
+          return `${remote.origin}/${repository}/pulls/${number}`;
+        }
+      } catch {
+        // SSH remotes do not specify the server's web origin.
+      }
       return `https://${host}/${repository}/pulls/${number}`;
+    }
     case "gitlab":
       return `https://${host}/${repository}/-/merge_requests/${number}`;
     case "bitbucket":

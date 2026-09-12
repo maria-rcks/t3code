@@ -141,6 +141,17 @@ describe("siblingPullRequestUrl", () => {
 
 describe("changeRequestUrlFor", () => {
   it.each([
+    ["http://forge.example:3000/git/owner/repo.git", "http://forge.example:3000"],
+    ["https://forge.example:8443/git/owner/repo.git", "https://forge.example:8443"],
+    ["git@forge.example:git/owner/repo.git", "https://forge.example"],
+    ["http://other.example:3000/git/owner/repo.git", "https://forge.example"],
+  ])("preserves the matching Forgejo web origin from %s", (remoteUrl, origin) => {
+    expect(changeRequestUrlFor("forgejo", "forge.example", "git/owner/repo", 42, remoteUrl)).toBe(
+      `${origin}/git/owner/repo/pulls/42`,
+    );
+  });
+
+  it.each([
     ["ssh.dev.azure.com", "v3/org/project/web"],
     ["vs-ssh.visualstudio.com", "v3/org/project/web"],
     ["org.visualstudio.com", "defaultcollection/project/_git/web"],
