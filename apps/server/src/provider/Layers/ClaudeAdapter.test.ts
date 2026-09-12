@@ -224,6 +224,7 @@ function makeHarness(config?: {
       Layer.provideMerge(NodeServices.layer),
     ),
     query,
+    queries,
     getLastCreateQueryInput: () => createInput,
   };
 }
@@ -6453,8 +6454,10 @@ describe("ClaudeAdapterLive", () => {
       assert.equal(forkCalls.length, 0);
       missingBoundary = false;
 
+      const recoveredQuery = harness.queries.at(-1)!;
+      assert.equal(recoveredQuery.closeCalls, 0);
       yield* adapter.rollbackThread(session.threadId, 1);
-      assert.equal(harness.query.closeCalls, 1);
+      assert.equal(recoveredQuery.closeCalls, 1);
       const forkOptions = harness.getLastCreateQueryInput()?.options;
       assert.deepEqual(forkCalls, [
         ["550e8400-e29b-41d4-a716-446655440010", { upToMessageId: "assistant-1-final" }],
