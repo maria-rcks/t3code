@@ -24,6 +24,15 @@ describe("parseChangeRequestUrl", () => {
     });
   });
 
+  it("reads Forgejo URLs even when the hostname contains github", () => {
+    expect(parseChangeRequestUrl("https://github.internal/team/repo/pulls/7")).toEqual({
+      host: "github.internal",
+      authority: "github.internal",
+      repository: "team/repo",
+      number: 7,
+    });
+  });
+
   it("reads a supported GitHub host with a middle DNS label", () => {
     expect(parseChangeRequestUrl("https://code.github.example.com/acme/web/pull/42")).toEqual({
       host: "code.github.example.com",
