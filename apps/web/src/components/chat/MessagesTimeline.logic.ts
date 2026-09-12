@@ -578,6 +578,7 @@ function deriveTurnFolds(input: {
   latestTurn: TimelineLatestTurn | null;
   unfoldedTurnIds: ReadonlySet<TurnId>;
   liveAgentTaskIds: ReadonlySet<string> | undefined;
+  expandedSpawnEntryIds: ReadonlySet<string> | undefined;
 }): ReadonlyMap<string, TurnFold> {
   interface TurnGroup {
     entries: Array<TimelineEntry>;
@@ -660,14 +661,18 @@ function deriveTurnFolds(input: {
       }
       // Workflows outlive their launching turn (dynamic spawns, background
       // execution), so a spawn row with a live member stays outside the fold
-      // instead of hiding a still-running fleet. Settled spawns fold with
-      // the rest of the turn.
-      if (
-        entry.kind === "work" &&
-        entry.entry.agentSpawn !== undefined &&
-        entry.entry.agentSpawn.agentTaskIds.some((taskId) => input.liveAgentTaskIds?.has(taskId))
-      ) {
-        continue;
+      // instead of hiding a still-running fleet, as does one the user has
+      // open. Settled spawns fold with the rest of the turn. Without a live
+      // set (no agent panel model) every spawn row stays out.
+      if (entry.kind === "work" && entry.entry.agentSpawn !== undefined) {
+        const live = input.liveAgentTaskIds;
+        if (
+          live === undefined ||
+          entry.entry.agentSpawn.agentTaskIds.some((taskId) => live.has(taskId)) ||
+          input.expandedSpawnEntryIds?.has(entry.id)
+        ) {
+          continue;
+        }
       }
       hiddenEntryIds.add(entry.id);
     }
@@ -860,8 +865,13 @@ export function deriveMessagesTimelineRows(input: {
   activeTurnStartedAt: string | null;
   turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   supportsConversationRollback: boolean;
-  /** Task ids of subagents still working; their spawn row stays outside turn folds. */
-  liveAgentTaskIds?: ReadonlySet<string>;
+  /**
+   * Task ids of subagents still working; their spawn row stays outside turn
+   * folds. Undefined means unknown, which keeps every spawn row out.
+   */
+  liveAgentTaskIds?: ReadonlySet<string> | undefined;
+  /** Spawn rows the user expanded; they stay outside turn folds too. */
+  expandedSpawnEntryIds?: ReadonlySet<string> | undefined;
 }): MessagesTimelineRow[] {
   const turnDiffSummaryByAssistantMessageId = new Map<MessageId, TurnDiffSummary>();
   for (const summary of input.turnDiffSummaries) {
@@ -897,6 +907,7 @@ export function deriveMessagesTimelineRows(input: {
     latestTurn: input.latestTurn ?? null,
     unfoldedTurnIds: activeVisualResponseTurnIds,
     liveAgentTaskIds: input.liveAgentTaskIds,
+    expandedSpawnEntryIds: input.expandedSpawnEntryIds,
   });
   const collapsedEntryIds = new Set<string>();
   for (const fold of foldsByAnchorEntryId.values()) {

@@ -1122,7 +1122,7 @@ describe("deriveMessagesTimelineRows", () => {
   });
 
   it("folds a settled subagent spawn row and keeps a live one outside the fold", () => {
-    const timelineEntries = [
+    const entriesWith = (agentSpawn: { workflowId: string | null; agentTaskIds: string[] }) => [
       {
         id: "assistant-first-entry",
         kind: "message" as const,
@@ -1147,7 +1147,7 @@ describe("deriveMessagesTimelineRows", () => {
           turnId: "turn-1" as never,
           label: "Ran 2 subagents",
           tone: "tool" as const,
-          agentSpawn: { workflowId: null, agentTaskIds: ["agent-a", "agent-b"] },
+          agentSpawn,
         },
       },
       {
@@ -1165,7 +1165,13 @@ describe("deriveMessagesTimelineRows", () => {
         },
       },
     ];
-    const derive = (liveAgentTaskIds: ReadonlySet<string>) =>
+    const direct = entriesWith({ workflowId: null, agentTaskIds: ["agent-a", "agent-b"] });
+    const workflow = entriesWith({ workflowId: "wf-1", agentTaskIds: ["wf-1", "agent-a"] });
+    const derive = (
+      timelineEntries: typeof direct,
+      liveAgentTaskIds: ReadonlySet<string> | undefined,
+      expandedSpawnEntryIds?: ReadonlySet<string>,
+    ) =>
       deriveMessagesTimelineRows({
         timelineEntries,
         isWorking: false,
@@ -1173,14 +1179,19 @@ describe("deriveMessagesTimelineRows", () => {
         turnDiffSummaries: [],
         supportsConversationRollback: false,
         liveAgentTaskIds,
+        expandedSpawnEntryIds,
       }).map((row) => row.id);
+    const folded = ["turn-fold:turn-1", "assistant-final-entry"];
+    const unfolded = ["turn-fold:turn-1", "spawn-entry", "assistant-final-entry"];
 
-    expect(derive(new Set())).toEqual(["turn-fold:turn-1", "assistant-final-entry"]);
-    expect(derive(new Set(["agent-b"]))).toEqual([
-      "turn-fold:turn-1",
-      "spawn-entry",
-      "assistant-final-entry",
-    ]);
+    expect(derive(direct, new Set())).toEqual(folded);
+    expect(derive(direct, new Set(["agent-b"]))).toEqual(unfolded);
+    // A workflow coordinator between phases keeps its batch out of the fold.
+    expect(derive(workflow, new Set(["wf-1"]))).toEqual(unfolded);
+    expect(derive(workflow, new Set())).toEqual(folded);
+    // The user has it open, or no live set is known.
+    expect(derive(direct, new Set(), new Set(["spawn-entry"]))).toEqual(unfolded);
+    expect(derive(direct, undefined)).toEqual(unfolded);
   });
 
   it("only enables assistant copy for the terminal assistant message in a turn", () => {
