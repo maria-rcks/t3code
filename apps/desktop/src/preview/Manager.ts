@@ -5,7 +5,7 @@
  * elements live in the renderer; we only attach listeners and forward state
  * here). Single layer-scoped browser session partition.
  */
-import { randomUUID } from "node:crypto";
+import * as NodeCrypto from "node:crypto";
 import { DESKTOP_PREVIEW_RECORDING_CAPTURE_TRIGGER } from "@t3tools/contracts";
 import type {
   DesktopPreviewAnnotationTheme,
@@ -3937,7 +3937,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     const { frames, receiptKey } = yield* Effect.acquireRelease(
       attempt(context, () => ({
         frames: wc.mainFrame.framesInSubtree,
-        receiptKey: JSON.stringify(`__t3NativeKey_${randomUUID()}`),
+        receiptKey: JSON.stringify(`__t3NativeKey_${NodeCrypto.randomUUID()}`),
       })),
       ({ frames, receiptKey }) =>
         Effect.all(

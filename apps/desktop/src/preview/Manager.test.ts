@@ -1,4 +1,4 @@
-import { createContext, runInContext } from "node:vm";
+import * as NodeVM from "node:vm";
 import { it as effectIt } from "@effect/vitest";
 import { DESKTOP_PREVIEW_RECORDING_CAPTURE_TRIGGER } from "@t3tools/contracts";
 import type { DesktopPreviewRecordingFrame } from "@t3tools/contracts";
@@ -3930,9 +3930,12 @@ describe("PreviewManager", () => {
         let interruptFrameKeyDown = false;
         let holdKeyUp = false;
         let releaseKeyUp: (() => void) | undefined;
-        const keyUpQueued = yield* Deferred.make<void>();
+        let notifyKeyUpQueued: (() => void) | undefined;
+        const keyUpQueued = new Promise<void>((resolve) => {
+          notifyKeyUpQueued = resolve;
+        });
         const listeners = new Map<string, (event: unknown) => void>();
-        const frameContext = createContext({
+        const frameContext = NodeVM.createContext({
           window: {
             addEventListener: (type: string, listener: (event: unknown) => void) =>
               listeners.set(type, listener),
@@ -3941,7 +3944,7 @@ describe("PreviewManager", () => {
         });
         const frame = {
           executeJavaScript: vi.fn(async (expression: string) =>
-            runInContext(expression, frameContext),
+            NodeVM.runInContext(expression, frameContext),
           ),
         };
         let humanInput: ((_event: unknown, signal: unknown) => void) | undefined;
@@ -3983,7 +3986,7 @@ describe("PreviewManager", () => {
             const deliver = () => listeners.get("keyup")?.({ ...signal, isTrusted: true });
             if (holdKeyUp) {
               releaseKeyUp = deliver;
-              Effect.runSync(Deferred.succeed(keyUpQueued, undefined));
+              notifyKeyUpQueued?.();
             } else {
               queueMicrotask(deliver);
             }
@@ -4101,7 +4104,7 @@ describe("PreviewManager", () => {
         const backgroundPress = yield* manager
           .automationPress("tab_input", { key: "x" })
           .pipe(Effect.forkChild({ startImmediately: true }));
-        yield* Deferred.await(keyUpQueued);
+        yield* Effect.promise(() => keyUpQueued);
         expect(sendCommand).not.toHaveBeenCalledWith("Emulation.setFocusEmulationEnabled", {
           enabled: false,
         });
