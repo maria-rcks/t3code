@@ -13,6 +13,8 @@ export interface ChangeRequestLink {
   readonly host: string;
   readonly repository: string;
   readonly number: number;
+  /** Forgejo's HTTP host and port, separate from the portless repository identity. */
+  readonly authority?: string;
 }
 
 /** The host itself, one of its subdomains, or an install named after the provider. */
@@ -53,7 +55,10 @@ export function parseChangeRequestUrl(targetUrl: string): ChangeRequestLink | nu
   }
   // Forgejo and Gitea use /pulls/ on arbitrary self-hosted domains.
   const forgejo = /^\/([^/]+(?:\/[^/]+)+)\/pulls\/(\d+)(?:\/|$)/u.exec(url.pathname);
-  if (forgejo) return claim(host, forgejo);
+  if (forgejo) {
+    const link = claim(host, forgejo);
+    return link === null ? null : { ...link, authority: url.host.toLowerCase() };
+  }
   // GitLab, self-hosted included: /{group}/[{subgroup}/...]{repo}/-/merge_requests/{n}. The `/-/`
   // separator is GitLab's own, so the hostname is not asked about.
   const gitlab = /^\/([^/]+(?:\/[^/]+)+)\/-\/merge_requests\/(\d+)(?:\/|$)/u.exec(url.pathname);
@@ -192,7 +197,8 @@ export function matchesLinkedPullRequestUrl(
     target !== null &&
     linked.host === target.host &&
     linked.repository === target.repository &&
-    linked.number === target.number
+    linked.number === target.number &&
+    (target.authority === undefined || linked.authority === target.authority)
   );
 }
 

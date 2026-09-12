@@ -93,6 +93,7 @@ describe("siblingPullRequestUrl", () => {
   it("recognizes Forgejo on custom HTTP hosts", () => {
     expect(parseChangeRequestUrl("http://git.example.test:3000/team/repo/pulls/42/files")).toEqual({
       host: "git.example.test",
+      authority: "git.example.test:3000",
       repository: "team/repo",
       number: 42,
     });

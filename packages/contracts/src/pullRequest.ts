@@ -1138,7 +1138,7 @@ const PROVIDER_REQUIREMENT: Partial<
     missing:
       "Install the official Gitea CLI (`tea` 0.16 or later) from https://gitea.com/gitea/tea to browse Forgejo pull requests.",
     unauthenticated:
-      "Run `tea login add` on the T3 Code server to authenticate your Forgejo server.",
+      "Run `tea login add` on the T3 Code server to authenticate your Forgejo or Gitea server.",
   },
   gitlab: {
     missing:
