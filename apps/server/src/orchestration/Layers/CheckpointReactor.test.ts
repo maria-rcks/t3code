@@ -1683,10 +1683,17 @@ describe("CheckpointReactor", () => {
     }),
   );
 
-  it.each(["thread.checkpoint.revert", "thread.conversation.revert"] as const)(
-    "%s rewinds history with the requested filesystem behavior",
-    async (commandType) => {
-      const harness = await createHarness();
+  it.each([
+    { commandType: "thread.checkpoint.revert", initializeGit: true },
+    { commandType: "thread.conversation.revert", initializeGit: true },
+    { commandType: "thread.conversation.revert", initializeGit: false },
+  ] as const)(
+    "$commandType rewinds history with the requested filesystem behavior (git: $initializeGit)",
+    async ({ commandType, initializeGit }) => {
+      const harness = await createHarness({
+        initializeGit,
+        seedFilesystemCheckpoints: initializeGit,
+      });
       const createdAt = "2026-01-01T00:00:00.000Z";
 
       await Effect.runPromise(
@@ -1714,8 +1721,10 @@ describe("CheckpointReactor", () => {
           threadId: ThreadId.make("thread-1"),
           turnId: asTurnId("turn-1"),
           completedAt: createdAt,
-          checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
-          status: "ready",
+          checkpointRef: initializeGit
+            ? checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1)
+            : CheckpointRef.make("provider-diff:thread-1:turn-1"),
+          status: initializeGit ? "ready" : "missing",
           files: [],
           checkpointTurnCount: 1,
           createdAt,
@@ -1728,8 +1737,10 @@ describe("CheckpointReactor", () => {
           threadId: ThreadId.make("thread-1"),
           turnId: asTurnId("turn-2"),
           completedAt: createdAt,
-          checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2),
-          status: "ready",
+          checkpointRef: initializeGit
+            ? checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2)
+            : CheckpointRef.make("provider-diff:thread-1:turn-2"),
+          status: initializeGit ? "ready" : "missing",
           files: [],
           checkpointTurnCount: 2,
           createdAt,
@@ -1737,13 +1748,17 @@ describe("CheckpointReactor", () => {
       );
 
       NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "staged edit\n");
-      NodeChildProcess.execFileSync("git", ["add", "README.md"], { cwd: harness.cwd });
+      if (initializeGit) {
+        NodeChildProcess.execFileSync("git", ["add", "README.md"], { cwd: harness.cwd });
+      }
       NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "unstaged edit\n");
       NodeFS.writeFileSync(NodePath.join(harness.cwd, "scratch.txt"), "untracked edit\n");
-      const indexBefore = NodeChildProcess.execFileSync("git", ["ls-files", "--stage"], {
-        cwd: harness.cwd,
-        encoding: "utf8",
-      });
+      const indexBefore = initializeGit
+        ? NodeChildProcess.execFileSync("git", ["ls-files", "--stage"], {
+            cwd: harness.cwd,
+            encoding: "utf8",
+          })
+        : undefined;
 
       await Effect.runPromise(
         harness.engine.dispatch({
@@ -1776,16 +1791,22 @@ describe("CheckpointReactor", () => {
         expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "scratch.txt"), "utf8")).toBe(
           "untracked edit\n",
         );
-        expect(
-          NodeChildProcess.execFileSync("git", ["ls-files", "--stage"], {
-            cwd: harness.cwd,
-            encoding: "utf8",
-          }),
-        ).toBe(indexBefore);
+        if (initializeGit) {
+          expect(
+            NodeChildProcess.execFileSync("git", ["ls-files", "--stage"], {
+              cwd: harness.cwd,
+              encoding: "utf8",
+            }),
+          ).toBe(indexBefore);
+        }
       }
-      expect(
-        gitRefExists(harness.cwd, checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2)),
-      ).toBe(false);
+      if (initializeGit) {
+        expect(
+          gitRefExists(harness.cwd, checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2)),
+        ).toBe(false);
+      } else {
+        expect(NodeFS.existsSync(NodePath.join(harness.cwd, ".git"))).toBe(false);
+      }
     },
   );
 

@@ -704,16 +704,11 @@ const make = Effect.gen(function* () {
       thread,
       projects: yield* resolveThreadProjects(thread.projectId),
       preferSessionRuntime: true,
-    });
-    if (!checkpointCwd) {
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: "Checkpoint workspace is unavailable or is not a git repository.",
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
+    }).pipe(
+      Effect.catch((error) =>
+        event.payload.restoreFiles === false ? Effect.succeed(undefined) : Effect.fail(error),
+      ),
+    );
 
     const currentTurnCount = thread.checkpoints.reduce(
       (maxTurnCount, checkpoint) => Math.max(maxTurnCount, checkpoint.checkpointTurnCount),
@@ -730,26 +725,36 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    const targetCheckpointRef =
-      event.payload.turnCount === 0
-        ? checkpointRefForThreadTurn(event.payload.threadId, 0)
-        : thread.checkpoints.find(
-            (checkpoint) => checkpoint.checkpointTurnCount === event.payload.turnCount,
-          )?.checkpointRef;
-
-    if (!targetCheckpointRef) {
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: `Checkpoint ref for turn ${event.payload.turnCount} is unavailable in read model.`,
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
-
     yield* providerService.assertConversationRollbackSupported(event.payload.threadId);
 
     if (event.payload.restoreFiles !== false) {
+      if (!checkpointCwd) {
+        yield* appendRevertFailureActivity({
+          threadId: event.payload.threadId,
+          turnCount: event.payload.turnCount,
+          detail: "Checkpoint workspace is unavailable or is not a git repository.",
+          createdAt: now,
+        }).pipe(Effect.catch(() => Effect.void));
+        return;
+      }
+
+      const targetCheckpointRef =
+        event.payload.turnCount === 0
+          ? checkpointRefForThreadTurn(event.payload.threadId, 0)
+          : thread.checkpoints.find(
+              (checkpoint) => checkpoint.checkpointTurnCount === event.payload.turnCount,
+            )?.checkpointRef;
+
+      if (!targetCheckpointRef) {
+        yield* appendRevertFailureActivity({
+          threadId: event.payload.threadId,
+          turnCount: event.payload.turnCount,
+          detail: `Checkpoint ref for turn ${event.payload.turnCount} is unavailable in read model.`,
+          createdAt: now,
+        }).pipe(Effect.catch(() => Effect.void));
+        return;
+      }
+
       const restored = yield* checkpointStore.restoreCheckpoint({
         cwd: checkpointCwd,
         checkpointRef: targetCheckpointRef,
@@ -785,7 +790,7 @@ const make = Effect.gen(function* () {
       }
     }
 
-    if (staleCheckpointRefs.length > 0) {
+    if (checkpointCwd && staleCheckpointRefs.length > 0) {
       yield* checkpointStore.deleteCheckpointRefs({
         cwd: checkpointCwd,
         checkpointRefs: staleCheckpointRefs,
