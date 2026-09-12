@@ -6548,9 +6548,8 @@ export default function ChatView(props: ChatViewProps) {
       const confirmed = await localApi.dialogs.confirm(
         [
           "Edit from here?",
-          "This will restore files and conversation history to before this message and discard everything after it.",
-          "The message and its attachments will return to the composer. Any unsent draft will be kept above it.",
-          "This action cannot be undone.",
+          "Rewind files and chat to before this message.",
+          "Your prompt and attachments return to the composer.",
         ].join("\n"),
         { variant: "destructive" },
       );
