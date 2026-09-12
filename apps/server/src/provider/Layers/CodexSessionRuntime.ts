@@ -18,7 +18,7 @@ import {
   TurnId,
 } from "@t3tools/contracts";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
-import { normalizeModelSlug } from "@t3tools/shared/model";
+import { codexModelFamily, normalizeModelSlug } from "@t3tools/shared/model";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -635,10 +635,13 @@ export function buildTurnStartParams(input: {
   }
 
   const config = runtimeModeToThreadConfig(input.runtimeMode);
+  const effort =
+    input.effort ??
+    (input.model && codexModelFamily(input.model) === "gpt-6-astra" ? "medium" : undefined);
   const collaborationMode = buildCodexCollaborationMode({
     ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
     ...(input.model ? { model: input.model } : {}),
-    ...(input.effort ? { effort: input.effort } : {}),
+    ...(effort ? { effort } : {}),
     browserToolsAvailable: input.browserToolsAvailable ?? true,
   });
 
@@ -650,7 +653,7 @@ export function buildTurnStartParams(input: {
     sandboxPolicy: runtimeModeToTurnSandboxPolicy(input.runtimeMode),
     ...(input.model ? { model: input.model } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
-    ...(input.effort ? { effort: input.effort } : {}),
+    ...(effort ? { effort } : {}),
     ...(collaborationMode ? { collaborationMode } : {}),
   }).pipe(
     Effect.mapError((cause) =>

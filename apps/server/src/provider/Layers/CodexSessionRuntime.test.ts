@@ -63,6 +63,24 @@ function makeThreadOpenResponse(
 }
 
 describe("buildTurnStartParams", () => {
+  it.effect("defaults Astra requests to medium and preserves explicit effort", () =>
+    Effect.gen(function* () {
+      for (const model of ["gpt-6-astra", "openai.gpt-6-astra"]) {
+        for (const effort of [undefined, "high"] as const) {
+          const params = yield* buildTurnStartParams({
+            threadId: "provider-thread-1",
+            runtimeMode: "full-access",
+            model,
+            ...(effort ? { effort } : {}),
+            interactionMode: "default",
+          });
+          NodeAssert.equal(params.effort, effort ?? "medium");
+          NodeAssert.equal(params.collaborationMode?.settings.reasoning_effort, effort ?? "medium");
+        }
+      }
+    }),
+  );
+
   it("keeps invalid turn values only in the schema cause", () => {
     const secret = "codex-turn-input-secret-sentinel";
     const error = Effect.runSync(
