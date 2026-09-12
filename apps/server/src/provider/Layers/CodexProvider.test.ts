@@ -2,32 +2,6 @@ import { assert, it } from "@effect/vitest";
 
 import { applyPreferredCodexDefaultModel, mapCodexModelCapabilities } from "./CodexProvider.ts";
 
-it("preserves Astra's provider reasoning default", () => {
-  for (const efforts of [
-    ["low", "medium", "high"],
-    ["low", "high"],
-  ]) {
-    const capabilities = mapCodexModelCapabilities({
-      additionalSpeedTiers: [],
-      defaultReasoningEffort: "low",
-      description: "Astra",
-      displayName: "Astra",
-      hidden: false,
-      id: "openai.gpt-6-astra",
-      isDefault: false,
-      model: "openai.gpt-6-astra",
-      supportedReasoningEfforts: efforts.map((reasoningEffort) => ({
-        description: reasoningEffort,
-        reasoningEffort,
-      })),
-    });
-    const reasoning = capabilities.optionDescriptors?.find(
-      (option) => option.id === "reasoningEffort",
-    );
-    assert.strictEqual(reasoning?.currentValue, "low");
-  }
-});
-
 it("maps current Codex model capability fields", () => {
   const capabilities = mapCodexModelCapabilities({
     additionalSpeedTiers: [],

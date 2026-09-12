@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-12T00:30:00Z",
+  "updatedAt": "2026-09-12T00:41:55Z",
   "currentModels": {
     "codex": [
       "gpt-6-astra",
@@ -27,11 +27,6 @@
                 "label": "Reasoning",
                 "type": "select",
                 "options": [
-                  {
-                    "id": "default",
-                    "label": "Provider default",
-                    "isDefault": true
-                  },
                   {
                     "id": "low",
                     "label": "Low"
@@ -85,7 +80,6 @@
           "adapter": {
             "claudeCode": {
               "effortMap": {
-                "default": null,
                 "ultracode": "xhigh",
                 "ultrathink": null
               },

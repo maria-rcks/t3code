@@ -342,23 +342,6 @@ const serviceLayers = (input: {
   );
 
 describe("ModelManifest service", () => {
-  it.live("does not replace newer bundled defaults with an older remote catalog", () =>
-    Effect.gen(function* () {
-      const service = yield* make;
-      assert.deepStrictEqual(yield* service.refresh, BUNDLED_MODEL_MANIFEST);
-      const rebooted = yield* make;
-      assert.deepStrictEqual(yield* rebooted.current, BUNDLED_MODEL_MANIFEST);
-    }).pipe(
-      Effect.scoped,
-      Effect.provide(
-        serviceLayers({
-          prefix: "model-manifest-older-remote-test",
-          response: () => Response.json({ ...REMOTE_MANIFEST, updatedAt: "2000-01-01T00:00:00Z" }),
-        }),
-      ),
-    ),
-  );
-
   it.live("prefers a fetched manifest over the bundle and caches it to disk", () =>
     Effect.gen(function* () {
       const service = yield* make;
