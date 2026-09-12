@@ -2,7 +2,7 @@ import { assert, it } from "@effect/vitest";
 
 import { applyPreferredCodexDefaultModel, mapCodexModelCapabilities } from "./CodexProvider.ts";
 
-it("defaults Astra reasoning to medium when supported", () => {
+it("preserves Astra's provider reasoning default", () => {
   for (const efforts of [
     ["low", "medium", "high"],
     ["low", "high"],
@@ -24,7 +24,7 @@ it("defaults Astra reasoning to medium when supported", () => {
     const reasoning = capabilities.optionDescriptors?.find(
       (option) => option.id === "reasoningEffort",
     );
-    assert.strictEqual(reasoning?.currentValue, efforts.includes("medium") ? "medium" : "low");
+    assert.strictEqual(reasoning?.currentValue, "low");
   }
 });
 

@@ -63,7 +63,7 @@ function makeThreadOpenResponse(
 }
 
 describe("buildTurnStartParams", () => {
-  it.effect("defaults Astra requests to medium and preserves explicit effort", () =>
+  it.effect("leaves Astra reasoning to the provider and preserves explicit effort", () =>
     Effect.gen(function* () {
       for (const model of ["gpt-6-astra", "openai.gpt-6-astra"]) {
         for (const effort of [undefined, "high"] as const) {
@@ -74,8 +74,8 @@ describe("buildTurnStartParams", () => {
             ...(effort ? { effort } : {}),
             interactionMode: "default",
           });
-          NodeAssert.equal(params.effort, effort ?? "medium");
-          NodeAssert.equal(params.collaborationMode?.settings.reasoning_effort, effort ?? "medium");
+          NodeAssert.equal(params.effort, effort);
+          NodeAssert.equal(params.collaborationMode?.settings.reasoning_effort, effort ?? null);
         }
       }
     }),
@@ -187,17 +187,16 @@ describe("buildTurnStartParams", () => {
         mode: "default",
         settings: {
           model: "gpt-5.3-codex",
-          reasoning_effort: "medium",
+          reasoning_effort: null,
           developer_instructions: buildCodexDeveloperInstructions("default", {
             model: "gpt-5.3-codex",
-            reasoningEffort: "medium",
           }),
         },
       },
     });
   });
 
-  it("reports the same fallback model and effort in settings and instructions", () => {
+  it("reports the fallback model without inventing a reasoning effort", () => {
     const params = Effect.runSync(
       buildTurnStartParams({
         threadId: "provider-thread-1",
@@ -209,8 +208,9 @@ describe("buildTurnStartParams", () => {
 
     const settings = params.collaborationMode?.settings;
     NodeAssert.equal(settings?.model, DEFAULT_MODEL);
-    NodeAssert.equal(settings?.reasoning_effort, "medium");
-    NodeAssert.ok(settings?.developer_instructions?.includes(`as ${DEFAULT_MODEL} with medium`));
+    NodeAssert.equal(settings?.reasoning_effort, null);
+    NodeAssert.ok(settings?.developer_instructions?.includes(`as ${DEFAULT_MODEL}`));
+    NodeAssert.ok(!settings?.developer_instructions?.includes("with medium reasoning effort"));
   });
 
   it.effect("routes approvals to the auto reviewer in auto mode", () =>

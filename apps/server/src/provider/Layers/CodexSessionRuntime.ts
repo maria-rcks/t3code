@@ -18,7 +18,7 @@ import {
   TurnId,
 } from "@t3tools/contracts";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
-import { codexModelFamily, normalizeModelSlug } from "@t3tools/shared/model";
+import { normalizeModelSlug } from "@t3tools/shared/model";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -590,15 +590,15 @@ function buildCodexCollaborationMode(input: {
     return undefined;
   }
   const model = normalizeCodexModelSlug(input.model) ?? DEFAULT_MODEL;
-  const reasoningEffort = input.effort ?? "medium";
+  const reasoningEffort = input.effort;
   return {
     mode: input.interactionMode,
     settings: {
       model,
-      reasoning_effort: reasoningEffort,
+      reasoning_effort: reasoningEffort ?? null,
       developer_instructions: buildCodexDeveloperInstructions(
         input.interactionMode,
-        { model, reasoningEffort },
+        { model, ...(reasoningEffort ? { reasoningEffort } : {}) },
         input.browserToolsAvailable ?? true,
       ),
     },
@@ -635,13 +635,10 @@ export function buildTurnStartParams(input: {
   }
 
   const config = runtimeModeToThreadConfig(input.runtimeMode);
-  const effort =
-    input.effort ??
-    (input.model && codexModelFamily(input.model) === "gpt-6-astra" ? "medium" : undefined);
   const collaborationMode = buildCodexCollaborationMode({
     ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
     ...(input.model ? { model: input.model } : {}),
-    ...(effort ? { effort } : {}),
+    ...(input.effort ? { effort: input.effort } : {}),
     browserToolsAvailable: input.browserToolsAvailable ?? true,
   });
 
@@ -653,7 +650,7 @@ export function buildTurnStartParams(input: {
     sandboxPolicy: runtimeModeToTurnSandboxPolicy(input.runtimeMode),
     ...(input.model ? { model: input.model } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
-    ...(effort ? { effort } : {}),
+    ...(input.effort ? { effort: input.effort } : {}),
     ...(collaborationMode ? { collaborationMode } : {}),
   }).pipe(
     Effect.mapError((cause) =>
