@@ -69,6 +69,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
   const activeEntry = entries.find((entry) => entry.instanceId === selection?.instanceId);
   const mixedModel = useScopedSettingsMixed(["defaultModelSelection"]);
   const mixedPermissions = useScopedSettingsMixed(["defaultRuntimeMode"]);
+  const PermissionIcon = runtimeModeConfig[settings.defaultRuntimeMode].icon;
   const mixedWorkspace = useScopedSettingsMixed(["defaultThreadEnvMode"]);
   const mixedBrowser = useScopedSettingsMixed(["enableAgentBrowserAccess"]);
   const mixedAutoPull = useScopedSettingsMixed(["defaultAutoPull"]);
@@ -252,6 +253,9 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
                 }}
               >
                 <SelectTrigger size="sm" aria-label="Default permissions">
+                  {!mixedPermissions && (
+                    <PermissionIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                  )}
                   <SelectValue>
                     {mixedPermissions
                       ? "Mixed"
