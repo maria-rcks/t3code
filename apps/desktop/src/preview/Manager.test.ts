@@ -177,6 +177,7 @@ describe("previewWindowOpenAction", () => {
 
 const {
   browserWindowConstructor,
+  browserWindowFromWebContents,
   clipboardItemConstructor,
   createFromPath,
   fromId,
@@ -188,6 +189,7 @@ const {
   writeClipboard,
 } = vi.hoisted(() => ({
   browserWindowConstructor: vi.fn(),
+  browserWindowFromWebContents: vi.fn(),
   clipboardItemConstructor: vi.fn(),
   createFromPath: vi.fn((): { readonly isEmpty: () => boolean; readonly toPNG: () => Buffer } => ({
     isEmpty: () => false,
@@ -203,7 +205,9 @@ const {
 }));
 
 vi.mock("electron", () => ({
-  BrowserWindow: browserWindowConstructor,
+  BrowserWindow: Object.assign(browserWindowConstructor, {
+    fromWebContents: browserWindowFromWebContents,
+  }),
   ClipboardItem: class {
     constructor(data: Record<string, unknown>) {
       clipboardItemConstructor(data);
@@ -539,6 +543,8 @@ const makeTestPictureInPictureWindow = (loadURL: () => Promise<void> = async () 
 describe("PreviewManager", () => {
   beforeEach(() => {
     browserWindowConstructor.mockReset();
+    browserWindowFromWebContents.mockReset();
+    browserWindowFromWebContents.mockReturnValue({ isFocused: () => true });
     fromId.mockClear();
     getFocusedWebContents.mockReset();
     getFocusedWebContents.mockReturnValue(null);
@@ -3925,6 +3931,7 @@ describe("PreviewManager", () => {
     withManager((manager) =>
       Effect.gen(function* () {
         let failKeyDown = false;
+        const hostWebContents = { id: 7 };
         let humanInput: ((_event: unknown, signal: unknown) => void) | undefined;
         const sendCommand = vi.fn(async (method: string, _params?: Record<string, unknown>) =>
           method === "Runtime.evaluate" ? { result: { value: { ok: true } } } : undefined,
@@ -3950,6 +3957,7 @@ describe("PreviewManager", () => {
         } as never);
         fromId.mockReturnValue({
           id: 42,
+          hostWebContents,
           isDestroyed: () => false,
           getType: () => "webview",
           getURL: () => "https://example.com",
@@ -4040,6 +4048,34 @@ describe("PreviewManager", () => {
           { type: "keyUp", keyCode: "x", modifiers: [], skipIfUnhandled: true },
         ]);
         expect(sendCommand).toHaveBeenCalledWith("Input.setIgnoreInputEvents", { ignore: false });
+        expect(browserWindowFromWebContents).toHaveBeenLastCalledWith(hostWebContents);
+
+        sendCommand.mockClear();
+        sendInputEvent.mockClear();
+        const windowFocus = vi.fn();
+        browserWindowFromWebContents.mockReturnValue({
+          isFocused: () => false,
+          focus: windowFocus,
+        });
+        const unfocusedPress = yield* Effect.exit(
+          manager.automationPress("tab_input", { key: "x" }),
+        );
+        expect(Exit.isFailure(unfocusedPress)).toBe(true);
+        if (Exit.isSuccess(unfocusedPress)) return;
+        const unfocusedError = Option.getOrThrow(Cause.findErrorOption(unfocusedPress.cause));
+        expect(unfocusedError).toMatchObject({
+          _tag: "PreviewAutomationWindowNotFocusedError",
+          tabId: "tab_input",
+        });
+        expect(unfocusedError.message).toContain("Focus the window");
+        expect(sendInputEvent).not.toHaveBeenCalled();
+        expect(windowFocus).not.toHaveBeenCalled();
+        expect(focus).not.toHaveBeenCalled();
+        expect(restoreFocus).not.toHaveBeenCalled();
+        expect(sendCommand).toHaveBeenCalledWith("Emulation.setFocusEmulationEnabled", {
+          enabled: false,
+        });
+        browserWindowFromWebContents.mockReturnValue({ isFocused: () => true });
 
         sendCommand.mockClear();
         sendInputEvent.mockClear();
@@ -4069,6 +4105,9 @@ describe("PreviewManager", () => {
         expect(sendCommand).toHaveBeenCalledWith("Emulation.setFocusEmulationEnabled", {
           enabled: false,
         });
+        const popupWebContents = Object.assign(fromId(42)!, { hostWebContents: undefined });
+        yield* manager.automationPress("tab_input", { key: "x" });
+        expect(browserWindowFromWebContents).toHaveBeenLastCalledWith(popupWebContents);
         expect(focus).not.toHaveBeenCalled();
         expect(restoreFocus).not.toHaveBeenCalled();
       }),

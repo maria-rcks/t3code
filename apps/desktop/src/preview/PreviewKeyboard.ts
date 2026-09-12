@@ -242,7 +242,8 @@ export function previewAutomationEditingCommandExpression(
           const selectionElement = selection?.anchorNode?.nodeType === Node.ELEMENT_NODE
             ? selection.anchorNode : selection?.anchorNode?.parentElement;
           const editable = element.isContentEditable || selectionElement?.isContentEditable ||
-            ((element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) &&
+            (((element instanceof HTMLInputElement && element.selectionStart !== null) ||
+              element instanceof HTMLTextAreaElement) &&
               !element.readOnly && !element.disabled);
           if (!editable && (command === "moveToBeginningOfDocument" || command === "moveToEndOfDocument")) {
             let scrollable = element === document.body ? selectionElement ?? element : element;
@@ -263,6 +264,10 @@ export function previewAutomationEditingCommandExpression(
             direction,
             command.includes("Document") ? "documentboundary" : "lineboundary",
           );
+          if (element instanceof HTMLInputElement && element.selectionStart !== null) {
+            if (command.includes("Left") || command.includes("Beginning")) element.scrollLeft = 0;
+            else element.scrollLeft = element.scrollWidth;
+          }
           // Programmatic selection changes do not reveal the caret like native editing commands.
           if (editable && command.includes("Document")) {
             const beginning = command.includes("Beginning");

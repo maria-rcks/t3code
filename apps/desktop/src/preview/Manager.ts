@@ -4000,17 +4000,23 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       yield* send("Emulation.setFocusEmulationEnabled", { enabled: true });
       yield* checkControl;
       yield* expectAgentInput(tabId, keySequence.signal);
-      yield* attempt(
+      const dispatched = yield* attempt(
         { operation: "automationPress.sendInputEvent", tabId, webContentsId: wc.id },
         () => {
+          if (!BrowserWindow.fromWebContents(wc.hostWebContents ?? wc)?.isFocused()) return false;
           try {
             wc.sendInputEvent(keySequence.keyDown);
             if (keySequence.char) wc.sendInputEvent(keySequence.char);
           } finally {
             wc.sendInputEvent(keySequence.keyUp);
           }
+          return true;
         },
       );
+      if (!dispatched) {
+        yield* consumeExpectedAgentInput(tabId, keySequence.signal);
+        return yield* new PreviewAutomationWindowNotFocusedError({ tabId });
+      }
       yield* checkControl;
     }).pipe(
       Effect.ensuring(
@@ -4423,6 +4429,15 @@ export class PreviewAutomationDebuggerAttachedError extends Schema.TaggedError<P
   }
 }
 
+export class PreviewAutomationWindowNotFocusedError extends Schema.TaggedError<PreviewAutomationWindowNotFocusedError>()(
+  "PreviewAutomationWindowNotFocusedError",
+  { tabId: Schema.String },
+) {
+  override get message(): string {
+    return `Focus the window containing preview tab ${this.tabId} and retry the key press, or use preview_type for background text entry. No keys were sent.`;
+  }
+}
+
 export class PreviewAutomationEvaluationError extends Schema.TaggedError<PreviewAutomationEvaluationError>()(
   "PreviewAutomationEvaluationError",
   {
@@ -4572,6 +4587,7 @@ export const PreviewManagerError = Schema.Union([
   PreviewArtifactImageLoadError,
   PreviewAutomationDevToolsOpenError,
   PreviewAutomationDebuggerAttachedError,
+  PreviewAutomationWindowNotFocusedError,
   PreviewAutomationEvaluationError,
   PreviewAutomationTargetNotFoundError,
   PreviewAutomationTargetNotEditableError,
