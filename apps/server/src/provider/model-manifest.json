@@ -33,7 +33,8 @@
                   },
                   {
                     "id": "medium",
-                    "label": "Medium"
+                    "label": "Medium",
+                    "isDefault": true
                   },
                   {
                     "id": "high",

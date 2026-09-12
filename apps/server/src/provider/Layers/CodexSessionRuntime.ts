@@ -590,15 +590,15 @@ function buildCodexCollaborationMode(input: {
     return undefined;
   }
   const model = normalizeCodexModelSlug(input.model) ?? DEFAULT_MODEL;
-  const reasoningEffort = input.effort;
+  const reasoningEffort = input.effort ?? "medium";
   return {
     mode: input.interactionMode,
     settings: {
       model,
-      reasoning_effort: reasoningEffort ?? null,
+      reasoning_effort: reasoningEffort,
       developer_instructions: buildCodexDeveloperInstructions(
         input.interactionMode,
-        { model, ...(reasoningEffort ? { reasoningEffort } : {}) },
+        { model, reasoningEffort },
         input.browserToolsAvailable ?? true,
       ),
     },
