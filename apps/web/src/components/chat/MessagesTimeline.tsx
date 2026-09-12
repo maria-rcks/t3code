@@ -3888,9 +3888,14 @@ function AgentSpawnMemberRow({
   ]
     .filter(Boolean)
     .join(" · ");
-  const statusLabel = activeStatus
-    ? AGENT_MEMBER_STATUS_LABEL[agent.status]
-    : meta || AGENT_MEMBER_STATUS_LABEL[agent.status];
+  // Settled members show their metrics; anything other than success keeps
+  // the status word so the outcome is not carried by color alone.
+  const statusLabel =
+    activeStatus || !meta
+      ? AGENT_MEMBER_STATUS_LABEL[agent.status]
+      : agent.status === "completed"
+        ? meta
+        : `${AGENT_MEMBER_STATUS_LABEL[agent.status]} · ${meta}`;
   const role =
     agent.role && agent.role.trim().toLowerCase() !== agent.title.trim().toLowerCase()
       ? agent.role
