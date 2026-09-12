@@ -1413,7 +1413,11 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     tabId: string,
     wc: Electron.WebContents,
     action: string,
-    use: (send: SendCommand, sendCleanup: SendCommand) => Effect.Effect<A, PreviewManagerError>,
+    use: (
+      send: SendCommand,
+      sendCleanup: SendCommand,
+      checkControl: Effect.Effect<void, PreviewManagerError>,
+    ) => Effect.Effect<A, PreviewManagerError>,
   ) {
     const sequence = yield* nextCounter(actionSequenceRef);
     const startedAt = yield* currentIso;
@@ -1429,28 +1433,24 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     const control = yield* ensureControlSession(wc);
     const execute = Effect.fn("PreviewManager.executeControlAction")(function* () {
       yield* update(tabId, { controller: "agent" });
+      const checkControl = Effect.gen(function* () {
+        const currentEpoch = (yield* Ref.get(controlEpochRef)).get(tabId) ?? 0;
+        if (currentEpoch !== epoch) {
+          return yield* new PreviewAutomationControlInterruptedError({
+            operation: action,
+            tabId,
+            webContentsId: wc.id,
+          });
+        }
+      });
       const send: SendCommand = Effect.fn("PreviewManager.sendCommand")(
         function* (method, commandParams) {
-          const before = (yield* Ref.get(controlEpochRef)).get(tabId) ?? 0;
-          if (before !== epoch) {
-            return yield* new PreviewAutomationControlInterruptedError({
-              operation: action,
-              tabId,
-              webContentsId: wc.id,
-            });
-          }
+          yield* checkControl;
           const result = yield* attemptPromise(
             { operation: `${action}.${method}`, tabId, webContentsId: wc.id },
             () => control.debugger.sendCommand(method, commandParams),
           );
-          const after = (yield* Ref.get(controlEpochRef)).get(tabId) ?? 0;
-          if (after !== epoch) {
-            return yield* new PreviewAutomationControlInterruptedError({
-              operation: action,
-              tabId,
-              webContentsId: wc.id,
-            });
-          }
+          yield* checkControl;
           return result;
         },
       );
@@ -1469,7 +1469,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
           );
         },
       );
-      return yield* use(send, sendCleanup);
+      return yield* use(send, sendCleanup, checkControl);
     });
     const finalize = Effect.fn("PreviewManager.finalizeControlAction")(function* (
       exit: Exit.Exit<A, PreviewManagerError>,
@@ -3921,6 +3921,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     input: PreviewAutomationPressInput,
     send: SendCommand,
     sendCleanup: SendCommand,
+    checkControl: Effect.Effect<void, PreviewManagerError>,
   ) {
     yield* prepareAutomationInput(send, false);
     const keySequence = makePreviewAutomationKeySequence(input, {
@@ -3930,17 +3931,75 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     // WebContents.focus() is a no-op for webview guests. Native input targets
     // this guest's widget directly, so Enter cannot submit the host composer.
     yield* Effect.gen(function* () {
-      yield* send("Emulation.setFocusEmulationEnabled", { enabled: true });
-      yield* expectAgentInput(tabId, keySequence.signal);
       if (keySequence.commands?.length) {
-        yield* evaluateWithDebugger(
-          tabId,
-          send,
-          previewAutomationEditingCommandExpression(input, keySequence),
-          true,
+        // Follow active iframe WindowProxy identities, which remain comparable
+        // across origins even when the host holds native focus.
+        let frame = yield* attempt(
+          { operation: "automationPress.editFocusedFrame", tabId, webContentsId: wc.id },
+          () => wc.mainFrame,
         );
-        return;
+        while (true) {
+          yield* checkControl;
+          const childIndex = yield* attemptPromise(
+            { operation: "automationPress.editFocusedFrame", tabId, webContentsId: wc.id },
+            async () => {
+              const index: unknown = await frame.executeJavaScript(`(() => {
+                let element = document.activeElement;
+                while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
+                if (element?.tagName !== "IFRAME") return -1;
+                for (let index = 0; index < window.length; index++) {
+                  if (window[index] === element.contentWindow) return index;
+                }
+                throw new Error("The focused preview iframe is unavailable.");
+              })()`);
+              if (typeof index !== "number" || !Number.isInteger(index)) {
+                throw new Error("The focused preview iframe index is invalid.");
+              }
+              return index;
+            },
+          );
+          yield* checkControl;
+          if (childIndex === -1) {
+            yield* attemptPromise(
+              { operation: "automationPress.editFocusedFrame", tabId, webContentsId: wc.id },
+              () =>
+                frame.executeJavaScript(
+                  previewAutomationEditingCommandExpression(input, keySequence),
+                  true,
+                ),
+            );
+            yield* checkControl;
+            return;
+          }
+          const children = yield* attempt(
+            { operation: "automationPress.editFocusedFrame", tabId, webContentsId: wc.id },
+            () => frame.frames,
+          );
+          let activeChild: Electron.WebFrameMain | undefined;
+          for (const child of children) {
+            yield* checkControl;
+            const matches = yield* attemptPromise(
+              { operation: "automationPress.editFocusedFrame", tabId, webContentsId: wc.id },
+              () => child.executeJavaScript(`window.parent[${childIndex}] === window`),
+            );
+            yield* checkControl;
+            if (matches) {
+              activeChild = child;
+              break;
+            }
+          }
+          frame = yield* attempt(
+            { operation: "automationPress.editFocusedFrame", tabId, webContentsId: wc.id },
+            () => {
+              if (!activeChild) throw new Error("The focused preview iframe is unavailable.");
+              return activeChild;
+            },
+          );
+        }
       }
+      yield* send("Emulation.setFocusEmulationEnabled", { enabled: true });
+      yield* checkControl;
+      yield* expectAgentInput(tabId, keySequence.signal);
       yield* attempt(
         { operation: "automationPress.sendInputEvent", tabId, webContentsId: wc.id },
         () => {
@@ -3952,6 +4011,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
           }
         },
       );
+      yield* checkControl;
     }).pipe(
       Effect.ensuring(
         sendCleanup("Emulation.setFocusEmulationEnabled", { enabled: false }).pipe(Effect.ignore),
@@ -3964,8 +4024,8 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     input: PreviewAutomationPressInput,
   ) {
     const wc = yield* requireWebContents(tabId);
-    yield* withControlSession(tabId, wc, "press", (send, sendCleanup) =>
-      performAutomationPress(tabId, wc, input, send, sendCleanup),
+    yield* withControlSession(tabId, wc, "press", (send, sendCleanup, checkControl) =>
+      performAutomationPress(tabId, wc, input, send, sendCleanup, checkControl),
     );
   });
 

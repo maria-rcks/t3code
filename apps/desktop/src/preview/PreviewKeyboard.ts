@@ -109,7 +109,7 @@ const macEditingCommands = (
 };
 
 function resolveKeyDefinition(input: PreviewAutomationPressInput): KeyDefinition {
-  const named = NAMED_KEYS[input.key];
+  const named = NAMED_KEYS[input.key === " " ? "Space" : input.key];
   if (named) return named;
 
   const functionKey = /^F([1-9]|1[0-2])$/.exec(input.key);
@@ -174,6 +174,14 @@ export function makePreviewAutomationKeySequence(
     modifiers,
     skipIfUnhandled: true as const,
   };
+  // Electron's accelerator parser lowercases letters unless Shift is explicit.
+  // Unsupported character accelerators still insert text, but report an empty key.
+  const nativeKey =
+    definition.keyCode === 0 && definition.key.length === 1
+      ? ""
+      : /^[A-Z]$/.test(definition.key) && !modifiers.includes("shift")
+        ? definition.key.toLowerCase()
+        : definition.key;
 
   return {
     keyDown: {
@@ -183,7 +191,7 @@ export function makePreviewAutomationKeySequence(
     ...(text ? { char: { ...shared, type: "char" as const, keyCode: text } } : {}),
     keyUp: { type: "keyUp", ...shared },
     ...(commands.length > 0 ? { commands } : {}),
-    signal: { kind: "key", key: definition.key, code: definition.code },
+    signal: { kind: "key", key: nativeKey, code: definition.code },
   };
 }
 
@@ -231,6 +239,22 @@ export function previewAutomationEditingCommandExpression(
           if (collapsed) selection?.modify("extend", "backward", "lineboundary");
           document.execCommand("delete");
         } else if (command.startsWith("moveTo")) {
+          const selectionElement = selection?.anchorNode?.nodeType === Node.ELEMENT_NODE
+            ? selection.anchorNode : selection?.anchorNode?.parentElement;
+          const editable = element.isContentEditable || selectionElement?.isContentEditable ||
+            ((element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) &&
+              !element.readOnly && !element.disabled);
+          if (!editable && (command === "moveToBeginningOfDocument" || command === "moveToEndOfDocument")) {
+            let scrollable = element === document.body ? selectionElement ?? element : element;
+            while (scrollable && !(scrollable.scrollHeight > scrollable.clientHeight &&
+              /^(auto|scroll|overlay)$/.test(getComputedStyle(scrollable).overflowY))) {
+              scrollable = scrollable.parentElement ?? scrollable.getRootNode().host;
+            }
+            scrollable ??= document.scrollingElement;
+            if (scrollable) scrollable.scrollTop = command === "moveToBeginningOfDocument"
+              ? 0 : scrollable.scrollHeight;
+            continue;
+          }
           const direction = command.includes("Beginning") ? "backward"
             : command.includes("Left") ? "left"
             : command.includes("Right") ? "right" : "forward";
@@ -239,6 +263,17 @@ export function previewAutomationEditingCommandExpression(
             direction,
             command.includes("Document") ? "documentboundary" : "lineboundary",
           );
+          // Programmatic selection changes do not reveal the caret like native editing commands.
+          if (editable && command.includes("Document")) {
+            const beginning = command.includes("Beginning");
+            if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+              element.scrollTop = beginning ? 0 : element.scrollHeight;
+            } else {
+              const caretElement = selection?.focusNode?.nodeType === Node.ELEMENT_NODE
+                ? selection.focusNode : selection?.focusNode?.parentElement;
+              caretElement?.scrollIntoView({ block: beginning ? "start" : "end", inline: "nearest" });
+            }
+          }
         } else {
           document.execCommand(command);
         }

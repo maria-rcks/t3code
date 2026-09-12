@@ -93,4 +93,30 @@ describe("preview keyboard packets", () => {
     expect(sequence.char).toBeUndefined();
     expect(sequence.signal).toEqual({ kind: "key", key: "!", code: "Digit1" });
   });
+
+  it("matches native uppercase key signals without inventing shortcut modifiers", () => {
+    const plain = makePreviewAutomationKeySequence({ key: "X" });
+    expect(plain.signal).toEqual({ kind: "key", key: "x", code: "KeyX" });
+    expect(plain.char?.keyCode).toBe("X");
+    const shortcut = makePreviewAutomationKeySequence({ key: "A", modifiers: ["Control"] });
+    expect(shortcut.signal).toEqual({ kind: "key", key: "a", code: "KeyA" });
+    expect(shortcut.keyDown.modifiers).toEqual(["control"]);
+    expect(shortcut.char).toBeUndefined();
+    expect(makePreviewAutomationKeySequence({ key: "X", modifiers: ["Shift"] }).signal).toEqual({
+      kind: "key",
+      key: "X",
+      code: "KeyX",
+    });
+  });
+
+  it("matches native signals for Unicode text and literal spaces", () => {
+    const unicode = makePreviewAutomationKeySequence({ key: "é" });
+    expect(unicode.signal).toEqual({ kind: "key", key: "", code: "" });
+    expect(unicode.char?.keyCode).toBe("é");
+    expect(makePreviewAutomationKeySequence({ key: " " }).signal).toEqual({
+      kind: "key",
+      key: " ",
+      code: "Space",
+    });
+  });
 });
