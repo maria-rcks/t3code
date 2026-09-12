@@ -577,6 +577,7 @@ function deriveTurnFolds(input: {
   terminalAssistantMessageIds: ReadonlySet<string>;
   latestTurn: TimelineLatestTurn | null;
   unfoldedTurnIds: ReadonlySet<TurnId>;
+  liveAgentTaskIds: ReadonlySet<string> | undefined;
 }): ReadonlyMap<string, TurnFold> {
   interface TurnGroup {
     entries: Array<TimelineEntry>;
@@ -657,10 +658,15 @@ function deriveTurnFolds(input: {
       if (!isCompaction && index > terminalEntryIndex && !isSingleTrailingActivity) {
         continue;
       }
-      // Agent-spawn CTA rows never fold: workflows outlive their launching
-      // turn (dynamic spawns, background execution), and folding the CTA
-      // when the turn settles makes a still-running fleet invisible.
-      if (entry.kind === "work" && entry.entry.agentSpawn !== undefined) {
+      // Workflows outlive their launching turn (dynamic spawns, background
+      // execution), so a spawn row with a live member stays outside the fold
+      // instead of hiding a still-running fleet. Settled spawns fold with
+      // the rest of the turn.
+      if (
+        entry.kind === "work" &&
+        entry.entry.agentSpawn !== undefined &&
+        entry.entry.agentSpawn.agentTaskIds.some((taskId) => input.liveAgentTaskIds?.has(taskId))
+      ) {
         continue;
       }
       hiddenEntryIds.add(entry.id);
@@ -854,6 +860,8 @@ export function deriveMessagesTimelineRows(input: {
   activeTurnStartedAt: string | null;
   turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   supportsConversationRollback: boolean;
+  /** Task ids of subagents still working; their spawn row stays outside turn folds. */
+  liveAgentTaskIds?: ReadonlySet<string>;
 }): MessagesTimelineRow[] {
   const turnDiffSummaryByAssistantMessageId = new Map<MessageId, TurnDiffSummary>();
   for (const summary of input.turnDiffSummaries) {
@@ -888,6 +896,7 @@ export function deriveMessagesTimelineRows(input: {
     terminalAssistantMessageIds,
     latestTurn: input.latestTurn ?? null,
     unfoldedTurnIds: activeVisualResponseTurnIds,
+    liveAgentTaskIds: input.liveAgentTaskIds,
   });
   const collapsedEntryIds = new Set<string>();
   for (const fold of foldsByAnchorEntryId.values()) {

@@ -1121,6 +1121,68 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
+  it("folds a settled subagent spawn row and keeps a live one outside the fold", () => {
+    const timelineEntries = [
+      {
+        id: "assistant-first-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:01Z",
+        message: {
+          id: "assistant-first" as never,
+          role: "assistant" as const,
+          text: "Fanning out.",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:01Z",
+          updatedAt: "2026-01-01T00:00:02Z",
+          streaming: false,
+        },
+      },
+      {
+        id: "spawn-entry",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:03Z",
+        entry: {
+          id: "spawn-1",
+          createdAt: "2026-01-01T00:00:03Z",
+          turnId: "turn-1" as never,
+          label: "Ran 2 subagents",
+          tone: "tool" as const,
+          agentSpawn: { workflowId: null, agentTaskIds: ["agent-a", "agent-b"] },
+        },
+      },
+      {
+        id: "assistant-final-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:05Z",
+        message: {
+          id: "assistant-final" as never,
+          role: "assistant" as const,
+          text: "Done.",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:05Z",
+          updatedAt: "2026-01-01T00:00:06Z",
+          streaming: false,
+        },
+      },
+    ];
+    const derive = (liveAgentTaskIds: ReadonlySet<string>) =>
+      deriveMessagesTimelineRows({
+        timelineEntries,
+        isWorking: false,
+        activeTurnStartedAt: null,
+        turnDiffSummaries: [],
+        supportsConversationRollback: false,
+        liveAgentTaskIds,
+      }).map((row) => row.id);
+
+    expect(derive(new Set())).toEqual(["turn-fold:turn-1", "assistant-final-entry"]);
+    expect(derive(new Set(["agent-b"]))).toEqual([
+      "turn-fold:turn-1",
+      "spawn-entry",
+      "assistant-final-entry",
+    ]);
+  });
+
   it("only enables assistant copy for the terminal assistant message in a turn", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [

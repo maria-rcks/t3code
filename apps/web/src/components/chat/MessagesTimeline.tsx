@@ -26,10 +26,15 @@ import {
   workEntryViewedImagePath,
 } from "@t3tools/client-runtime/work-log/presentation";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
-import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
+import type {
+  AgentPanelModel,
+  RuntimeSubagent,
+} from "@t3tools/client-runtime/state/subagentRuntime";
 import {
   emptyAgentPanelModel,
+  formatSubagentModelLabel,
   formatSubagentTokenCount,
+  isActiveSubagentStatus,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 
 const EMPTY_AGENT_PANEL_MODEL = emptyAgentPanelModel();
@@ -569,6 +574,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     workspaceRoot: string | undefined;
     projection: MessagesTimelineRowsProjection;
   } | null>(null);
+  // Subagents still working keep their spawn row outside the turn fold.
+  const liveAgentTaskIds = useMemo(() => {
+    const ids = new Set<string>();
+    const consider = (agent: { id: string; status: RuntimeSubagent["status"] }) => {
+      if (isActiveSubagentStatus(agent.status)) ids.add(agent.id);
+    };
+    agentPanelModel.directAgents.forEach(consider);
+    for (const group of agentPanelModel.workflows) {
+      consider(group.workflow);
+      group.unphasedMembers.forEach(consider);
+      group.phases.forEach((phase) => phase.members.forEach(consider));
+    }
+    return ids;
+  }, [agentPanelModel]);
   const rawRows = useMemo(() => {
     const previous = rowsProjectionRef.current;
     const projection = deriveMessagesTimelineRowsWithState(
@@ -582,6 +601,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         activeTurnStartedAt,
         turnDiffSummaries,
         supportsConversationRollback,
+        liveAgentTaskIds,
       },
       previous?.threadKey === listIdentityKey && previous.workspaceRoot === workspaceRoot
         ? previous.projection
@@ -602,6 +622,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     activeTurnStartedAt,
     turnDiffSummaries,
     supportsConversationRollback,
+    liveAgentTaskIds,
   ]);
   const rows = useStableRows(rawRows, listIdentityKey);
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
@@ -3201,15 +3222,17 @@ const stopRowToggleWhileSelectingText = (e: MouseEvent<HTMLElement>) => {
 };
 
 /**
- * A1 spawn CTA: one anchored row per workflow run (or per-turn direct-spawn
- * batch). Live status is derived from the shared agent panel model at render
- * time — the row itself never re-renders a roster; the Agents panel is the
- * only roster. Freezes to past tense when every member settles. Static dot,
- * no animation.
+ * A batch of subagents as one work row. The header reads like the sibling
+ * tool rows; expanding lists each member with its outcome, and a member
+ * click shows its result in the standard tool body box.
  */
-const AgentSpawnCtaRow = memo(function AgentSpawnCtaRow(props: { workEntry: TimelineWorkEntry }) {
+const AgentSpawnRow = memo(function AgentSpawnRow(props: {
+  workEntry: TimelineWorkEntry;
+  onToggleEntry?: ((collapsed: boolean) => void) | undefined;
+}) {
   const { workEntry } = props;
   const { agentPanelModel, onOpenAgents } = use(TimelineRowCtx);
+  const [expanded, setExpanded] = useState(false);
   const spawn = workEntry.agentSpawn;
   if (!spawn) {
     return null;
@@ -3225,8 +3248,8 @@ const AgentSpawnCtaRow = memo(function AgentSpawnCtaRow(props: { workEntry: Time
   const agentCount = Math.max(
     agents.length,
     Math.max(memberIds.size - (spawn.workflowId ? 1 : 0), 0),
+    1,
   );
-
   const summary = deriveAgentSpawnSummary({
     agents,
     agentCount,
@@ -3237,44 +3260,211 @@ const AgentSpawnCtaRow = memo(function AgentSpawnCtaRow(props: { workEntry: Time
   // the coordinator, so count the coordinator only when no members exist.
   const totalTokens = agents.reduce(
     (sum, agent) => sum + (agent.usage?.totalTokens ?? 0),
-    spawn.workflowId && agents.length === 0 ? (workflowGroup?.workflow.usage?.totalTokens ?? 0) : 0,
+    agents.length === 0 ? (workflowGroup?.workflow.usage?.totalTokens ?? 0) : 0,
   );
-
   const livePhase = workflowGroup?.phases.find((phase) => phase.state === "running");
   const workflowName =
     workflowGroup?.workflow.workflowName ?? workflowGroup?.workflow.title ?? null;
-
-  const dotClass = {
-    working: "bg-info",
-    failed: "bg-destructive",
-    completed: "bg-success",
-    inactive: "bg-muted-foreground/50",
-  }[summary.tone];
   const status =
     live && livePhase ? `${livePhase.title} · ${livePhase.activeCount} working` : summary.status;
+  // The verb already says the batch ran; only surface outcomes that differ.
+  const meta = [
+    status === "✓ completed" ? null : status,
+    totalTokens > 0 ? `${formatSubagentTokenCount(totalTokens)} tok` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const toggleExpanded = () => {
+    props.onToggleEntry?.(expanded);
+    setExpanded((value) => !value);
+  };
 
   return (
-    <button
-      type="button"
-      onClick={onOpenAgents}
-      className="flex w-full items-center gap-2 rounded-md border border-border/60 bg-card/50 px-2.5 py-1.5 text-left text-[.8125rem] transition hover:bg-accent/50"
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`${lead}, ${status}`}
+      aria-expanded={expanded}
+      onClick={toggleExpanded}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggleExpanded();
+        }
+      }}
+      className="flex cursor-pointer flex-col rounded-md px-0.5 py-0.5 transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
     >
-      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", dotClass)} />
-      <WorkEntryIcon name="bot" className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 truncate">
-        <span className="font-medium">{lead}</span>
-        {workflowName ? <span className="text-muted-foreground"> · {workflowName}</span> : null}
-      </span>
-      <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-[.7rem] text-muted-foreground">
-        <span>{status}</span>
-        {totalTokens > 0 ? (
-          <span className="tabular-nums">Σ {formatSubagentTokenCount(totalTokens)}</span>
+      <div className="flex select-none items-center gap-1.5">
+        <span className="relative flex size-6 shrink-0 items-center justify-center text-icon-muted">
+          <WorkEntryIcon name="bot" className="block size-4 shrink-0 stroke-[1.8]" />
+          {live ? (
+            <span
+              aria-hidden
+              className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-info"
+            />
+          ) : null}
+        </span>
+        <p className="flex min-w-0 flex-1 items-baseline gap-1.5 text-sm leading-relaxed">
+          <span className="min-w-0 truncate text-secondary-label">{lead}</span>
+          {workflowName ? (
+            <span className="min-w-0 truncate text-muted-foreground">· {workflowName}</span>
+          ) : null}
+        </p>
+        {meta ? (
+          <span
+            className={cn(
+              "shrink-0 font-mono text-[.7rem] tabular-nums",
+              summary.tone === "failed" ? "text-destructive-foreground" : "text-muted-foreground",
+            )}
+          >
+            {meta}
+          </span>
         ) : null}
-        <span className="text-info-foreground">{live ? "Open Agents ▸" : "View ▸"}</span>
-      </span>
-    </button>
+        <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
+          <ChevronRightIcon
+            className={cn(
+              "size-3 shrink-0 text-icon-muted opacity-70 transition-transform duration-200",
+              expanded && "rotate-90",
+            )}
+          />
+        </span>
+      </div>
+      {expanded ? (
+        <div
+          className="ms-7 mt-0.5 flex cursor-default flex-col"
+          onClick={stopRowToggle}
+          onPointerDown={stopRowToggle}
+        >
+          {agents.map((agent) => (
+            <AgentSpawnMemberRow key={agent.id} agent={agent} />
+          ))}
+          <button
+            type="button"
+            onClick={onOpenAgents}
+            className="mt-1 self-start rounded-sm px-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Open Agents panel ›
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 });
+
+const AGENT_MEMBER_DOT_CLASS: Record<RuntimeSubagent["status"], string> = {
+  pending: "bg-info",
+  running: "bg-info",
+  waiting: "bg-info",
+  idle: "bg-muted-foreground/50",
+  completed: "bg-success",
+  failed: "bg-destructive",
+  cancelled: "bg-muted-foreground/60",
+  interrupted: "bg-muted-foreground/60",
+};
+
+const AGENT_MEMBER_STATUS_LABEL: Record<RuntimeSubagent["status"], string> = {
+  pending: "Working",
+  running: "Working",
+  waiting: "Working",
+  idle: "Idle",
+  completed: "Completed",
+  failed: "Failed",
+  cancelled: "Stopped",
+  interrupted: "Stopped",
+};
+
+function AgentSpawnMemberRow({ agent }: { agent: RuntimeSubagent }) {
+  const [open, setOpen] = useState(false);
+  const activeStatus = isActiveSubagentStatus(agent.status);
+  const activity = activeStatus
+    ? (agent.progress ?? (agent.lastToolName ? `▸ ${agent.lastToolName}` : null))
+    : (agent.error ?? agent.result ?? agent.progress ?? null);
+  const durationMs =
+    agent.startedAt && agent.completedAt
+      ? Date.parse(agent.completedAt) - Date.parse(agent.startedAt)
+      : null;
+  const meta = [
+    durationMs !== null && Number.isFinite(durationMs) ? formatDuration(durationMs) : null,
+    agent.usage ? `${formatSubagentTokenCount(agent.usage.totalTokens)} tok` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const role =
+    agent.role && agent.role.trim().toLowerCase() !== agent.title.trim().toLowerCase()
+      ? agent.role
+      : null;
+  const firstLine = activity?.split("\n").find((line) => line.trim().length > 0) ?? null;
+  const canExpand = Boolean(activity && activity.trim().length > 0);
+  const body = [activity, formatSubagentModelLabel(agent.model, agent.effort)]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return (
+    <div
+      role={canExpand ? "button" : undefined}
+      tabIndex={canExpand ? 0 : undefined}
+      aria-expanded={canExpand ? open : undefined}
+      onClick={canExpand ? () => setOpen((value) => !value) : undefined}
+      onKeyDown={
+        canExpand
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setOpen((value) => !value);
+              }
+            }
+          : undefined
+      }
+      className={cn(
+        "flex flex-col rounded-md px-1 py-0.5 transition-colors",
+        canExpand &&
+          "cursor-pointer hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
+      )}
+    >
+      <div className="flex select-none items-center gap-1.5">
+        <span
+          aria-hidden
+          className={cn(
+            "mx-1 size-1.5 shrink-0 rounded-full",
+            AGENT_MEMBER_DOT_CLASS[agent.status],
+          )}
+        />
+        <p className="flex min-w-0 flex-1 items-baseline gap-1.5 text-sm leading-relaxed">
+          <span
+            className={cn(
+              "min-w-0 truncate text-foreground/80",
+              agent.status === "failed" && "text-destructive-foreground",
+            )}
+          >
+            {agent.title}
+          </span>
+          {role ? (
+            <span className="max-w-28 shrink-0 truncate rounded-sm border border-border/60 px-1 font-mono text-[.65rem] text-muted-foreground">
+              {role}
+            </span>
+          ) : null}
+        </p>
+        <span className="shrink-0 font-mono text-[.7rem] tabular-nums text-muted-foreground">
+          {activeStatus
+            ? AGENT_MEMBER_STATUS_LABEL[agent.status]
+            : meta || AGENT_MEMBER_STATUS_LABEL[agent.status]}
+        </span>
+      </div>
+      {!open && firstLine ? (
+        <p className="ms-4.5 truncate text-xs text-muted-foreground">{firstLine}</p>
+      ) : null}
+      {open ? (
+        <div
+          className="ms-4.5 mt-1 cursor-default rounded-md bg-muted/40 px-3 py-2"
+          onClick={stopRowToggle}
+          onPointerDown={stopRowToggle}
+        >
+          <pre className={toolCallExpandedBodyClassName}>{body}</pre>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
@@ -3284,9 +3474,9 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   onToggleEntry?: ((collapsed: boolean) => void) | undefined;
 }) {
   const { workEntry, workspaceRoot, isExpandedToolGroupEntry, displayLabel } = props;
-  // Before any hooks: spawn CTA rows render their own component.
+  // Before any hooks: spawn rows render their own component.
   if (workEntry.agentSpawn) {
-    return <AgentSpawnCtaRow workEntry={workEntry} />;
+    return <AgentSpawnRow workEntry={workEntry} onToggleEntry={props.onToggleEntry} />;
   }
   return (
     <PlainWorkEntryRow
