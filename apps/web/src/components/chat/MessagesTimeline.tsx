@@ -3445,31 +3445,20 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
             <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
               <span
                 className={cn(
-                  "min-w-0",
-                  !answerPreview && "flex-1",
+                  "min-w-0 flex-1",
                   expanded && !questionAnswer ? "whitespace-pre-wrap break-words" : "truncate",
                   expanded && "select-text",
-                  headingClass,
+                  answerPreview
+                    ? expanded
+                      ? "text-muted-foreground"
+                      : "text-foreground"
+                    : headingClass,
                 )}
                 onClick={expanded ? stopRowToggleWhileSelectingText : undefined}
                 onPointerDown={expanded ? stopRowToggle : undefined}
               >
-                {previewText}
+                {questionAnswer ? (answerPreview ?? "Question") : previewText}
               </span>
-              {answerPreview ? (
-                <span
-                  className={cn(
-                    "min-w-0 max-w-[60%] shrink-0 truncate",
-                    !expanded &&
-                      workEntry.questionAnswer &&
-                      hasQuestionAnswer(workEntry.questionAnswer)
-                      ? "text-foreground"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {answerPreview}
-                </span>
-              ) : null}
             </p>
           </div>
           {showFailedIndicator &&

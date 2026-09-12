@@ -356,6 +356,9 @@ describe("MessagesTimeline", () => {
         );
         const collapsedMarkup = JSON.stringify(renderer!.toJSON());
         expect(collapsedMarkup).not.toContain("Question answer submitted");
+        expect(questionToggle.findByType("p").findByType("span").children.join("")).toBe(
+          Object.values(answers).join(" · ") || "spec.txt, shot.png",
+        );
         await act(() => questionToggle.props.onClick());
         const markup = JSON.stringify(renderer!.toJSON());
         expect(markup).not.toBe(collapsedMarkup);

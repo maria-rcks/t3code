@@ -758,7 +758,9 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
       ? getQuestionAnswerPreview(questionAnswer)
       : null;
   const accessiblePreview = [previewText, answerPreview].filter(Boolean).join(": ");
-  const displayText = questionAnswer ? previewText : workEntryRowLabel(row.workEntry, expanded);
+  const displayText = questionAnswer
+    ? (answerPreview ?? "Question")
+    : workEntryRowLabel(row.workEntry, expanded);
   const iconIsDestructive = row.icon === "alert" || row.icon === "warning";
   const failed = row.status === "failure";
   const toolIcon = row.workEntry.toolIcon ?? row.workEntry.toolSource?.icon;
@@ -825,39 +827,21 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
                   />
                 )}
               </View>
-              {questionAnswer ? (
-                <View className="min-w-0 flex-1 flex-row items-center gap-1.5">
-                  <Text
-                    className="min-w-0 shrink text-sm text-foreground-muted"
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    {displayText}
-                  </Text>
-                  {answerPreview ? (
-                    <Text
-                      className={cn(
-                        "max-w-[60%] shrink-0 text-sm",
-                        expanded ? "text-foreground-subtle" : "text-foreground",
-                      )}
-                      numberOfLines={1}
-                      ellipsizeMode="tail"
-                    >
-                      {answerPreview}
-                    </Text>
-                  ) : null}
-                </View>
-              ) : (
-                <Text
-                  className={cn(
-                    "min-w-0 flex-1 text-sm text-foreground-muted",
-                    iconIsDestructive && "font-t3-medium text-adaptive-rose-600-400",
-                  )}
-                  numberOfLines={expanded ? undefined : 1}
-                >
-                  {displayText}
-                </Text>
-              )}
+              <Text
+                className={cn(
+                  "min-w-0 flex-1 text-sm",
+                  answerPreview
+                    ? expanded
+                      ? "text-foreground-subtle"
+                      : "text-foreground"
+                    : "text-foreground-muted",
+                  iconIsDestructive && "font-t3-medium text-adaptive-rose-600-400",
+                )}
+                numberOfLines={expanded && !questionAnswer ? undefined : 1}
+                ellipsizeMode="tail"
+              >
+                {displayText}
+              </Text>
             </>
           )}
 
