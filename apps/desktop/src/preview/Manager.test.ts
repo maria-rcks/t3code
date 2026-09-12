@@ -3935,7 +3935,22 @@ describe("PreviewManager", () => {
           notifyKeyUpQueued = resolve;
         });
         const listeners = new Map<string, (event: unknown) => void>();
+        const eventCounts = new Map<string, number>();
+        const animationFrames = new Map<number, () => void>();
+        let animationFrameId = 0;
+        const renderFrame = () => {
+          const callbacks = [...animationFrames.values()];
+          animationFrames.clear();
+          callbacks.forEach((callback) => callback());
+        };
         const frameContext = NodeVM.createContext({
+          performance: { eventCounts },
+          requestAnimationFrame: (callback: () => void) => {
+            const id = ++animationFrameId;
+            animationFrames.set(id, callback);
+            return id;
+          },
+          cancelAnimationFrame: (id: number) => animationFrames.delete(id),
           window: {
             addEventListener: (type: string, listener: (event: unknown) => void) =>
               listeners.set(type, listener),
@@ -3983,7 +3998,10 @@ describe("PreviewManager", () => {
             code: input.keyCode === "!" ? "Digit1" : `Key${input.keyCode.toUpperCase()}`,
           };
           if (input.type === "keyUp") {
-            const deliver = () => listeners.get("keyup")?.({ ...signal, isTrusted: true });
+            const deliver = () => {
+              eventCounts.set("keyup", (eventCounts.get("keyup") ?? 0) + 1);
+              renderFrame();
+            };
             if (holdKeyUp) {
               releaseKeyUp = deliver;
               notifyKeyUpQueued?.();
@@ -4096,6 +4114,7 @@ describe("PreviewManager", () => {
         ]);
         expect(sendCommand).toHaveBeenCalledWith("Input.setIgnoreInputEvents", { ignore: false });
         expect(listeners.size).toBe(0);
+        expect(animationFrames.size).toBe(0);
 
         sendCommand.mockClear();
         sendInputEvent.mockClear();
@@ -4108,11 +4127,12 @@ describe("PreviewManager", () => {
         expect(sendCommand).not.toHaveBeenCalledWith("Emulation.setFocusEmulationEnabled", {
           enabled: false,
         });
-        listeners.get("keyup")?.({ isTrusted: false, key: "x", code: "KeyX" });
-        expect(listeners.has("keyup")).toBe(true);
+        renderFrame();
+        expect(animationFrames.size).toBe(1);
         releaseKeyUp?.();
         yield* Fiber.join(backgroundPress);
         expect(listeners.size).toBe(0);
+        expect(animationFrames.size).toBe(0);
         expect(sendCommand).toHaveBeenCalledWith("Emulation.setFocusEmulationEnabled", {
           enabled: false,
         });

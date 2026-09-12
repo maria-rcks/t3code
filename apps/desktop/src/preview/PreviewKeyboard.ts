@@ -230,6 +230,7 @@ export function makePreviewAutomationFrameKeySequence(
 export function previewAutomationEditingCommandExpression(
   input: PreviewAutomationPressInput,
   sequence: PreviewAutomationKeySequence,
+  clipboardData: ReadonlyArray<{ readonly type: string; readonly data: string }> = [],
 ): string {
   const definition = resolveKeyDefinition(input);
   const event = {
@@ -246,7 +247,7 @@ export function previewAutomationEditingCommandExpression(
     cancelable: true,
     composed: true,
   };
-  return `(async () => {
+  return `(() => {
     let element = document.activeElement;
     while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
     if (!element) return;
@@ -254,15 +255,15 @@ export function previewAutomationEditingCommandExpression(
     try {
       if (!element.dispatchEvent(new KeyboardEvent("keydown", event))) return;
       for (const command of ${JSON.stringify(sequence.commands ?? [])}) {
-        // Chromium disables DOM execCommand("paste"). Read the permitted browser
-        // clipboard and let the page's paste handler consume its original formats.
+        // Main-process clipboard reads also work on insecure HTTP previews.
+        // Let the page's paste handler consume the original MIME formats.
         if (command === "paste") {
           const transfer = new DataTransfer();
-          for (const item of await navigator.clipboard.read()) {
-            for (const type of item.types) {
-              const blob = await item.getType(type);
-              if (type.startsWith("text/")) transfer.setData(type, await blob.text());
-              else transfer.items.add(new File([blob], "clipboard", { type }));
+          for (const { type, data } of ${JSON.stringify(clipboardData)}) {
+            if (type.startsWith("text/")) transfer.setData(type, data);
+            else {
+              const bytes = Uint8Array.from(atob(data), character => character.charCodeAt(0));
+              transfer.items.add(new File([bytes], "clipboard", { type }));
             }
           }
           if (!element.dispatchEvent(new ClipboardEvent("paste", {

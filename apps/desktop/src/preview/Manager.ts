@@ -79,7 +79,6 @@ import {
   makePreviewAutomationKeySequence,
   makePreviewAutomationFrameKeySequence,
   previewAutomationEditingCommandExpression,
-  type PreviewAutomationKeySequence,
 } from "./PreviewKeyboard.ts";
 import { captureFavicon, safeHttpOrigin, selectFaviconCandidates } from "./FaviconCapture.ts";
 
@@ -3928,12 +3927,10 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   const withNativeKeyReceipt = Effect.fn("PreviewManager.withNativeKeyReceipt")(function* (
     tabId: string,
     wc: Electron.WebContents,
-    signal: PreviewAutomationKeySequence["signal"],
     dispatch: Effect.Effect<void, PreviewManagerError>,
     checkControl: Effect.Effect<void, PreviewManagerError>,
   ) {
     const context = { operation: "automationPress.awaitNativeKey", tabId, webContentsId: wc.id };
-    const signalJson = yield* encodeJson(context, signal);
     const { frames, receiptKey } = yield* Effect.acquireRelease(
       attempt(context, () => ({
         frames: wc.mainFrame.framesInSubtree,
@@ -3957,24 +3954,37 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
           try: (_signal) =>
             frame.executeJavaScript(`(() => {
               const receiptKey = ${receiptKey};
-              const signal = ${signalJson};
+              const counts = performance.eventCounts;
+              if (!counts) throw new Error("Native key delivery counters are unavailable.");
+              const keyUpsBefore = counts.get("keyup") ?? 0;
+              const keyDownsBefore = counts.get("keydown") ?? 0;
               let settle;
+              let animationFrame = 0;
+              let finished = false;
               const promise = new Promise(resolve => { settle = resolve; });
               const finish = delivered => {
-                window.removeEventListener("keyup", onKeyUp, true);
+                if (finished) return;
+                finished = true;
+                cancelAnimationFrame(animationFrame);
                 window.removeEventListener("pagehide", onPageHide, true);
                 settle(delivered);
               };
-              const onKeyUp = event => {
-                if (event.isTrusted && event.key === signal.key && event.code === signal.code) finish(true);
+              // Chromium counts trusted keys before dispatching page listeners,
+              // so stopImmediatePropagation cannot hide completed input.
+              const observe = () => {
+                if ((counts.get("keyup") ?? 0) > keyUpsBefore) finish(true);
+                else if (!finished) animationFrame = requestAnimationFrame(observe);
               };
-              const onPageHide = () => finish(false);
+              const onPageHide = () => finish(
+                (counts.get("keyup") ?? 0) > keyUpsBefore ||
+                (counts.get("keydown") ?? 0) > keyDownsBefore,
+              );
               globalThis[receiptKey] = { promise, dispose: () => {
                 finish(false);
                 delete globalThis[receiptKey];
               }};
-              window.addEventListener("keyup", onKeyUp, true);
               window.addEventListener("pagehide", onPageHide, true);
+              animationFrame = requestAnimationFrame(observe);
             })()`),
           catch: (cause) => new PreviewOperationError({ ...context, cause }),
         });
@@ -4164,7 +4174,31 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
             };
             const evaluate = (expression: string) =>
               attemptPromise(context, () => frame.executeJavaScript(expression, true));
-            const expression = previewAutomationEditingCommandExpression(input, keySequence);
+            const clipboardData = keySequence.commands.includes("paste")
+              ? yield* attemptPromise(context, async () => {
+                  const formats: Array<{ type: string; data: string }> = [];
+                  for (const item of await clipboard.read()) {
+                    for (const type of item.types) {
+                      if (type.startsWith("electron ")) continue;
+                      const blob = await item.getType(type);
+                      if (!("arrayBuffer" in blob)) continue;
+                      formats.push({
+                        type,
+                        data: type.startsWith("text/")
+                          ? await blob.text()
+                          : Buffer.from(await blob.arrayBuffer()).toString("base64"),
+                      });
+                    }
+                  }
+                  return formats;
+                })
+              : [];
+            yield* checkControl;
+            const expression = previewAutomationEditingCommandExpression(
+              input,
+              keySequence,
+              clipboardData,
+            );
             if (
               keySequence.commands.some((command) => ["copy", "cut", "paste"].includes(command))
             ) {
@@ -4232,7 +4266,6 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       yield* withNativeKeyReceipt(
         tabId,
         wc,
-        keySequence.signal,
         Effect.gen(function* () {
           yield* expectAgentInput(tabId, keySequence.signal);
           yield* attempt(
