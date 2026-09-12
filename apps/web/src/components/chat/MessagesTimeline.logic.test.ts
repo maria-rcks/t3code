@@ -1171,6 +1171,7 @@ describe("deriveMessagesTimelineRows", () => {
       timelineEntries: typeof direct,
       liveAgentTaskIds: ReadonlySet<string> | undefined,
       expandedSpawnEntryIds?: ReadonlySet<string>,
+      expandedTurnIds?: ReadonlySet<TurnId>,
     ) =>
       deriveMessagesTimelineRows({
         timelineEntries,
@@ -1180,6 +1181,7 @@ describe("deriveMessagesTimelineRows", () => {
         supportsConversationRollback: false,
         liveAgentTaskIds,
         expandedSpawnEntryIds,
+        ...(expandedTurnIds ? { expandedTurnIds } : {}),
       }).map((row) => row.id);
     const folded = ["turn-fold:turn-1", "assistant-final-entry"];
     const unfolded = ["turn-fold:turn-1", "spawn-entry", "assistant-final-entry"];
@@ -1189,9 +1191,19 @@ describe("deriveMessagesTimelineRows", () => {
     // A workflow coordinator between phases keeps its batch out of the fold.
     expect(derive(workflow, new Set(["wf-1"]))).toEqual(unfolded);
     expect(derive(workflow, new Set())).toEqual(folded);
-    // The user has it open, or no live set is known.
-    expect(derive(direct, new Set(), new Set(["spawn-entry"]))).toEqual(unfolded);
+    // No live set is known.
     expect(derive(direct, undefined)).toEqual(unfolded);
+    // The user has it open: it stays visible under the collapsed fold and
+    // keeps its place when the fold is expanded.
+    expect(derive(direct, new Set(), new Set(["spawn-entry"]))).toEqual(unfolded);
+    expect(
+      derive(direct, new Set(), new Set(["spawn-entry"]), new Set(["turn-1" as TurnId])),
+    ).toEqual([
+      "turn-fold:turn-1",
+      "assistant-first-entry",
+      "spawn-entry",
+      "assistant-final-entry",
+    ]);
   });
 
   it("only enables assistant copy for the terminal assistant message in a turn", () => {

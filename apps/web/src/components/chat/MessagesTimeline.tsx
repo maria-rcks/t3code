@@ -465,8 +465,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 }: MessagesTimelineProps) {
   const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<TurnId>>(new Set());
   const [expandedWorkGroupIds, setExpandedWorkGroupIds] = useState<ReadonlySet<string>>(new Set());
-  // Expanded spawn rows outlive virtualization and stay outside turn folds
-  // until the user collapses them, so a settling fleet is not pulled away mid-read.
+  // Expanded spawn rows outlive virtualization and stay visible while their
+  // turn fold is collapsed, so a settling fleet is not pulled away mid-read.
   const [expandedSpawnEntryIds, setExpandedSpawnEntryIds] = useState<ReadonlySet<string>>(
     new Set(),
   );
@@ -3881,11 +3881,16 @@ function AgentSpawnMemberRow({
       ? Date.parse(agent.completedAt) - Date.parse(agent.startedAt)
       : null;
   const meta = [
-    durationMs !== null && Number.isFinite(durationMs) ? formatDuration(durationMs) : null,
-    agent.usage ? `${formatSubagentTokenCount(agent.usage.totalTokens)} tok` : null,
+    durationMs !== null && durationMs >= 0 ? formatDuration(durationMs) : null,
+    agent.usage && agent.usage.totalTokens > 0
+      ? `${formatSubagentTokenCount(agent.usage.totalTokens)} tok`
+      : null,
   ]
     .filter(Boolean)
     .join(" · ");
+  const statusLabel = activeStatus
+    ? AGENT_MEMBER_STATUS_LABEL[agent.status]
+    : meta || AGENT_MEMBER_STATUS_LABEL[agent.status];
   const role =
     agent.role && agent.role.trim().toLowerCase() !== agent.title.trim().toLowerCase()
       ? agent.role
@@ -3904,6 +3909,7 @@ function AgentSpawnMemberRow({
     <div
       role={canExpand ? "button" : undefined}
       tabIndex={canExpand ? 0 : undefined}
+      aria-label={canExpand ? `${agent.title}, ${statusLabel}` : undefined}
       aria-expanded={canExpand ? open : undefined}
       onClick={canExpand ? toggleOpen : undefined}
       onKeyDown={
@@ -3946,9 +3952,7 @@ function AgentSpawnMemberRow({
           ) : null}
         </p>
         <span className="shrink-0 font-mono text-[.7rem] tabular-nums text-muted-foreground">
-          {activeStatus
-            ? AGENT_MEMBER_STATUS_LABEL[agent.status]
-            : meta || AGENT_MEMBER_STATUS_LABEL[agent.status]}
+          {statusLabel}
         </span>
       </div>
       {!open && firstLine ? (

@@ -83,10 +83,9 @@ export interface WorkLogEntry {
   /** Agent role (subagent_type) for labeled timeline rows. */
   agentRole?: string;
   /**
-   * Present on agent-spawn CTA rows: one per workflow run or per-turn batch
-   * of direct spawns. The row renders as a call-to-action ("Kicked off N
-   * subagents") whose live status is derived from the agent panel model at
-   * render time; clicking opens the Agents panel.
+   * Present on agent-spawn rows: one per workflow run or per-turn batch of
+   * direct spawns. The row ("Kicked off N subagents") derives its live
+   * status and member list from the agent panel model at render time.
    */
   agentSpawn?: {
     /** Workflow coordinator taskId, or null for a direct-spawn batch. */
@@ -642,7 +641,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
 /**
  * Spawn-group key for a subagent lifecycle row. Workflow members and their
  * coordinator share the coordinator's group; direct spawns batch per turn.
- * One CTA row per group (A1 design): "Kicked off N subagents".
+ * One row per group: "Kicked off N subagents".
  */
 function agentSpawnGroupKey(entry: DerivedWorkLogEntry): string {
   const taskId = entry.taskId ?? "";
