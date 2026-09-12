@@ -1109,6 +1109,13 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
               (session) => session.threadId === canonicalEvent.threadId,
             );
             if (session?.resumeCursor !== undefined) {
+              const binding = yield* directory.getBinding(session.threadId);
+              if (
+                Option.isNone(binding) ||
+                binding.value.providerInstanceId !== source.instanceId
+              ) {
+                return;
+              }
               yield* directory.upsert({
                 threadId: session.threadId,
                 provider: source.provider,

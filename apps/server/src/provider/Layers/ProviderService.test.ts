@@ -1762,7 +1762,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
     Effect.gen(function* () {
       const provider = yield* ProviderService.ProviderService;
       const threadId = asThreadId("thread-background-rewind");
-      yield* provider.startSession(threadId, {
+      const initial = yield* provider.startSession(threadId, {
         provider: CLAUDE_AGENT_DRIVER,
         providerInstanceId: claudeAgentInstanceId,
         threadId,
@@ -1799,6 +1799,37 @@ routing.layer("ProviderServiceLive routing", (it) => {
       routing.claude.startSession.mockClear();
       yield* provider.rollbackConversation({ threadId, numTurns: 1 });
       assert.deepEqual(routing.claude.startSession.mock.calls[0]?.[0].resumeCursor, cursor);
+
+      const replacement = yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      routing.claude.listSessions.mockReturnValueOnce(
+        Effect.succeed([{ ...initial, resumeCursor: cursor }]),
+      );
+      const staleCompleted = yield* provider.streamEvents.pipe(
+        Stream.filter((event) => event.eventId === "evt-stale-background-rewind"),
+        Stream.take(1),
+        Stream.runDrain,
+        Effect.forkChild,
+      );
+      yield* Effect.yieldNow;
+      routing.claude.emit({
+        type: "turn.completed",
+        eventId: asEventId("evt-stale-background-rewind"),
+        provider: CLAUDE_AGENT_DRIVER,
+        createdAt: "2026-01-01T00:00:01.000Z",
+        threadId,
+        turnId: asTurnId("old-background-turn"),
+        payload: { state: "completed" },
+      });
+      yield* Fiber.join(staleCompleted);
+      const replacementBinding = yield* directory.getBinding(threadId);
+      assert(Option.isSome(replacementBinding));
+      assert.equal(replacementBinding.value.providerInstanceId, codexInstanceId);
+      assert.deepEqual(replacementBinding.value.resumeCursor, replacement.resumeCursor);
     }),
   );
 
