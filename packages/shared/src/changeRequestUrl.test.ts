@@ -90,7 +90,22 @@ describe("parseChangeRequestUrl", () => {
 });
 
 describe("siblingPullRequestUrl", () => {
+  it("recognizes Forgejo on custom HTTP hosts", () => {
+    expect(parseChangeRequestUrl("http://git.example.test:3000/team/repo/pulls/42/files")).toEqual({
+      host: "git.example.test",
+      repository: "team/repo",
+      number: 42,
+    });
+  });
   it.each([
+    [
+      "http://git.example.test:3000/team/repo/pulls/42/files",
+      "http://git.example.test:3000/team/repo/pulls/43",
+    ],
+    [
+      "https://git.example.test/forgejo/team/repo/pulls/42/files",
+      "https://git.example.test/forgejo/team/repo/pulls/43",
+    ],
     ["https://github.com/pull/1/pull/42/files", "https://github.com/pull/1/pull/43"],
     [
       "https://git.acme.test/team/merge_requests/1/repo/-/merge_requests/42/diffs",
