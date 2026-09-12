@@ -4210,14 +4210,21 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
                 let element = document.activeElement;
                 while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
                 const selection = document.getSelection();
-                const ranges = Array.from({ length: selection?.rangeCount ?? 0 }, (_, i) => selection.getRangeAt(i).cloneRange());
+                const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+                const backward = selection?.direction === "backward";
                 const start = element?.selectionStart;
                 const end = element?.selectionEnd;
                 const direction = element?.selectionDirection;
                 globalThis[${selectionKey}] = () => {
                   element?.focus({ preventScroll: true });
                   if (typeof start === "number") element.setSelectionRange(start, end, direction);
-                  else { selection?.removeAllRanges(); ranges.forEach(range => selection?.addRange(range)); }
+                  else {
+                    selection?.removeAllRanges();
+                    if (range && backward) selection.setBaseAndExtent(
+                      range.endContainer, range.endOffset, range.startContainer, range.startOffset,
+                    );
+                    else if (range) selection.addRange(range);
+                  }
                 };
               })()`),
               () =>
