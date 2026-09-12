@@ -5,6 +5,7 @@ import {
   type EnvironmentId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -197,7 +198,9 @@ export function createPullRequestRouter() {
     if (alternatives.length === 0) return yield* finish(request(tag, input));
 
     const identity = yield* request(WS_METHODS.pullRequestsRouting, ref).pipe(
-      Effect.orElseSucceed(() => null),
+      Effect.catchCause((cause) =>
+        Cause.hasInterrupts(cause) ? Effect.interrupt : Effect.succeed(null),
+      ),
     );
     // Old servers and unknown accounts retain the existing path.
     if (identity === null || identity.provider !== "github")
@@ -252,7 +255,11 @@ export function createPullRequestRouter() {
           // An older server would discard expectedAccountId. Verify it implements the guard first.
           const alternate = yield* registry
             .run(id, request(WS_METHODS.pullRequestsRouting, routedInput))
-            .pipe(Effect.orElseSucceed(() => null));
+            .pipe(
+              Effect.catchCause((cause) =>
+                Cause.hasInterrupts(cause) ? Effect.interrupt : Effect.succeed(null),
+              ),
+            );
           if (
             alternate === null ||
             alternate.provider !== "github" ||

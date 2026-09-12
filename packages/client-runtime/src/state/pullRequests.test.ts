@@ -44,6 +44,8 @@ for (const scenario of [
   "returns a fast source read without checking alternate identities",
   "keeps single-environment requests free of identity lookups",
   "keeps a local origin ahead of another local environment",
+  "keeps mutations on an old origin server without retrying them",
+  "skips an old alternate server before dispatching a mutation",
 ] as const) {
   it.effect(scenario, () =>
     Effect.scoped(
@@ -56,6 +58,10 @@ for (const scenario of [
           scenario === "returns a fast source read without checking alternate identities";
         const single = scenario === "keeps single-environment requests free of identity lookups";
         const localOrigin = scenario === "keeps a local origin ahead of another local environment";
+        const oldOrigin =
+          scenario === "keeps mutations on an old origin server without retrying them";
+        const oldAlternate =
+          scenario === "skips an old alternate server before dispatching a mutation";
         const failure = new PullRequestOperationError({
           operation: "runAction",
           detail: "connection lost after dispatch",
@@ -64,8 +70,13 @@ for (const scenario of [
           const name = local ? "local" : "origin";
           return {
             [WS_METHODS.pullRequestsRouting]: () =>
-              Effect.sync(() => {
+              Effect.gen(function* () {
                 calls.push(`${name}:identity`);
+                if ((!local && oldOrigin) || (local && oldAlternate)) {
+                  return yield* Effect.die(
+                    `Unknown request tag: ${WS_METHODS.pullRequestsRouting}`,
+                  );
+                }
                 return {
                   host: "github.com",
                   provider: "github",
@@ -125,7 +136,7 @@ for (const scenario of [
               "origin:mutation",
             ]);
           } else if (reading) expect(calls).toEqual(["origin:read"]);
-          else if (mismatch || localOrigin)
+          else if (mismatch || localOrigin || oldOrigin || oldAlternate)
             expect(calls.filter((call) => call.endsWith(":mutation"))).toEqual(["origin:mutation"]);
           else {
             expect(calls.filter((call) => call.endsWith(":mutation"))).toEqual(["local:mutation"]);
