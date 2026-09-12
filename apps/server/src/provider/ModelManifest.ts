@@ -399,6 +399,10 @@ export const make = Effect.gen(function* () {
     );
     if (fetched === null) return manifest;
 
+    if (manifestUpdatedAtMs(fetched) < manifestUpdatedAtMs(manifest)) {
+      fetchedAtMs = now;
+      return manifest;
+    }
     manifest = fetched;
     fetchedAtMs = now;
     yield* encodeManifestCache({ fetchedAtMs: now, manifest: fetched }).pipe(
