@@ -9,15 +9,23 @@ interface KeyDefinition {
   readonly shiftedKey?: string;
 }
 
-export interface PreviewAutomationKeyEvent extends Electron.KeyboardInputEvent {
-  readonly skipIfUnhandled: true;
+export interface PreviewAutomationKeyEvent {
+  readonly [key: string]: unknown;
+  readonly type: "keyDown" | "rawKeyDown" | "keyUp";
+  readonly key: string;
+  readonly code: string;
+  readonly modifiers: number;
+  readonly windowsVirtualKeyCode: number;
+  readonly location: number;
+  readonly isKeypad: boolean;
+  readonly text?: string;
+  readonly unmodifiedText?: string;
+  readonly commands?: ReadonlyArray<string>;
 }
 
 export interface PreviewAutomationKeySequence {
   readonly keyDown: PreviewAutomationKeyEvent;
-  readonly char?: PreviewAutomationKeyEvent;
   readonly keyUp: PreviewAutomationKeyEvent;
-  readonly commands?: ReadonlyArray<string>;
   readonly signal: {
     readonly kind: "key";
     readonly key: string;
@@ -108,6 +116,20 @@ const macEditingCommands = (
   return command ? [command] : [];
 };
 
+const modifierMask = (modifiers: PreviewAutomationPressInput["modifiers"]): number =>
+  (modifiers ?? []).reduce((value, modifier) => {
+    switch (modifier) {
+      case "Alt":
+        return value | 1;
+      case "Control":
+        return value | 2;
+      case "Meta":
+        return value | 4;
+      case "Shift":
+        return value | 8;
+    }
+  }, 0);
+
 function resolveKeyDefinition(input: PreviewAutomationPressInput): KeyDefinition {
   const named = NAMED_KEYS[input.key === " " ? "Space" : input.key];
   if (named) return named;
@@ -146,90 +168,81 @@ function resolveKeyDefinition(input: PreviewAutomationPressInput): KeyDefinition
 }
 
 /**
- * Send directly to the guest widget. CDP keyboard input resolves the embedder's
- * focused widget and can deliver a background preview's keys to the composer.
+ * Build Chromium CDP key packets using the same required fields and down-event
+ * choice as Playwright's pinned Chromium keyboard implementation.
  */
 export function makePreviewAutomationKeySequence(
   input: PreviewAutomationPressInput,
   options?: { readonly isMac?: boolean },
 ): PreviewAutomationKeySequence {
   const definition = resolveKeyDefinition(input);
-  const modifiers = (input.modifiers ?? []).map((modifier) => {
-    switch (modifier) {
-      case "Alt":
-        return "alt" as const;
-      case "Control":
-        return "control" as const;
-      case "Meta":
-        return "meta" as const;
-      case "Shift":
-        return "shift" as const;
-    }
-  });
+  const modifiers = modifierMask(input.modifiers);
   const suppressText = input.modifiers?.some((modifier) => modifier !== "Shift") ?? false;
   const text = suppressText ? "" : (definition.text ?? "");
-  const commands = options?.isMac ? macEditingCommands(definition.code, input.modifiers) : [];
-  const shared = {
-    keyCode: definition.key.startsWith("Arrow") ? definition.key.slice(5) : definition.key,
-    modifiers,
-    skipIfUnhandled: true as const,
-  };
-  // Electron's accelerator parser lowercases letters unless Shift is explicit.
-  // Unsupported character accelerators still insert text, but report an empty key.
-  const nativeKey =
-    definition.keyCode === 0 && definition.key.length === 1
-      ? ""
-      : /^[A-Z]$/.test(definition.key) && !modifiers.includes("shift")
-        ? definition.key.toLowerCase()
-        : definition.key;
-
-  return {
-    keyDown: {
-      type: "keyDown",
-      ...shared,
-    },
-    ...(text ? { char: { ...shared, type: "char" as const, keyCode: text } } : {}),
-    keyUp: { type: "keyUp", ...shared },
-    ...(commands.length > 0 ? { commands } : {}),
-    signal: { kind: "key", key: nativeKey, code: definition.code },
-  };
-}
-
-/** CDP is safe for child renderer targets, which cannot retarget keys to the desktop. */
-export function makePreviewAutomationFrameKeySequence(
-  input: PreviewAutomationPressInput,
-  options?: { readonly isMac?: boolean },
-) {
-  const definition = resolveKeyDefinition(input);
-  const modifiers = (input.modifiers ?? []).reduce(
-    (mask, modifier) => mask | { Alt: 1, Control: 2, Meta: 4, Shift: 8 }[modifier],
-    0,
-  );
-  const text = input.modifiers?.some((modifier) => modifier !== "Shift")
-    ? ""
-    : (definition.text ?? "");
+  const location = definition.location ?? 0;
   const commands = options?.isMac ? macEditingCommands(definition.code, input.modifiers) : [];
   const shared = {
     key: definition.key,
     code: definition.code,
     modifiers,
     windowsVirtualKeyCode: definition.keyCode,
+    location,
+    isKeypad: location === 3,
   };
+
   return {
     keyDown: {
       type: text ? "keyDown" : "rawKeyDown",
       ...shared,
       ...(text ? { text, unmodifiedText: text } : {}),
-      ...(commands.length ? { commands } : {}),
+      ...(commands.length > 0 ? { commands } : {}),
     },
     keyUp: { type: "keyUp", ...shared },
+    signal: { kind: "key", key: definition.key, code: definition.code },
+  };
+}
+
+/** Root CDP input can retarget the embedder; native packets address the guest widget. */
+export function makePreviewAutomationNativeKeySequence(
+  input: PreviewAutomationPressInput,
+  options?: { readonly isMac?: boolean },
+) {
+  const { keyDown, signal } = makePreviewAutomationKeySequence(input, options);
+  const modifiers = (
+    [
+      [1, "alt"],
+      [2, "control"],
+      [4, "meta"],
+      [8, "shift"],
+    ] as const
+  )
+    .filter(([mask]) => keyDown.modifiers & mask)
+    .map(([, modifier]) => modifier);
+  const shared = {
+    keyCode: keyDown.key.startsWith("Arrow") ? keyDown.key.slice(5) : keyDown.key,
+    modifiers,
+    skipIfUnhandled: true as const,
+  };
+  // Electron lowercases unshifted letters and reports no key for Unicode accelerators.
+  const key =
+    keyDown.windowsVirtualKeyCode === 0 && keyDown.key.length === 1
+      ? ""
+      : /^[A-Z]$/.test(keyDown.key) && !modifiers.includes("shift")
+        ? keyDown.key.toLowerCase()
+        : keyDown.key;
+  return {
+    keyDown: { type: "keyDown" as const, ...shared },
+    ...(keyDown.text ? { char: { type: "char" as const, ...shared, keyCode: keyDown.text } } : {}),
+    keyUp: { type: "keyUp" as const, ...shared },
+    ...(keyDown.commands ? { commands: keyDown.commands } : {}),
+    signal: { ...signal, key },
   };
 }
 
 /** Keep macOS editing shortcuts inside the target page without native focus. */
 export function previewAutomationEditingCommandExpression(
   input: PreviewAutomationPressInput,
-  sequence: PreviewAutomationKeySequence,
+  sequence: ReturnType<typeof makePreviewAutomationNativeKeySequence>,
   clipboardData: ReadonlyArray<{ readonly type: string; readonly data: string }> = [],
 ): string {
   const definition = resolveKeyDefinition(input);

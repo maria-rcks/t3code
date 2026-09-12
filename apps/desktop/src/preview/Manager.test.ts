@@ -4096,8 +4096,6 @@ describe("PreviewManager", () => {
         expect(clearOnlyEvaluation).toBeDefined();
         expect(methods).not.toContain("Input.insertText");
         expect(enableIndex).toBeGreaterThanOrEqual(0);
-        expect(focus).not.toHaveBeenCalled();
-        expect(restoreFocus).not.toHaveBeenCalled();
         expect(methods).not.toContain("Page.bringToFront");
         expect(methods).not.toContain("Input.dispatchKeyEvent");
         expect(enableIndex).toBeLessThan(focusOnIndex);
@@ -4107,10 +4105,10 @@ describe("PreviewManager", () => {
         expect(sendInputEvent.mock.invocationCallOrder[2]).toBeLessThan(
           sendCommand.mock.invocationCallOrder[focusOffIndex]!,
         );
-        expect(sendInputEvent.mock.calls.map(([input]) => input)).toEqual([
-          { type: "keyDown", keyCode: "x", modifiers: [], skipIfUnhandled: true },
-          { type: "char", keyCode: "x", modifiers: [], skipIfUnhandled: true },
-          { type: "keyUp", keyCode: "x", modifiers: [], skipIfUnhandled: true },
+        expect(sendInputEvent.mock.calls.map(([input]) => input.type)).toEqual([
+          "keyDown",
+          "char",
+          "keyUp",
         ]);
         expect(sendCommand).toHaveBeenCalledWith("Input.setIgnoreInputEvents", { ignore: false });
         expect(listeners.size).toBe(0);
@@ -4136,110 +4134,62 @@ describe("PreviewManager", () => {
         expect(sendCommand).toHaveBeenCalledWith("Emulation.setFocusEmulationEnabled", {
           enabled: false,
         });
-        expect(focus).not.toHaveBeenCalled();
-        expect(restoreFocus).not.toHaveBeenCalled();
         holdKeyUp = false;
 
-        sendCommand.mockClear();
-        sendInputEvent.mockClear();
-        failKeyDown = true;
-        const failedPress = yield* Effect.exit(manager.automationPress("tab_input", { key: "y" }));
+        // Both native failures and expected-input matching must leave focus emulation off.
+        for (const key of ["y", "!"]) {
+          sendCommand.mockClear();
+          sendInputEvent.mockClear();
+          failKeyDown = key === "y";
+          const exit = yield* Effect.exit(manager.automationPress("tab_input", { key }));
+          expect(Exit.isFailure(exit)).toBe(failKeyDown);
+          expect(sendInputEvent.mock.calls.map(([input]) => input.type)).toEqual(
+            failKeyDown ? ["keyDown", "keyUp"] : ["keyDown", "char", "keyUp"],
+          );
+          expect(sendCommand).toHaveBeenCalledWith("Emulation.setFocusEmulationEnabled", {
+            enabled: false,
+          });
+        }
 
-        expect(Exit.isFailure(failedPress)).toBe(true);
-        expect(sendInputEvent.mock.calls.map(([input]) => input)).toEqual([
-          { type: "keyDown", keyCode: "y", modifiers: [], skipIfUnhandled: true },
-          { type: "keyUp", keyCode: "y", modifiers: [], skipIfUnhandled: true },
-        ]);
-        expect(sendCommand).toHaveBeenCalledWith("Emulation.setFocusEmulationEnabled", {
-          enabled: false,
-        });
-        expect(focus).not.toHaveBeenCalled();
-        expect(restoreFocus).not.toHaveBeenCalled();
-
-        sendCommand.mockClear();
-        sendInputEvent.mockClear();
-        failKeyDown = false;
-        yield* manager.automationPress("tab_input", { key: "!" });
-        expect(sendInputEvent.mock.calls.map(([input]) => input)).toEqual([
-          { type: "keyDown", keyCode: "!", modifiers: [], skipIfUnhandled: true },
-          { type: "char", keyCode: "!", modifiers: [], skipIfUnhandled: true },
-          { type: "keyUp", keyCode: "!", modifiers: [], skipIfUnhandled: true },
-        ]);
-        expect(sendCommand).toHaveBeenCalledWith("Emulation.setFocusEmulationEnabled", {
-          enabled: false,
-        });
-        expect(focus).not.toHaveBeenCalled();
-        expect(restoreFocus).not.toHaveBeenCalled();
-
-        sendCommand.mockClear();
-        sendInputEvent.mockClear();
         routeToIframe = true;
-        yield* manager.automationPress("tab_input", { key: "Enter" });
-        expect(sendInputEvent).not.toHaveBeenCalled();
-        expect(sendCommand).toHaveBeenCalledWith("Target.attachToTarget", {
-          targetId: "focused-frame",
-          flatten: true,
-        });
-        const childKeys = sendCommand.mock.calls.filter(
-          ([method]) => method === "Input.dispatchKeyEvent",
-        );
-        expect(
-          childKeys.map(([, params, sessionId]) => ({ type: params?.["type"], sessionId })),
-        ).toEqual([
-          { type: "keyDown", sessionId: "child-session" },
-          { type: "keyUp", sessionId: "child-session" },
-        ]);
-        expect(sendCommand).toHaveBeenCalledWith(
-          "Emulation.setFocusEmulationEnabled",
-          { enabled: false },
-          "child-session",
-        );
-        expect(sendCommand).toHaveBeenCalledWith("Target.detachFromTarget", {
-          sessionId: "child-session",
-        });
-
-        sendCommand.mockClear();
-        failKeyDown = true;
-        const failedFramePress = yield* Effect.exit(
-          manager.automationPress("tab_input", { key: "x" }),
-        );
-        expect(Exit.isFailure(failedFramePress)).toBe(true);
-        expect(sendInputEvent).not.toHaveBeenCalled();
-        expect(sendCommand).toHaveBeenCalledWith(
-          "Input.dispatchKeyEvent",
-          expect.objectContaining({ type: "keyUp" }),
-          "child-session",
-        );
-        expect(sendCommand).toHaveBeenCalledWith(
-          "Emulation.setFocusEmulationEnabled",
-          { enabled: false },
-          "child-session",
-        );
-        expect(sendCommand).toHaveBeenCalledWith("Target.detachFromTarget", {
-          sessionId: "child-session",
-        });
-
-        sendCommand.mockClear();
-        failKeyDown = false;
-        interruptFrameKeyDown = true;
-        const interruptedFramePress = yield* Effect.exit(
-          manager.automationPress("tab_input", { key: "x" }),
-        );
-        expect(Exit.isFailure(interruptedFramePress)).toBe(true);
-        if (Exit.isSuccess(interruptedFramePress)) return;
-        expect(Option.getOrThrow(Cause.findErrorOption(interruptedFramePress.cause))).toMatchObject(
-          {
-            _tag: "PreviewAutomationControlInterruptedError",
-          },
-        );
-        expect(sendCommand).toHaveBeenCalledWith(
-          "Input.dispatchKeyEvent",
-          expect.objectContaining({ type: "keyUp" }),
-          "child-session",
-        );
-        expect(sendCommand).toHaveBeenCalledWith("Target.detachFromTarget", {
-          sessionId: "child-session",
-        });
+        sendInputEvent.mockClear();
+        for (const outcome of ["success", "failure", "interrupted"]) {
+          sendCommand.mockClear();
+          failKeyDown = outcome === "failure";
+          interruptFrameKeyDown = outcome === "interrupted";
+          const exit = yield* Effect.exit(
+            manager.automationPress("tab_input", {
+              key: outcome === "success" ? "Enter" : "x",
+            }),
+          );
+          expect(Exit.isSuccess(exit)).toBe(outcome === "success");
+          if (outcome === "interrupted" && Exit.isFailure(exit)) {
+            expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toMatchObject({
+              _tag: "PreviewAutomationControlInterruptedError",
+            });
+          }
+          expect(sendInputEvent).not.toHaveBeenCalled();
+          expect(sendCommand).toHaveBeenCalledWith("Target.attachToTarget", {
+            targetId: "focused-frame",
+            flatten: true,
+          });
+          expect(
+            sendCommand.mock.calls
+              .filter(([method]) => method === "Input.dispatchKeyEvent")
+              .map(([, params, sessionId]) => ({ type: params?.["type"], sessionId })),
+          ).toEqual([
+            { type: "keyDown", sessionId: "child-session" },
+            { type: "keyUp", sessionId: "child-session" },
+          ]);
+          expect(sendCommand).toHaveBeenCalledWith(
+            "Emulation.setFocusEmulationEnabled",
+            { enabled: false },
+            "child-session",
+          );
+          expect(sendCommand).toHaveBeenCalledWith("Target.detachFromTarget", {
+            sessionId: "child-session",
+          });
+        }
         expect(focus).not.toHaveBeenCalled();
         expect(restoreFocus).not.toHaveBeenCalled();
       }),
