@@ -6539,6 +6539,10 @@ export default function ChatView(props: ChatViewProps) {
     routeThreadKey: string;
   } | null>(null);
 
+  if (pendingRevert && pendingRevert.routeThreadKey !== routeThreadKey) {
+    setPendingRevert(null);
+  }
+
   const onRevertToTurnCount = useCallback(
     async (turnCount: number, messageId: MessageId, restoreFiles?: boolean) => {
       const localApi = readLocalApi();

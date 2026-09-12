@@ -111,7 +111,7 @@ describe("environment commands", () => {
           commandId: CommandId.make("rewind-command"),
           threadId: ThreadId.make("thread-1"),
           turnCount: 0,
-          restoreFiles,
+          ...(restoreFiles !== undefined ? { restoreFiles } : {}),
           createdAt: "2026-06-06T00:01:00.000Z",
         }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
       }
