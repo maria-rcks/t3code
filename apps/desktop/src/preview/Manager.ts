@@ -4127,6 +4127,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     // WebContents.focus() is a no-op for webview guests. Native input targets
     // this guest's widget directly, so Enter cannot submit the host composer.
     yield* Effect.gen(function* () {
+      if (yield* dispatchNativeFrameKey(tabId, input, send, sendCleanup, checkControl)) return;
       if (keySequence.commands?.length) {
         // Follow active iframe WindowProxy identities, which remain comparable
         // across origins even when the host holds native focus.
@@ -4156,14 +4157,48 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
           );
           yield* checkControl;
           if (childIndex === -1) {
-            yield* attemptPromise(
-              { operation: "automationPress.editFocusedFrame", tabId, webContentsId: wc.id },
-              () =>
-                frame.executeJavaScript(
-                  previewAutomationEditingCommandExpression(input, keySequence),
-                  true,
-                ),
-            );
+            const context = {
+              operation: "automationPress.editFocusedFrame",
+              tabId,
+              webContentsId: wc.id,
+            };
+            const evaluate = (expression: string) =>
+              attemptPromise(context, () => frame.executeJavaScript(expression, true));
+            const expression = previewAutomationEditingCommandExpression(input, keySequence);
+            if (
+              keySequence.commands.some((command) => ["copy", "cut", "paste"].includes(command))
+            ) {
+              const selectionKey = yield* encodeJson(
+                context,
+                `__t3ClipboardSelection_${NodeCrypto.randomUUID()}`,
+              );
+              // Clipboard editing requires an active document. Preserve the target
+              // and selection across focus handlers without focusing the desktop.
+              yield* Effect.acquireUseRelease(
+                evaluate(`(() => {
+                  let element = document.activeElement;
+                  while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
+                  const selection = document.getSelection();
+                  const ranges = Array.from({ length: selection?.rangeCount ?? 0 }, (_, i) => selection.getRangeAt(i).cloneRange());
+                  const start = element?.selectionStart;
+                  const end = element?.selectionEnd;
+                  const direction = element?.selectionDirection;
+                  globalThis[${selectionKey}] = () => {
+                    element?.focus({ preventScroll: true });
+                    if (typeof start === "number") element.setSelectionRange(start, end, direction);
+                    else { selection?.removeAllRanges(); ranges.forEach(range => selection?.addRange(range)); }
+                  };
+                })()`),
+                () =>
+                  Effect.gen(function* () {
+                    yield* send("Emulation.setFocusEmulationEnabled", { enabled: true });
+                    yield* evaluate(`globalThis[${selectionKey}]();${expression}`);
+                  }),
+                () => evaluate(`delete globalThis[${selectionKey}]`).pipe(Effect.ignore),
+              );
+            } else {
+              yield* evaluate(expression);
+            }
             yield* checkControl;
             return;
           }
@@ -4193,7 +4228,6 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
           );
         }
       }
-      if (yield* dispatchNativeFrameKey(tabId, input, send, sendCleanup, checkControl)) return;
       yield* send("Emulation.setFocusEmulationEnabled", { enabled: true });
       yield* withNativeKeyReceipt(
         tabId,
