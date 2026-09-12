@@ -757,14 +757,6 @@ export function PullRequestSummaryTab({
               ) : null}
             </div>
           )}
-          <PullRequestReactionBar
-            compact
-            reactions={detail.reactions ?? []}
-            canReact={detail.capabilities.reactions === true}
-            environmentId={environmentId}
-            reference={reference}
-            onRefresh={onRefresh}
-          />
         </div>
       </section>
 
