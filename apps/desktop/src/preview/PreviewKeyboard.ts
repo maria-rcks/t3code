@@ -9,23 +9,15 @@ interface KeyDefinition {
   readonly shiftedKey?: string;
 }
 
-export interface PreviewAutomationKeyEvent {
-  readonly [key: string]: unknown;
-  readonly type: "keyDown" | "rawKeyDown" | "keyUp";
-  readonly key: string;
-  readonly code: string;
-  readonly modifiers: number;
-  readonly windowsVirtualKeyCode: number;
-  readonly location: number;
-  readonly isKeypad: boolean;
-  readonly text?: string;
-  readonly unmodifiedText?: string;
-  readonly commands?: ReadonlyArray<string>;
+export interface PreviewAutomationKeyEvent extends Electron.KeyboardInputEvent {
+  readonly skipIfUnhandled: true;
 }
 
 export interface PreviewAutomationKeySequence {
   readonly keyDown: PreviewAutomationKeyEvent;
+  readonly char?: PreviewAutomationKeyEvent;
   readonly keyUp: PreviewAutomationKeyEvent;
+  readonly commands?: ReadonlyArray<string>;
   readonly signal: {
     readonly kind: "key";
     readonly key: string;
@@ -116,20 +108,6 @@ const macEditingCommands = (
   return command ? [command] : [];
 };
 
-const modifierMask = (modifiers: PreviewAutomationPressInput["modifiers"]): number =>
-  (modifiers ?? []).reduce((value, modifier) => {
-    switch (modifier) {
-      case "Alt":
-        return value | 1;
-      case "Control":
-        return value | 2;
-      case "Meta":
-        return value | 4;
-      case "Shift":
-        return value | 8;
-    }
-  }, 0);
-
 function resolveKeyDefinition(input: PreviewAutomationPressInput): KeyDefinition {
   const named = NAMED_KEYS[input.key];
   if (named) return named;
@@ -168,36 +146,105 @@ function resolveKeyDefinition(input: PreviewAutomationPressInput): KeyDefinition
 }
 
 /**
- * Build Chromium CDP key packets using the same required fields and down-event
- * choice as Playwright's pinned Chromium keyboard implementation.
+ * Send directly to the guest widget. CDP keyboard input resolves the embedder's
+ * focused widget and can deliver a background preview's keys to the composer.
  */
 export function makePreviewAutomationKeySequence(
   input: PreviewAutomationPressInput,
   options?: { readonly isMac?: boolean },
 ): PreviewAutomationKeySequence {
   const definition = resolveKeyDefinition(input);
-  const modifiers = modifierMask(input.modifiers);
+  const modifiers = (input.modifiers ?? []).map((modifier) => {
+    switch (modifier) {
+      case "Alt":
+        return "alt" as const;
+      case "Control":
+        return "control" as const;
+      case "Meta":
+        return "meta" as const;
+      case "Shift":
+        return "shift" as const;
+    }
+  });
   const suppressText = input.modifiers?.some((modifier) => modifier !== "Shift") ?? false;
   const text = suppressText ? "" : (definition.text ?? "");
-  const location = definition.location ?? 0;
   const commands = options?.isMac ? macEditingCommands(definition.code, input.modifiers) : [];
   const shared = {
-    key: definition.key,
-    code: definition.code,
+    keyCode: definition.key.startsWith("Arrow") ? definition.key.slice(5) : definition.key,
     modifiers,
-    windowsVirtualKeyCode: definition.keyCode,
-    location,
-    isKeypad: location === 3,
+    skipIfUnhandled: true as const,
   };
 
   return {
     keyDown: {
-      type: text ? "keyDown" : "rawKeyDown",
+      type: "keyDown",
       ...shared,
-      ...(text ? { text, unmodifiedText: text } : {}),
-      ...(commands.length > 0 ? { commands } : {}),
     },
+    ...(text ? { char: { ...shared, type: "char" as const, keyCode: text } } : {}),
     keyUp: { type: "keyUp", ...shared },
+    ...(commands.length > 0 ? { commands } : {}),
     signal: { kind: "key", key: definition.key, code: definition.code },
   };
+}
+
+/** Keep macOS editing shortcuts inside the target page without native focus. */
+export function previewAutomationEditingCommandExpression(
+  input: PreviewAutomationPressInput,
+  sequence: PreviewAutomationKeySequence,
+): string {
+  const definition = resolveKeyDefinition(input);
+  const event = {
+    key: definition.key,
+    code: definition.code,
+    keyCode: definition.keyCode,
+    which: definition.keyCode,
+    location: definition.location ?? 0,
+    altKey: input.modifiers?.includes("Alt") ?? false,
+    ctrlKey: input.modifiers?.includes("Control") ?? false,
+    metaKey: input.modifiers?.includes("Meta") ?? false,
+    shiftKey: input.modifiers?.includes("Shift") ?? false,
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+  };
+  return `(() => {
+    let element = document.activeElement;
+    while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
+    if (!element) return;
+    const event = ${JSON.stringify(event)};
+    try {
+      if (!element.dispatchEvent(new KeyboardEvent("keydown", event))) return;
+      for (const command of ${JSON.stringify(sequence.commands ?? [])}) {
+        const inputType = command === "deleteToBeginningOfLine" ? "deleteSoftLineBackward"
+          : command === "undo" ? "historyUndo"
+          : command === "redo" ? "historyRedo" : null;
+        // execCommand emits input without beforeinput. Let controlled editors
+        // perform the edit before applying the browser's default operation.
+        if (inputType && !element.dispatchEvent(new InputEvent("beforeinput", {
+          inputType, bubbles: true, cancelable: true, composed: true,
+        }))) continue;
+        const selection = document.getSelection();
+        if (command === "deleteToBeginningOfLine") {
+          const collapsed = typeof element.selectionStart === "number"
+            ? element.selectionStart === element.selectionEnd
+            : selection?.isCollapsed;
+          if (collapsed) selection?.modify("extend", "backward", "lineboundary");
+          document.execCommand("delete");
+        } else if (command.startsWith("moveTo")) {
+          const direction = command.includes("Beginning") ? "backward"
+            : command.includes("Left") ? "left"
+            : command.includes("Right") ? "right" : "forward";
+          selection?.modify(
+            command.endsWith("AndModifySelection") ? "extend" : "move",
+            direction,
+            command.includes("Document") ? "documentboundary" : "lineboundary",
+          );
+        } else {
+          document.execCommand(command);
+        }
+      }
+    } finally {
+      element.dispatchEvent(new KeyboardEvent("keyup", event));
+    }
+  })()`;
 }
