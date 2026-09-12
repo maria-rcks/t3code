@@ -4199,40 +4199,34 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
               keySequence,
               clipboardData,
             );
-            if (
-              keySequence.commands.some((command) => ["copy", "cut", "paste"].includes(command))
-            ) {
-              const selectionKey = yield* encodeJson(
-                context,
-                `__t3ClipboardSelection_${NodeCrypto.randomUUID()}`,
-              );
-              // Clipboard editing requires an active document. Preserve the target
-              // and selection across focus handlers without focusing the desktop.
-              yield* Effect.acquireUseRelease(
-                evaluate(`(() => {
-                  let element = document.activeElement;
-                  while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
-                  const selection = document.getSelection();
-                  const ranges = Array.from({ length: selection?.rangeCount ?? 0 }, (_, i) => selection.getRangeAt(i).cloneRange());
-                  const start = element?.selectionStart;
-                  const end = element?.selectionEnd;
-                  const direction = element?.selectionDirection;
-                  globalThis[${selectionKey}] = () => {
-                    element?.focus({ preventScroll: true });
-                    if (typeof start === "number") element.setSelectionRange(start, end, direction);
-                    else { selection?.removeAllRanges(); ranges.forEach(range => selection?.addRange(range)); }
-                  };
-                })()`),
-                () =>
-                  Effect.gen(function* () {
-                    yield* send("Emulation.setFocusEmulationEnabled", { enabled: true });
-                    yield* evaluate(`globalThis[${selectionKey}]();${expression}`);
-                  }),
-                () => evaluate(`delete globalThis[${selectionKey}]`).pipe(Effect.ignore),
-              );
-            } else {
-              yield* evaluate(expression);
-            }
+            const selectionKey = yield* encodeJson(
+              context,
+              `__t3EditingSelection_${NodeCrypto.randomUUID()}`,
+            );
+            // Editing requires an active document. Preserve the target
+            // and selection across focus handlers without focusing the desktop.
+            yield* Effect.acquireUseRelease(
+              evaluate(`(() => {
+                let element = document.activeElement;
+                while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
+                const selection = document.getSelection();
+                const ranges = Array.from({ length: selection?.rangeCount ?? 0 }, (_, i) => selection.getRangeAt(i).cloneRange());
+                const start = element?.selectionStart;
+                const end = element?.selectionEnd;
+                const direction = element?.selectionDirection;
+                globalThis[${selectionKey}] = () => {
+                  element?.focus({ preventScroll: true });
+                  if (typeof start === "number") element.setSelectionRange(start, end, direction);
+                  else { selection?.removeAllRanges(); ranges.forEach(range => selection?.addRange(range)); }
+                };
+              })()`),
+              () =>
+                Effect.gen(function* () {
+                  yield* send("Emulation.setFocusEmulationEnabled", { enabled: true });
+                  yield* evaluate(`globalThis[${selectionKey}]();${expression}`);
+                }),
+              () => evaluate(`delete globalThis[${selectionKey}]`).pipe(Effect.ignore),
+            );
             yield* checkControl;
             return;
           }
