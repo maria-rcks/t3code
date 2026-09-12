@@ -216,10 +216,11 @@ export function createPullRequestRouter() {
     const sourceEntry = entries.get(origin.target.environmentId);
     const sourceLocal = sourceEntry !== undefined && isLocal(sourceEntry);
     const candidates = [
-      ...(sourceLocal ? [origin.target.environmentId] : []),
+      ...(sourceLocal && writes.has(tag) ? [origin.target.environmentId] : []),
       ...local.map((entry) => entry.id),
-      ...(sourceLocal ? [] : [origin.target.environmentId]),
+      ...(!sourceLocal && writes.has(tag) ? [origin.target.environmentId] : []),
       ...remote.map((entry) => entry.id),
+      ...(reads.has(tag) ? [origin.target.environmentId] : []),
     ];
     const run = (id: EnvironmentId): ReturnType<typeof request<T>> =>
       registry.run(id, request(tag, routedInput)).pipe(

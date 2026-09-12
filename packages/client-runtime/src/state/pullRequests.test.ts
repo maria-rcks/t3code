@@ -249,7 +249,7 @@ const makeTestRuntime = Effect.fn("makeTestRuntime")(function* (
   return { runtime, atoms, registry, environmentRegistry, supervisor };
 });
 
-for (const source of ["pending", "failed", "offline"] as const) {
+for (const source of ["pending", "pending-local", "failed", "offline"] as const) {
   it.live(
     source === "offline"
       ? "returns held source data only after both fresh paths fail"
@@ -276,7 +276,7 @@ for (const source of ["pending", "failed", "offline"] as const) {
                   }
                   expect(input.allowStale).toBe(false);
                   if (local && source !== "offline") return null;
-                  if (source !== "pending")
+                  if (source !== "pending" && source !== "pending-local")
                     return yield* new PullRequestOperationError({
                       operation: "summary",
                       detail: "github unreachable",
@@ -293,6 +293,7 @@ for (const source of ["pending", "failed", "offline"] as const) {
           const { environmentRegistry, supervisor } = yield* makeTestRuntime(
             clientFor(false),
             clientFor(true),
+            source === "pending-local",
           );
           const result = yield* createPullRequestRouter()(WS_METHODS.pullRequestsSummary, {
             projectId: ProjectId.make("project-1"),
@@ -309,7 +310,7 @@ for (const source of ["pending", "failed", "offline"] as const) {
             expect(result).toBeNull();
             expect(calls).toEqual(["origin", "local"]);
           }
-          expect(interrupted).toBe(source === "pending");
+          expect(interrupted).toBe(source === "pending" || source === "pending-local");
         }),
       ),
   );

@@ -3825,6 +3825,13 @@ it.effect("does not let a stale detail reopen overwrite a fresher linked summary
     assert.strictEqual(display.title, "merged title");
     assert.strictEqual(display.state, "merged");
     assert.strictEqual(detailCalls, 2);
+
+    summaryTitle = "updated after merge";
+    yield* TestClock.adjust("61 seconds");
+    assert.strictEqual((yield* service.summary(reference)).title, "merged title");
+    const refreshed = yield* service.summary({ ...reference, allowStale: false });
+    assert.strictEqual(refreshed.title, "updated after merge");
+    assert.strictEqual(refreshed.state, "merged");
   }),
 );
 

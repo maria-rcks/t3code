@@ -2417,8 +2417,8 @@ export const make = Effect.gen(function* () {
     const cached = persistedRead(input, "summary", summaryCodec, summaryUncached(input));
     const held = lastGoodSummary.peek(key);
     return held !== undefined &&
-      ((input.allowStale !== false && options?.recoverTransientFailure !== false) ||
-        held.state === "merged")
+      input.allowStale !== false &&
+      (options?.recoverTransientFailure !== false || held.state === "merged")
       ? Effect.succeed(held)
       : cached.pipe(
           Effect.tap((value) =>
