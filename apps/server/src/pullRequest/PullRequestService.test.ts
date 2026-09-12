@@ -975,6 +975,49 @@ it.effect("tries another workspace on the same host for the viewer", () =>
   }),
 );
 
+it.effect("routing verifies the current account on the requested host without caching it", () =>
+  Effect.gen(function* () {
+    let viewer = "first-account";
+    const service = yield* makeService({
+      projects: [
+        project({
+          id: "p1",
+          title: "web",
+          workspaceRoot: "/a",
+          repository: "acme/web",
+          host: "github.example.test",
+        }),
+      ],
+      providers: [
+        fakeProvider("github", {
+          getRoutingIdentity: (input) => {
+            assert.deepStrictEqual(input, { cwd: "/a", host: "github.example.test" });
+            return Effect.succeed({
+              viewer,
+              accountId: viewer === "first-account" ? "123" : "456",
+            });
+          },
+        }),
+      ],
+    });
+    const ref = { projectId: "p1" as ProjectId, repository: "acme/web", number: 1 };
+    assert.deepStrictEqual(yield* service.routing(ref), {
+      host: "github.example.test",
+      provider: "github",
+      viewer: "first-account",
+      accountId: "123",
+    });
+    viewer = "second-account";
+    assert.strictEqual((yield* service.routing(ref)).viewer, "second-account");
+    viewer = " ";
+    const failure = yield* service.routing(ref).pipe(Effect.flip);
+    assert.strictEqual(failure._tag, "PullRequestOperationError");
+    if (failure._tag === "PullRequestOperationError") {
+      assert.strictEqual(failure.operation, "routeIdentity");
+    }
+  }),
+);
+
 it.effect("refuses an action the host never claimed it could run", () =>
   Effect.gen(function* () {
     let ran = false;
@@ -3596,9 +3639,7 @@ it.effect("shares linked summaries and reuses them for display without asking th
 
     yield* TestClock.adjust("61 seconds");
     failing = true;
-    const strict = yield* Effect.flip(
-      service.summary(reference, { recoverTransientFailure: false }),
-    );
+    const strict = yield* Effect.flip(service.summary({ ...reference, allowStale: false }));
     assert.strictEqual(strict._tag, "PullRequestOperationError");
 
     const stale = yield* service.summary(reference);
@@ -3867,6 +3908,8 @@ it.effect("keeps recent detail on a transient refresh failure but not after inva
     yield* service.detail(reference);
     yield* TestClock.adjust("16 seconds");
     failing = true;
+    const strict = yield* Effect.flip(service.detail({ ...reference, allowStale: false }));
+    assert.strictEqual(strict._tag, "PullRequestOperationError");
     const stale = yield* service.detail(reference);
     assert.strictEqual(stale.body, "last good body");
 
