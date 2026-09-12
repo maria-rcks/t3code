@@ -1660,6 +1660,82 @@ it.effect("reads a host-native stack through the provider and null where it has 
   }),
 );
 
+it.effect("routes explicit Forgejo HTTP authorities through SSH checkouts after refinement", () =>
+  Effect.gen(function* () {
+    for (const provider of ["forgejo", "unknown"] as const) {
+      const seen: string[] = [];
+      const service = yield* makeService({
+        projects: [
+          project({
+            id: "ssh",
+            title: "ssh",
+            workspaceRoot: "/ssh",
+            repository: "team/repo",
+            provider,
+            host: "code.example",
+            remoteUrl: "git@code.example:team/repo.git",
+          }),
+        ],
+        providers: [
+          fakeProvider("forgejo", {
+            getChangeRequestSummary: (input) =>
+              Effect.sync(() => {
+                seen.push(input.host);
+                return changeRequest(42, "2026-07-02T00:00:00Z");
+              }),
+          }),
+        ],
+        resolveHandle: ({ context }) =>
+          Effect.succeed({
+            context: { ...context!, provider: { ...context!.provider, kind: "forgejo" } },
+            provider: undefined as never,
+          }),
+      });
+      yield* service.summary(
+        {
+          projectId: "ssh" as ProjectId,
+          host: "code.example:3000",
+          repository: "team/repo",
+          number: 42,
+        },
+        { recoverTransientFailure: false },
+      );
+      assert.deepStrictEqual(seen, ["code.example:3000"]);
+    }
+  }),
+);
+
+it.effect("rejects a different Forgejo HTTP port for an HTTP checkout", () =>
+  Effect.gen(function* () {
+    const service = yield* makeService({
+      projects: [
+        project({
+          id: "http",
+          title: "http",
+          workspaceRoot: "/http",
+          repository: "team/repo",
+          provider: "forgejo",
+          host: "code.example",
+          remoteUrl: "http://code.example:4000/team/repo.git",
+        }),
+      ],
+      providers: [fakeProvider("forgejo")],
+    });
+    const failure = yield* service
+      .summary(
+        {
+          projectId: "http" as ProjectId,
+          host: "code.example:3000",
+          repository: "team/repo",
+          number: 42,
+        },
+        { recoverTransientFailure: false },
+      )
+      .pipe(Effect.flip);
+    assert.strictEqual(failure._tag, "PullRequestUnavailableError");
+  }),
+);
+
 it.effect("routes a hosted reference to another repository through a project on that host", () =>
   Effect.gen(function* () {
     const seen: Array<{ cwd: string; repository: string; host: string }> = [];

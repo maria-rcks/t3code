@@ -101,7 +101,8 @@ export function changeRequestUrlFor(
         const remote = new URL(remoteUrl ?? "");
         if (
           (remote.protocol === "http:" || remote.protocol === "https:") &&
-          remote.hostname.toLowerCase() === host.toLowerCase()
+          (remote.hostname.toLowerCase() === host.toLowerCase() ||
+            remote.host.toLowerCase() === host.toLowerCase())
         ) {
           return `${remote.origin}/${repository}/pulls/${number}`;
         }

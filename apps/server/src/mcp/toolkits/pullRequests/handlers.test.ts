@@ -284,7 +284,7 @@ describe("pull request toolkit handlers", () => {
         number: 42,
       });
       expect(result).toEqual({
-        host: "forge.example",
+        host: "forge.example:3000",
         repository: "git/owner/repo",
         number: 42,
         url: "http://forge.example:3000/git/owner/repo/pulls/42",
@@ -367,6 +367,18 @@ describe("pull request toolkit handlers", () => {
       ]);
     }),
   );
+
+  it("reports an older Forgejo link's HTTP port when listing thread links", () => {
+    const result = listThreadPullRequests(
+      makeThread([
+        makeLink(42, {
+          host: "forge.example",
+          url: "http://forge.example:3000/t3tools/t3code/pulls/42",
+        }),
+      ]),
+    );
+    expect(result.pullRequests[0]?.host).toBe("forge.example:3000");
+  });
 
   it.effect("fails cleanly when the token's thread no longer exists", () =>
     Effect.gen(function* () {

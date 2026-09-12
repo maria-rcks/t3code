@@ -150,6 +150,18 @@ describe("siblingPullRequestUrl", () => {
 });
 
 describe("changeRequestUrlFor", () => {
+  it("preserves the origin when the Forgejo host already contains its port", () => {
+    expect(
+      changeRequestUrlFor(
+        "forgejo",
+        "forge.example:3000",
+        "team/repo",
+        42,
+        "http://forge.example:3000/team/repo.git",
+      ),
+    ).toBe("http://forge.example:3000/team/repo/pulls/42");
+  });
+
   it.each([
     ["http://forge.example:3000/git/owner/repo.git", "http://forge.example:3000"],
     ["https://forge.example:8443/git/owner/repo.git", "https://forge.example:8443"],

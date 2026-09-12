@@ -9,6 +9,7 @@ import {
 } from "@t3tools/contracts";
 import { changeRequestUrlFor, parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
 import {
+  normalizeThreadPullRequestKey,
   resolveThreadPullRequestChains,
   threadPullRequestKeyOf,
   visibleThreadPullRequests,
@@ -71,7 +72,7 @@ const resolveTarget = Effect.fn("PullRequestsToolkit.resolveTarget")(function* (
     if (parsed === null) {
       return yield* new PullRequestUrlInvalidError({});
     }
-    return { ...parsed, url: input.url } satisfies ResolvedTarget;
+    return { ...normalizeThreadPullRequestKey(parsed), url: input.url } satisfies ResolvedTarget;
   }
   if (input.repository === undefined || input.number === undefined) {
     return yield* new PullRequestTargetIncompleteError({});
@@ -91,7 +92,10 @@ const resolveTarget = Effect.fn("PullRequestsToolkit.resolveTarget")(function* (
       input.number,
       project?.repositoryIdentity?.locator.remoteUrl,
     ) ?? `https://${host}/${repository}/pull/${input.number}`;
-  return { host, repository, number: input.number, url } satisfies ResolvedTarget;
+  return {
+    ...normalizeThreadPullRequestKey({ host, repository, number: input.number, url }),
+    url,
+  } satisfies ResolvedTarget;
 });
 
 function entryOf(
@@ -109,7 +113,7 @@ function entryOf(
     }
   }
   return {
-    host: link.host,
+    host: normalizeThreadPullRequestKey(link).host,
     repository: link.repository,
     number: link.number,
     url: link.url,

@@ -1,5 +1,6 @@
 import {
   canonicalRepositoryKey,
+  isSshRemoteUrl,
   sourceControlRepositorySelector,
 } from "@t3tools/shared/sourceControl";
 import * as Cache from "effect/Cache";
@@ -560,7 +561,16 @@ export const make = Effect.gen(function* () {
       const host = pullRequestHostOf(identity, "unknown");
       // A legacy identity has no canonical host until its provider is refined, so it must reach
       // the refinement before a host filter can decide whether it belongs in the result.
-      if (filter.host !== undefined && host !== "unknown" && host !== filter.host.toLowerCase()) {
+      if (
+        filter.host !== undefined &&
+        host !== "unknown" &&
+        host !== filter.host.toLowerCase() &&
+        pullRequestHostOf(identity, "forgejo") !== filter.host.toLowerCase() &&
+        !(
+          isSshRemoteUrl(identity.locator.remoteUrl) &&
+          host === filter.host.toLowerCase().replace(/:\d+$/u, "")
+        )
+      ) {
         continue;
       }
       const { remoteName, remoteUrl } = identity.locator;
@@ -639,8 +649,18 @@ export const make = Effect.gen(function* () {
             const provider = detectSourceControlProviderFromRemoteUrl(identity.locator.remoteUrl);
             kind = provider === null ? kind : (refinedKinds.get(provider.baseUrl) ?? kind);
           }
-          const host = pullRequestHostOf(identity, kind);
-          if (filter.host !== undefined && host !== filter.host.toLowerCase()) continue;
+          let host = pullRequestHostOf(identity, kind);
+          if (filter.host !== undefined && host !== filter.host.toLowerCase()) {
+            if (
+              kind !== "forgejo" ||
+              !isSshRemoteUrl(identity.locator.remoteUrl) ||
+              host !== filter.host.toLowerCase().replace(/:\d+$/u, "")
+            ) {
+              continue;
+            }
+            // SSH clone ports do not identify the web server; tea validates this HTTP authority.
+            host = filter.host.toLowerCase();
+          }
           const api = registry.get(kind);
           // Recorded before the de-duplication below, so the viewer lookup keeps the alternates
           // the listing is about to drop.

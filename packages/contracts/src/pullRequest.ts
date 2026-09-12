@@ -1167,9 +1167,24 @@ const PROVIDER_REQUIREMENT: Partial<
  * knows its hosts before the listing answers, and the two must agree on what they are called.
  */
 export function pullRequestHostOf(
-  identity: { readonly canonicalKey?: string | undefined } | null | undefined,
+  identity:
+    | {
+        readonly canonicalKey?: string | undefined;
+        readonly locator?: { readonly remoteUrl: string } | undefined;
+      }
+    | null
+    | undefined,
   kind: SourceControlProviderKind,
 ): string {
+  if (kind === "forgejo") {
+    try {
+      const remote = new URL(identity?.locator?.remoteUrl ?? "");
+      if (remote.protocol === "http:" || remote.protocol === "https:")
+        return remote.host.toLowerCase();
+    } catch {
+      // SSH remotes retain their canonical host; the CLI resolves their web endpoint.
+    }
+  }
   const host = identity?.canonicalKey?.split("/")[0]?.trim();
   return host === undefined || host.length === 0 ? kind : host.toLowerCase();
 }

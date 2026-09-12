@@ -70,7 +70,8 @@ export function findProjectForChangeRequest(
     return (
       repository !== null &&
       repository.toLowerCase() === link.repository.toLowerCase() &&
-      pullRequestHostOf(identity, kind) === link.host.toLowerCase()
+      (pullRequestHostOf(identity, kind) === link.host.toLowerCase() ||
+        pullRequestHostOf(identity, kind) === link.authority)
     );
   });
 }
@@ -101,7 +102,8 @@ export function findProjectOnChangeRequestHost(
       kind !== undefined &&
       kind !== "azure-devops" &&
       matchesChangeRequestAuthority(project, link) &&
-      pullRequestHostOf(identity, kind) === link.host.toLowerCase()
+      (pullRequestHostOf(identity, kind) === link.host.toLowerCase() ||
+        pullRequestHostOf(identity, kind) === link.authority)
     );
   });
 }
@@ -199,7 +201,7 @@ export function useOpenChangeRequestLink(
           projectId: project.id,
           ...(serverConfigs.get(project.environmentId)?.environment.capabilities
             .threadPullRequests === true
-            ? { host: parsed.host }
+            ? { host: parsed.authority ?? parsed.host }
             : {}),
           repository,
           url: targetUrl,
@@ -214,7 +216,7 @@ export function useOpenChangeRequestLink(
               state: previous.state ?? "all",
               repository,
               number: parsed.number,
-              selectedHost: parsed.host,
+              selectedHost: parsed.authority ?? parsed.host,
               selectedProjectId: project.id,
               selectedEnvironmentId: project.environmentId,
             }),
@@ -232,7 +234,7 @@ export function useOpenChangeRequestLink(
           state: "all",
           repository,
           number: parsed.number,
-          selectedHost: parsed.host,
+          selectedHost: parsed.authority ?? parsed.host,
           selectedProjectId: project.id,
           // Named so the page opens the right one of two servers holding this project.
           selectedEnvironmentId: project.environmentId,
