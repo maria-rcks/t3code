@@ -51,6 +51,7 @@ export function PullRequestReactionBar({
   reference,
   onRefresh,
   className,
+  compact = false,
 }: {
   readonly reactions: ReadonlyArray<PullRequestReaction>;
   readonly canReact: boolean;
@@ -60,6 +61,7 @@ export function PullRequestReactionBar({
   readonly reference: PullRequestRef;
   readonly onRefresh: () => void;
   readonly className?: string | undefined;
+  readonly compact?: boolean;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pending, setPending] = useState<{
@@ -110,6 +112,7 @@ export function PullRequestReactionBar({
                 disabled={!canReact}
                 className={cn(
                   PILL_CLASS,
+                  compact && "h-5 px-1.5",
                   reaction.viewerHasReacted
                     ? "border-primary/60 bg-primary/10 text-foreground"
                     : "border-border/70 bg-muted/40 text-muted-foreground",
@@ -136,6 +139,7 @@ export function PullRequestReactionBar({
                 className={cn(
                   PILL_CLASS,
                   "border-border/70 px-1.5 text-muted-foreground hover:border-primary/60 hover:text-foreground",
+                  compact && "h-5 px-1",
                   shown.length === 0 &&
                     !pickerOpen &&
                     "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100",
@@ -143,7 +147,7 @@ export function PullRequestReactionBar({
               />
             }
           >
-            <SmilePlusIcon aria-hidden className="size-3.5" />
+            <SmilePlusIcon aria-hidden className={compact ? "size-3" : "size-3.5"} />
           </PopoverTrigger>
           <PopoverPopup align="start" className="w-auto" side="top" viewportClassName="py-2">
             <div className="flex items-center gap-0.5">

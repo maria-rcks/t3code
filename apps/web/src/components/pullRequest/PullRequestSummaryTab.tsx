@@ -758,7 +758,7 @@ export function PullRequestSummaryTab({
             </div>
           )}
           <PullRequestReactionBar
-            className="mt-2"
+            compact
             reactions={detail.reactions ?? []}
             canReact={detail.capabilities.reactions === true}
             environmentId={environmentId}
