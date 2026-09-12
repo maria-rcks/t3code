@@ -487,7 +487,10 @@ import {
   supportsServerUpdateThreadContinuation,
 } from "../versionSkew";
 import { useAssetUrls } from "../assets/assetUrls";
-import { ATTACHMENT_ONLY_BOOTSTRAP_PROMPT } from "./chat/composerPromptHistory";
+import {
+  ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
+  recallableComposerPrompt,
+} from "./chat/composerPromptHistory";
 
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
@@ -6591,12 +6594,13 @@ export default function ChatView(props: ChatViewProps) {
           if (result._tag === "Failure") throw squashAtomCommandFailure(result);
         });
         const currentPrompt = store.getComposerDraft(composerDraftTarget)?.prompt ?? "";
+        const restoredPrompt = recallableComposerPrompt(message.text);
         const nextPrompt =
-          message.text.length === 0
+          restoredPrompt.length === 0
             ? currentPrompt
             : currentPrompt.length > 0
-              ? `${currentPrompt}\n\n${message.text}`
-              : message.text;
+              ? `${currentPrompt}\n\n${restoredPrompt}`
+              : restoredPrompt;
         store.setPrompt(composerDraftTarget, nextPrompt);
         const images: ComposerImageAttachment[] = [];
         const restoredFiles: ComposerFileAttachment[] = [];
