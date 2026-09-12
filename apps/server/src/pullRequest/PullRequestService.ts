@@ -2315,18 +2315,21 @@ export const make = Effect.gen(function* () {
       ref.host?.toLowerCase() ?? null,
       ref.repository.toLowerCase(),
       ref.number,
+      ref.expectedAccountId ?? null,
     ]);
   const refOfCacheKey = (key: string): PullRequestRef => {
-    const [, projectId, host, repository, number] = JSON.parse(key) as [
+    const [, projectId, host, repository, number, expectedAccountId] = JSON.parse(key) as [
       number,
       string,
       string | null,
       string,
       number,
+      string | null,
     ];
     return {
       projectId,
       ...(host === null ? {} : { host }),
+      ...(expectedAccountId === null ? {} : { expectedAccountId }),
       repository,
       number,
     } as PullRequestRef;
@@ -2387,6 +2390,7 @@ export const make = Effect.gen(function* () {
       project.project.id,
       project.project.workspaceRoot,
       String(input.number),
+      input.expectedAccountId ?? "",
     ]
       .map(encodeURIComponent)
       .join(":");

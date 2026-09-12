@@ -3653,6 +3653,41 @@ it.effect("shares linked summaries and reuses them for display without asking th
   }),
 );
 
+it.effect("keeps routed summaries and details separate when the GitHub account changes", () =>
+  Effect.gen(function* () {
+    for (const operation of ["summary", "detail"] as const) {
+      let failing = false;
+      let calls = 0;
+      const read = () =>
+        Effect.suspend(() => {
+          calls += 1;
+          return failing
+            ? Effect.fail(requestFailed)
+            : Effect.succeed(hostedChangeRequest("account A content"));
+        });
+      const service = yield* makeService({
+        projects: [
+          project({ id: "p1", title: "web", workspaceRoot: "/a", repository: "acme/web" }),
+        ],
+        providers: [
+          fakeProvider("github", { getChangeRequestSummary: read, getChangeRequest: read }),
+        ],
+      });
+      const reference = { projectId: "p1" as ProjectId, repository: "acme/web", number: 1 };
+      yield* service[operation]({ ...reference, expectedAccountId: "101" });
+      failing = true;
+
+      for (const allowStale of [false, true]) {
+        const error = yield* Effect.flip(
+          service[operation]({ ...reference, expectedAccountId: "202", allowStale }),
+        );
+        assert.strictEqual(error._tag, "PullRequestOperationError");
+      }
+      assert.strictEqual(calls, 3);
+    }
+  }),
+);
+
 it.effect("answers a known pull request immediately while the host refreshes", () =>
   Effect.gen(function* () {
     const gate = yield* Deferred.make<void>();
