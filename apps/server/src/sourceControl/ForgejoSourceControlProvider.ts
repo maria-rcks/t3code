@@ -39,7 +39,11 @@ export const discovery = {
     const remote = ForgejoCli.parseForgejoRemote(input.context.remoteUrl);
     const login =
       remote &&
-      ForgejoCli.matchForgejoLogin(ForgejoCli.parseForgejoLogins(input.auth.stdout), remote);
+      ForgejoCli.matchForgejoLogin(
+        ForgejoCli.parseForgejoLogins(input.auth.stdout),
+        remote,
+        input.context.requestedHost,
+      );
     return login ? { kind: "forgejo", name: "Forgejo / Gitea", baseUrl: login.url } : null;
   },
   installHint:

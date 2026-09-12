@@ -199,7 +199,7 @@ export function matchesLinkedPullRequestUrl(
     linked.host === target.host &&
     linked.repository === target.repository &&
     linked.number === target.number &&
-    (target.authority === undefined || linked.authority === target.authority)
+    linked.authority === target.authority
   );
 }
 

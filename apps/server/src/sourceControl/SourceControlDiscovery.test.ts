@@ -413,6 +413,25 @@ it.effect("does not choose a default Forgejo login across ambiguous SSH server p
       remote,
     );
     assert.isUndefined(ForgejoCli.matchForgejoLogin(logins, remote!));
+    assert.strictEqual(
+      ForgejoCli.matchForgejoLogin(logins, remote!, "forgejo.local:4000")?.name,
+      "two",
+    );
+    assert.isUndefined(ForgejoCli.matchForgejoLogin(logins, remote!, "other.local:4000"));
+    const alias = ForgejoCli.parseForgejoRemote("git@ssh.forgejo.local:maria/project.git");
+    assert.isNotNull(alias);
+    assert.isUndefined(ForgejoCli.matchForgejoLogin(logins, alias!, "forgejo.local:4000"));
+    const refined = ForgejoSourceControlProvider.discovery.refineUnknownRemote({
+      cwd: "/repo",
+      context: {
+        provider: { kind: "unknown", name: "Forgejo", baseUrl: "https://forgejo.local" },
+        remoteName: "origin",
+        remoteUrl: "git@forgejo.local:maria/project.git",
+        requestedHost: "forgejo.local:4000",
+      },
+      auth: processOutput(yield* encodeJsonEffect(logins)),
+    });
+    assert.strictEqual(refined?.baseUrl, "http://forgejo.local:4000");
     const https = ForgejoCli.parseForgejoRemote("http://forgejo.local:4000/maria/project.git");
     assert.isNotNull(https);
     assert.strictEqual(ForgejoCli.matchForgejoLogin(logins, https!)?.name, "two");

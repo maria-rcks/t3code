@@ -109,10 +109,12 @@ export function parseForgejoRemote(value: string) {
 export function matchForgejoLogin(
   logins: ReturnType<typeof parseForgejoLogins>,
   remote: NonNullable<ReturnType<typeof parseForgejoRemote>>,
+  requestedHost?: string,
 ) {
   const matches = logins.filter((login) => {
     const url = parseForgejoRemote(login.url);
     if (!url) return false;
+    if (requestedHost !== undefined && url.host !== requestedHost.toLowerCase()) return false;
     return remote.ssh
       ? login.ssh_host?.toLowerCase() === remote.hostname || url.hostname === remote.hostname
       : url.host === remote.host &&
@@ -192,6 +194,7 @@ export const make = Effect.gen(function* () {
     }
     if (
       input.host &&
+      !remote?.ssh &&
       remote?.host !== input.host.toLowerCase() &&
       remote?.hostname !== input.host.toLowerCase()
     )
@@ -202,7 +205,7 @@ export const make = Effect.gen(function* () {
         path: remote?.path ?? "",
       };
     const login = remote
-      ? matchForgejoLogin(logins, remote)
+      ? matchForgejoLogin(logins, remote, remote.ssh ? input.host : undefined)
       : (logins.find((item) => item.default === "true") ??
         (logins.length === 1 ? logins[0] : undefined));
     if (!login)

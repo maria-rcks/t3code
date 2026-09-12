@@ -1672,8 +1672,8 @@ it.effect("routes explicit Forgejo HTTP authorities through SSH checkouts after 
             workspaceRoot: "/ssh",
             repository: "team/repo",
             provider,
-            host: "code.example",
-            remoteUrl: "git@code.example:team/repo.git",
+            host: "ssh.code.example",
+            remoteUrl: "git@ssh.code.example:team/repo.git",
           }),
         ],
         providers: [
@@ -1685,11 +1685,19 @@ it.effect("routes explicit Forgejo HTTP authorities through SSH checkouts after 
               }),
           }),
         ],
-        resolveHandle: ({ context }) =>
-          Effect.succeed({
-            context: { ...context!, provider: { ...context!.provider, kind: "forgejo" } },
+        resolveHandle: ({ context }) => {
+          if (context?.requestedHost === undefined) {
+            return Effect.succeed({ context: context!, provider: undefined as never });
+          }
+          assert.strictEqual(context.requestedHost, "code.example:3000");
+          return Effect.succeed({
+            context: {
+              ...context,
+              provider: { kind: "forgejo", name: "Forgejo", baseUrl: "http://code.example:3000" },
+            },
             provider: undefined as never,
-          }),
+          });
+        },
       });
       yield* service.summary(
         {

@@ -554,7 +554,8 @@ export const make = Effect.gen(function* () {
       if (filter.projectId !== undefined && project.id !== filter.projectId) continue;
       const identity = project.repositoryIdentity;
       if (
-        identity?.provider !== "unknown" ||
+        (identity?.provider !== "unknown" &&
+          !(identity?.provider === "forgejo" && isSshRemoteUrl(identity.locator.remoteUrl))) ||
         sourceControlRepositorySelector(project.repositoryIdentity) === null
       )
         continue;
@@ -566,10 +567,7 @@ export const make = Effect.gen(function* () {
         host !== "unknown" &&
         host !== filter.host.toLowerCase() &&
         pullRequestHostOf(identity, "forgejo") !== filter.host.toLowerCase() &&
-        !(
-          isSshRemoteUrl(identity.locator.remoteUrl) &&
-          host === filter.host.toLowerCase().replace(/:\d+$/u, "")
-        )
+        !isSshRemoteUrl(identity.locator.remoteUrl)
       ) {
         continue;
       }
@@ -591,20 +589,28 @@ export const make = Effect.gen(function* () {
             Effect.suspend(() =>
               sourceControlProviders.resolveHandle({
                 cwd: project.workspaceRoot,
-                context: { provider, remoteName, remoteUrl },
+                context: {
+                  provider:
+                    provider.kind === "forgejo" ? { ...provider, kind: "unknown" } : provider,
+                  remoteName,
+                  remoteUrl,
+                  ...(filter.host !== undefined && isSshRemoteUrl(remoteUrl)
+                    ? { requestedHost: filter.host }
+                    : {}),
+                },
               }),
             ).pipe(
               Effect.flatMap((handle) => {
-                const kind = handle.context?.provider.kind;
-                return kind === undefined || kind === "unknown"
+                const refined = handle.context?.provider;
+                return refined === undefined || refined.kind === "unknown"
                   ? Effect.fail(undefined)
-                  : Effect.succeed(kind);
+                  : Effect.succeed(refined);
               }),
             ),
           ),
         ).pipe(
-          Effect.map((kind) => [baseUrl, kind] as const),
-          Effect.orElseSucceed(() => [baseUrl, "unknown"] as const),
+          Effect.map((provider) => [baseUrl, provider] as const),
+          Effect.orElseSucceed(() => [baseUrl, null] as const),
         ),
       { concurrency: REPOSITORY_CONCURRENCY },
     ).pipe(Effect.map((resolved) => new Map(resolved)));
@@ -624,10 +630,10 @@ export const make = Effect.gen(function* () {
       ),
       Effect.flatMap((snapshot) =>
         refineUnknownProjectKinds(snapshot.projects, filter).pipe(
-          Effect.map((refinedKinds) => ({ refinedKinds, snapshot })),
+          Effect.map((refinedProviders) => ({ refinedProviders, snapshot })),
         ),
       ),
-      Effect.map(({ refinedKinds, snapshot }) => {
+      Effect.map(({ refinedProviders, snapshot }) => {
         const supported: SupportedProject[] = [];
         const unimplemented = new Map<
           string,
@@ -645,21 +651,21 @@ export const make = Effect.gen(function* () {
           // Worktrees of one repository are separate projects; reading the remote once keeps
           // the page from repeating every change request per local checkout. The host is part
           // of the key, so the same `owner/repo` on two hosts stays two repositories.
-          if (kind === "unknown") {
+          let refinedProvider: SourceControlProviderInfo | null | undefined;
+          if (
+            kind === "unknown" ||
+            (kind === "forgejo" && isSshRemoteUrl(identity.locator.remoteUrl))
+          ) {
             const provider = detectSourceControlProviderFromRemoteUrl(identity.locator.remoteUrl);
-            kind = provider === null ? kind : (refinedKinds.get(provider.baseUrl) ?? kind);
+            refinedProvider = provider === null ? null : refinedProviders.get(provider.baseUrl);
+            kind = refinedProvider?.kind ?? kind;
           }
-          let host = pullRequestHostOf(identity, kind);
+          const host =
+            refinedProvider?.kind === "forgejo"
+              ? new URL(refinedProvider.baseUrl).host.toLowerCase()
+              : pullRequestHostOf(identity, kind);
           if (filter.host !== undefined && host !== filter.host.toLowerCase()) {
-            if (
-              kind !== "forgejo" ||
-              !isSshRemoteUrl(identity.locator.remoteUrl) ||
-              host !== filter.host.toLowerCase().replace(/:\d+$/u, "")
-            ) {
-              continue;
-            }
-            // SSH clone ports do not identify the web server; tea validates this HTTP authority.
-            host = filter.host.toLowerCase();
+            continue;
           }
           const api = registry.get(kind);
           // Recorded before the de-duplication below, so the viewer lookup keeps the alternates

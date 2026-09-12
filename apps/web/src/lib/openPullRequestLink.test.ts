@@ -192,6 +192,15 @@ describe("matchesLinkedPullRequestUrl", () => {
     ).toBe(true);
   });
 
+  it("keeps Forgejo and GitHub path shapes distinct on a GitHub-named host", () => {
+    expect(
+      matchesLinkedPullRequestUrl(
+        { ...linkedPullRequest, url: "https://github.internal/team/repo/pulls/42" },
+        "https://github.internal/team/repo/pull/42",
+      ),
+    ).toBe(false);
+  });
+
   it("rejects a different pull request or host", () => {
     expect(
       matchesLinkedPullRequestUrl(linkedPullRequest, "https://github.com/pingdotgg/t3code/pull/43"),

@@ -89,7 +89,10 @@ function EnabledPullRequestThreadLinks({
     }
     if (linking.mode === "multiple") {
       appAtomRegistry.refresh(
-        pullRequestEnvironment.linkedThreads({ environmentId, input: { ...reference, ...parsed } }),
+        pullRequestEnvironment.linkedThreads({
+          environmentId,
+          input: { ...reference, ...normalizeThreadPullRequestKey(parsed) },
+        }),
       );
     }
     onPickerOpenChange?.(false);
