@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { makePreviewAutomationKeySequence } from "./PreviewKeyboard.ts";
+import {
+  makePreviewAutomationFrameKeySequence,
+  makePreviewAutomationKeySequence,
+} from "./PreviewKeyboard.ts";
 
 describe("preview keyboard packets", () => {
   it("sends Enter directly to the guest with its character event", () => {
@@ -118,5 +121,22 @@ describe("preview keyboard packets", () => {
       key: " ",
       code: "Space",
     });
+  });
+
+  it("preserves text and editing commands for isolated child renderer targets", () => {
+    const text = makePreviewAutomationFrameKeySequence({ key: "é" });
+    expect(text.keyDown).toMatchObject({ type: "keyDown", text: "é", key: "é" });
+    expect(text.keyUp).toMatchObject({ type: "keyUp", key: "é" });
+    const shortcut = makePreviewAutomationFrameKeySequence(
+      { key: "a", modifiers: ["Meta"] },
+      { isMac: true },
+    );
+    expect(shortcut.keyDown).toMatchObject({
+      type: "rawKeyDown",
+      modifiers: 4,
+      commands: ["selectAll"],
+    });
+    expect(shortcut.keyDown).not.toHaveProperty("text");
+    expect(shortcut.keyDown).not.toHaveProperty("nativeVirtualKeyCode");
   });
 });

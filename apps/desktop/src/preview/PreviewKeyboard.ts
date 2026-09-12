@@ -195,6 +195,37 @@ export function makePreviewAutomationKeySequence(
   };
 }
 
+/** CDP is safe for child renderer targets, which cannot retarget keys to the desktop. */
+export function makePreviewAutomationFrameKeySequence(
+  input: PreviewAutomationPressInput,
+  options?: { readonly isMac?: boolean },
+) {
+  const definition = resolveKeyDefinition(input);
+  const modifiers = (input.modifiers ?? []).reduce(
+    (mask, modifier) => mask | { Alt: 1, Control: 2, Meta: 4, Shift: 8 }[modifier],
+    0,
+  );
+  const text = input.modifiers?.some((modifier) => modifier !== "Shift")
+    ? ""
+    : (definition.text ?? "");
+  const commands = options?.isMac ? macEditingCommands(definition.code, input.modifiers) : [];
+  const shared = {
+    key: definition.key,
+    code: definition.code,
+    modifiers,
+    windowsVirtualKeyCode: definition.keyCode,
+  };
+  return {
+    keyDown: {
+      type: text ? "keyDown" : "rawKeyDown",
+      ...shared,
+      ...(text ? { text, unmodifiedText: text } : {}),
+      ...(commands.length ? { commands } : {}),
+    },
+    keyUp: { type: "keyUp", ...shared },
+  };
+}
+
 /** Keep macOS editing shortcuts inside the target page without native focus. */
 export function previewAutomationEditingCommandExpression(
   input: PreviewAutomationPressInput,

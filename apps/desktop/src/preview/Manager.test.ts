@@ -1,3 +1,4 @@
+import { createContext, runInContext } from "node:vm";
 import { it as effectIt } from "@effect/vitest";
 import { DESKTOP_PREVIEW_RECORDING_CAPTURE_TRIGGER } from "@t3tools/contracts";
 import type { DesktopPreviewRecordingFrame } from "@t3tools/contracts";
@@ -177,7 +178,6 @@ describe("previewWindowOpenAction", () => {
 
 const {
   browserWindowConstructor,
-  browserWindowFromWebContents,
   clipboardItemConstructor,
   createFromPath,
   fromId,
@@ -189,7 +189,6 @@ const {
   writeClipboard,
 } = vi.hoisted(() => ({
   browserWindowConstructor: vi.fn(),
-  browserWindowFromWebContents: vi.fn(),
   clipboardItemConstructor: vi.fn(),
   createFromPath: vi.fn((): { readonly isEmpty: () => boolean; readonly toPNG: () => Buffer } => ({
     isEmpty: () => false,
@@ -205,9 +204,7 @@ const {
 }));
 
 vi.mock("electron", () => ({
-  BrowserWindow: Object.assign(browserWindowConstructor, {
-    fromWebContents: browserWindowFromWebContents,
-  }),
+  BrowserWindow: browserWindowConstructor,
   ClipboardItem: class {
     constructor(data: Record<string, unknown>) {
       clipboardItemConstructor(data);
@@ -543,8 +540,6 @@ const makeTestPictureInPictureWindow = (loadURL: () => Promise<void> = async () 
 describe("PreviewManager", () => {
   beforeEach(() => {
     browserWindowConstructor.mockReset();
-    browserWindowFromWebContents.mockReset();
-    browserWindowFromWebContents.mockReturnValue({ isFocused: () => true });
     fromId.mockClear();
     getFocusedWebContents.mockReset();
     getFocusedWebContents.mockReturnValue(null);
@@ -3931,22 +3926,71 @@ describe("PreviewManager", () => {
     withManager((manager) =>
       Effect.gen(function* () {
         let failKeyDown = false;
-        const hostWebContents = { id: 7 };
+        let routeToIframe = false;
+        let interruptFrameKeyDown = false;
+        let holdKeyUp = false;
+        let releaseKeyUp: (() => void) | undefined;
+        const keyUpQueued = yield* Deferred.make<void>();
+        const listeners = new Map<string, (event: unknown) => void>();
+        const frameContext = createContext({
+          window: {
+            addEventListener: (type: string, listener: (event: unknown) => void) =>
+              listeners.set(type, listener),
+            removeEventListener: (type: string) => listeners.delete(type),
+          },
+        });
+        const frame = {
+          executeJavaScript: vi.fn(async (expression: string) =>
+            runInContext(expression, frameContext),
+          ),
+        };
         let humanInput: ((_event: unknown, signal: unknown) => void) | undefined;
-        const sendCommand = vi.fn(async (method: string, _params?: Record<string, unknown>) =>
-          method === "Runtime.evaluate" ? { result: { value: { ok: true } } } : undefined,
+        const sendCommand = vi.fn(
+          async (method: string, params?: Record<string, unknown>, sessionId?: string) => {
+            if (method === "Runtime.evaluate") {
+              if (params?.["returnByValue"] === true) return { result: { value: { ok: true } } };
+              return {
+                result:
+                  routeToIframe && !sessionId
+                    ? { objectId: "focused-iframe-object" }
+                    : { subtype: "null" },
+              };
+            }
+            if (method === "DOM.describeNode") return { node: { frameId: "focused-frame" } };
+            if (method === "Target.getTargets")
+              return {
+                targetInfos: [
+                  { targetId: "unrelated-frame", type: "iframe" },
+                  { targetId: "focused-frame", type: "iframe" },
+                ],
+              };
+            if (method === "Target.attachToTarget") return { sessionId: "child-session" };
+            if (method === "Input.dispatchKeyEvent" && params?.["type"] !== "keyUp") {
+              if (failKeyDown) throw new Error("key dispatch failed");
+              if (interruptFrameKeyDown)
+                humanInput?.({}, { kind: "pointer", x: 80, y: 40, button: 0 });
+            }
+            return undefined;
+          },
         );
         const sendInputEvent = vi.fn((input: Electron.KeyboardInputEvent) => {
+          const signal = {
+            kind: "key",
+            key: input.keyCode,
+            code: input.keyCode === "!" ? "Digit1" : `Key${input.keyCode.toUpperCase()}`,
+          };
+          if (input.type === "keyUp") {
+            const deliver = () => listeners.get("keyup")?.({ ...signal, isTrusted: true });
+            if (holdKeyUp) {
+              releaseKeyUp = deliver;
+              Effect.runSync(Deferred.succeed(keyUpQueued, undefined));
+            } else {
+              queueMicrotask(deliver);
+            }
+          }
           if (input.type !== "keyDown") return;
           if (failKeyDown) throw new Error("key dispatch failed");
-          humanInput?.(
-            {},
-            {
-              kind: "key",
-              key: input.keyCode,
-              code: input.keyCode === "!" ? "Digit1" : `Key${input.keyCode.toUpperCase()}`,
-            },
-          );
+          humanInput?.({}, signal);
         });
         const restoreFocus = vi.fn();
         const focus = vi.fn();
@@ -3957,7 +4001,7 @@ describe("PreviewManager", () => {
         } as never);
         fromId.mockReturnValue({
           id: 42,
-          hostWebContents,
+          mainFrame: { framesInSubtree: [frame] },
           isDestroyed: () => false,
           getType: () => "webview",
           getURL: () => "https://example.com",
@@ -4048,34 +4092,30 @@ describe("PreviewManager", () => {
           { type: "keyUp", keyCode: "x", modifiers: [], skipIfUnhandled: true },
         ]);
         expect(sendCommand).toHaveBeenCalledWith("Input.setIgnoreInputEvents", { ignore: false });
-        expect(browserWindowFromWebContents).toHaveBeenLastCalledWith(hostWebContents);
+        expect(listeners.size).toBe(0);
 
         sendCommand.mockClear();
         sendInputEvent.mockClear();
-        const windowFocus = vi.fn();
-        browserWindowFromWebContents.mockReturnValue({
-          isFocused: () => false,
-          focus: windowFocus,
+        getFocusedWebContents.mockReturnValue(null);
+        holdKeyUp = true;
+        const backgroundPress = yield* manager
+          .automationPress("tab_input", { key: "x" })
+          .pipe(Effect.forkChild({ startImmediately: true }));
+        yield* Deferred.await(keyUpQueued);
+        expect(sendCommand).not.toHaveBeenCalledWith("Emulation.setFocusEmulationEnabled", {
+          enabled: false,
         });
-        const unfocusedPress = yield* Effect.exit(
-          manager.automationPress("tab_input", { key: "x" }),
-        );
-        expect(Exit.isFailure(unfocusedPress)).toBe(true);
-        if (Exit.isSuccess(unfocusedPress)) return;
-        const unfocusedError = Option.getOrThrow(Cause.findErrorOption(unfocusedPress.cause));
-        expect(unfocusedError).toMatchObject({
-          _tag: "PreviewAutomationWindowNotFocusedError",
-          tabId: "tab_input",
-        });
-        expect(unfocusedError.message).toContain("Focus the window");
-        expect(sendInputEvent).not.toHaveBeenCalled();
-        expect(windowFocus).not.toHaveBeenCalled();
-        expect(focus).not.toHaveBeenCalled();
-        expect(restoreFocus).not.toHaveBeenCalled();
+        listeners.get("keyup")?.({ isTrusted: false, key: "x", code: "KeyX" });
+        expect(listeners.has("keyup")).toBe(true);
+        releaseKeyUp?.();
+        yield* Fiber.join(backgroundPress);
+        expect(listeners.size).toBe(0);
         expect(sendCommand).toHaveBeenCalledWith("Emulation.setFocusEmulationEnabled", {
           enabled: false,
         });
-        browserWindowFromWebContents.mockReturnValue({ isFocused: () => true });
+        expect(focus).not.toHaveBeenCalled();
+        expect(restoreFocus).not.toHaveBeenCalled();
+        holdKeyUp = false;
 
         sendCommand.mockClear();
         sendInputEvent.mockClear();
@@ -4105,9 +4145,78 @@ describe("PreviewManager", () => {
         expect(sendCommand).toHaveBeenCalledWith("Emulation.setFocusEmulationEnabled", {
           enabled: false,
         });
-        const popupWebContents = Object.assign(fromId(42)!, { hostWebContents: undefined });
-        yield* manager.automationPress("tab_input", { key: "x" });
-        expect(browserWindowFromWebContents).toHaveBeenLastCalledWith(popupWebContents);
+        expect(focus).not.toHaveBeenCalled();
+        expect(restoreFocus).not.toHaveBeenCalled();
+
+        sendCommand.mockClear();
+        sendInputEvent.mockClear();
+        routeToIframe = true;
+        yield* manager.automationPress("tab_input", { key: "Enter" });
+        expect(sendInputEvent).not.toHaveBeenCalled();
+        expect(sendCommand).toHaveBeenCalledWith("Target.attachToTarget", {
+          targetId: "focused-frame",
+          flatten: true,
+        });
+        const childKeys = sendCommand.mock.calls.filter(
+          ([method]) => method === "Input.dispatchKeyEvent",
+        );
+        expect(
+          childKeys.map(([, params, sessionId]) => ({ type: params?.["type"], sessionId })),
+        ).toEqual([
+          { type: "keyDown", sessionId: "child-session" },
+          { type: "keyUp", sessionId: "child-session" },
+        ]);
+        expect(sendCommand).toHaveBeenCalledWith(
+          "Emulation.setFocusEmulationEnabled",
+          { enabled: false },
+          "child-session",
+        );
+        expect(sendCommand).toHaveBeenCalledWith("Target.detachFromTarget", {
+          sessionId: "child-session",
+        });
+
+        sendCommand.mockClear();
+        failKeyDown = true;
+        const failedFramePress = yield* Effect.exit(
+          manager.automationPress("tab_input", { key: "x" }),
+        );
+        expect(Exit.isFailure(failedFramePress)).toBe(true);
+        expect(sendInputEvent).not.toHaveBeenCalled();
+        expect(sendCommand).toHaveBeenCalledWith(
+          "Input.dispatchKeyEvent",
+          expect.objectContaining({ type: "keyUp" }),
+          "child-session",
+        );
+        expect(sendCommand).toHaveBeenCalledWith(
+          "Emulation.setFocusEmulationEnabled",
+          { enabled: false },
+          "child-session",
+        );
+        expect(sendCommand).toHaveBeenCalledWith("Target.detachFromTarget", {
+          sessionId: "child-session",
+        });
+
+        sendCommand.mockClear();
+        failKeyDown = false;
+        interruptFrameKeyDown = true;
+        const interruptedFramePress = yield* Effect.exit(
+          manager.automationPress("tab_input", { key: "x" }),
+        );
+        expect(Exit.isFailure(interruptedFramePress)).toBe(true);
+        if (Exit.isSuccess(interruptedFramePress)) return;
+        expect(Option.getOrThrow(Cause.findErrorOption(interruptedFramePress.cause))).toMatchObject(
+          {
+            _tag: "PreviewAutomationControlInterruptedError",
+          },
+        );
+        expect(sendCommand).toHaveBeenCalledWith(
+          "Input.dispatchKeyEvent",
+          expect.objectContaining({ type: "keyUp" }),
+          "child-session",
+        );
+        expect(sendCommand).toHaveBeenCalledWith("Target.detachFromTarget", {
+          sessionId: "child-session",
+        });
         expect(focus).not.toHaveBeenCalled();
         expect(restoreFocus).not.toHaveBeenCalled();
       }),
