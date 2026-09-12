@@ -177,6 +177,9 @@ export function createPullRequestRouter() {
                     [...refs.map((reference) => ({ reference })), {}],
                     (invalidation) =>
                       request(WS_METHODS.pullRequestsInvalidate, invalidation).pipe(
+                        // GitHub already accepted the write. A stalled reader on another
+                        // environment must not keep its confirmation pending indefinitely.
+                        Effect.timeoutOption("1 second"),
                         Effect.orElseSucceed(() => undefined),
                       ),
                     { concurrency: 3, discard: true },
@@ -282,7 +285,13 @@ export function createPullRequestRouter() {
           }),
           Effect.map((result) =>
             typeof result === "object" && result !== null && "projectId" in result
-              ? { ...result, projectId: ref.projectId }
+              ? {
+                  ...result,
+                  projectId: ref.projectId,
+                  ...(tag === WS_METHODS.pullRequestsDetail
+                    ? { projectTitle: identity.projectTitle, workspaceRoot: identity.workspaceRoot }
+                    : {}),
+                }
               : result,
           ),
         );

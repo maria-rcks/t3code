@@ -657,6 +657,8 @@ export const PullRequestRoutingResult = Schema.Struct({
   host: TrimmedNonEmptyString,
   provider: SourceControlProviderKind,
   viewer: TrimmedNonEmptyString,
+  projectTitle: TrimmedNonEmptyString,
+  workspaceRoot: TrimmedNonEmptyString,
 });
 export type PullRequestRoutingResult = typeof PullRequestRoutingResult.Type;
 

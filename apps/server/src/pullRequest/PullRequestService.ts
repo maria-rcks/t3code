@@ -1311,7 +1311,13 @@ export const make = Effect.gen(function* () {
         detail: "The signed-in account could not be verified.",
       });
     }
-    return { host: project.host, provider: project.api.kind, ...identity };
+    return {
+      host: project.host,
+      provider: project.api.kind,
+      ...identity,
+      projectTitle: project.project.title,
+      workspaceRoot: project.project.workspaceRoot,
+    };
   });
 
   const summaryUncached: PullRequestService["Service"]["summary"] = (input) =>

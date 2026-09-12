@@ -1006,6 +1006,8 @@ it.effect("routing verifies the current account on the requested host without ca
       provider: "github",
       viewer: "first-account",
       accountId: "123",
+      projectTitle: "web",
+      workspaceRoot: "/a",
     });
     viewer = "second-account";
     assert.strictEqual((yield* service.routing(ref)).viewer, "second-account");

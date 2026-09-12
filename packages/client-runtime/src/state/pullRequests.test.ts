@@ -46,8 +46,11 @@ for (const scenario of [
   "keeps a local origin ahead of another local environment",
   "keeps mutations on an old origin server without retrying them",
   "skips an old alternate server before dispatching a mutation",
+  "returns a successful mutation when source invalidation stalls",
 ] as const) {
-  it.effect(scenario, () =>
+  (scenario === "returns a successful mutation when source invalidation stalls"
+    ? it.live
+    : it.effect)(scenario, () =>
     Effect.scoped(
       Effect.gen(function* () {
         const calls: string[] = [];
@@ -98,8 +101,14 @@ for (const scenario of [
                 return null;
               }),
             [WS_METHODS.pullRequestsInvalidate]: () =>
-              Effect.sync(() => {
+              Effect.gen(function* () {
                 calls.push(`${name}:invalidate`);
+                if (
+                  !local &&
+                  scenario === "returns a successful mutation when source invalidation stalls"
+                ) {
+                  return yield* Effect.never;
+                }
               }),
           } as unknown as WsRpcProtocolClient;
         };
@@ -315,6 +324,52 @@ for (const source of ["pending", "pending-local", "failed", "offline"] as const)
       ),
   );
 }
+
+it.live("keeps source workspace metadata when an alternate answers a detail read", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const clientFor = (local: boolean) =>
+        ({
+          [WS_METHODS.pullRequestsRouting]: () =>
+            Effect.succeed({
+              host: "github.com",
+              provider: "github",
+              viewer: "maria-rcks",
+              accountId: "123",
+              projectTitle: local ? "local project" : "source project",
+              workspaceRoot: local ? "/Users/local/repo" : "/srv/source/repo",
+            }),
+          [WS_METHODS.pullRequestsDetail]: () =>
+            local
+              ? Effect.succeed({
+                  projectId: "local-project",
+                  projectTitle: "local project",
+                  workspaceRoot: "/Users/local/repo",
+                  title: "github title",
+                })
+              : Effect.never,
+        }) as unknown as WsRpcProtocolClient;
+      const { environmentRegistry, supervisor } = yield* makeTestRuntime(
+        clientFor(false),
+        clientFor(true),
+      );
+      const result = yield* createPullRequestRouter()(WS_METHODS.pullRequestsDetail, {
+        projectId: ProjectId.make("project-1"),
+        repository: "acme/web",
+        number: 7,
+      }).pipe(
+        Effect.provideService(EnvironmentRegistry.EnvironmentRegistry, environmentRegistry),
+        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+      );
+      expect(result).toEqual({
+        projectId: "project-1",
+        projectTitle: "source project",
+        workspaceRoot: "/srv/source/repo",
+        title: "github title",
+      });
+    }),
+  ),
+);
 
 it.live(
   "refreshes identity before writes and invalidates prior readers across router instances",
