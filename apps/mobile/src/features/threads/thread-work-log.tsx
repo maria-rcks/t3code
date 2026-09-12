@@ -1,6 +1,7 @@
 import { QuestionAnswerHistory } from "./QuestionAnswerHistory";
 import {
   getQuestionAnswerPreview,
+  getQuestionAnswerTitle,
   hasQuestionAnswer,
 } from "@t3tools/client-runtime/work-log/user-input";
 import * as Haptics from "expo-haptics";
@@ -748,12 +749,16 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
   const fullDetail = expanded ? row.getFullDetail() : null;
   const viewedImagePath = workEntryViewedImagePath(row.workEntry);
   const toolPresentation = resolveWorkEntryToolPresentation(row.workEntry);
-  const previewText = workEntryRowLabel(row.workEntry);
-  const answerPreview = row.workEntry.questionAnswer
-    ? getQuestionAnswerPreview(row.workEntry.questionAnswer)
-    : null;
+  const questionAnswer = row.workEntry.questionAnswer;
+  const previewText = questionAnswer
+    ? getQuestionAnswerTitle(questionAnswer)
+    : workEntryRowLabel(row.workEntry);
+  const answerPreview =
+    questionAnswer && hasQuestionAnswer(questionAnswer)
+      ? getQuestionAnswerPreview(questionAnswer)
+      : null;
   const accessiblePreview = [previewText, answerPreview].filter(Boolean).join(": ");
-  const displayText = workEntryRowLabel(row.workEntry, expanded);
+  const displayText = questionAnswer ? previewText : workEntryRowLabel(row.workEntry, expanded);
   const iconIsDestructive = row.icon === "alert" || row.icon === "warning";
   const failed = row.status === "failure";
   const toolIcon = row.workEntry.toolIcon ?? row.workEntry.toolSource?.icon;
@@ -820,26 +825,39 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
                   />
                 )}
               </View>
-              <Text
-                className={cn(
-                  "min-w-0 flex-1 text-sm text-foreground-muted",
-                  iconIsDestructive && "font-t3-medium text-adaptive-rose-600-400",
-                )}
-                numberOfLines={expanded ? undefined : 1}
-              >
-                {displayText}
-                {answerPreview ? (
+              {questionAnswer ? (
+                <View className="min-w-0 flex-1 flex-row items-center gap-1.5">
                   <Text
-                    className={
-                      !expanded &&
-                      row.workEntry.questionAnswer &&
-                      hasQuestionAnswer(row.workEntry.questionAnswer)
-                        ? "text-foreground"
-                        : "text-foreground-subtle"
-                    }
-                  >{`  ${answerPreview}`}</Text>
-                ) : null}
-              </Text>
+                    className="min-w-0 shrink text-sm text-foreground-muted"
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {displayText}
+                  </Text>
+                  {answerPreview ? (
+                    <Text
+                      className={cn(
+                        "max-w-[60%] shrink-0 text-sm",
+                        expanded ? "text-foreground-subtle" : "text-foreground",
+                      )}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
+                      {answerPreview}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : (
+                <Text
+                  className={cn(
+                    "min-w-0 flex-1 text-sm text-foreground-muted",
+                    iconIsDestructive && "font-t3-medium text-adaptive-rose-600-400",
+                  )}
+                  numberOfLines={expanded ? undefined : 1}
+                >
+                  {displayText}
+                </Text>
+              )}
             </>
           )}
 

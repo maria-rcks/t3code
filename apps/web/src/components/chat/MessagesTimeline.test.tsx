@@ -348,22 +348,26 @@ describe("MessagesTimeline", () => {
         });
         const questionToggle = renderer!.root.find(
           (node) =>
-            node.props["aria-label"]?.startsWith("Question answer submitted:") &&
+            node.props["aria-label"]?.startsWith("Provide a spec · Provide a screenshot:") &&
             node.props["aria-expanded"] === false,
         );
         expect(questionToggle.props["aria-label"]).toContain(
           Object.values(answers)[0] ?? "spec.txt",
         );
-        expect(JSON.stringify(renderer!.toJSON())).not.toContain("Provide a spec");
+        const collapsedMarkup = JSON.stringify(renderer!.toJSON());
+        expect(collapsedMarkup).not.toContain("Question answer submitted");
         await act(() => questionToggle.props.onClick());
         const markup = JSON.stringify(renderer!.toJSON());
-        expect(markup.match(/Provide a spec/g)).toHaveLength(1);
+        expect(markup).not.toBe(collapsedMarkup);
+        expect(markup).toContain("Provide a spec");
         expect(markup).toContain("spec.txt");
         expect(markup).toContain("Provide a screenshot");
         expect(markup).toContain("shot.png");
         for (const answer of Object.values(answers)) expect(markup).toContain(answer);
         await act(() => questionToggle.props.onClick());
-        expect(JSON.stringify(renderer!.toJSON())).not.toContain("Provide a spec");
+        expect(
+          renderer!.root.findAllByType("a").filter((node) => node.children.includes("spec.txt")),
+        ).toHaveLength(0);
       } finally {
         await act(() => renderer?.unmount());
       }

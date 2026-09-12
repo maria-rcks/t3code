@@ -2,6 +2,7 @@ import { GitPullRequestIcon } from "lucide-react";
 import {
   getQuestionAnswerPreview,
   getQuestionAnswerText,
+  getQuestionAnswerTitle,
   hasQuestionAnswer,
 } from "@t3tools/client-runtime/work-log/user-input";
 import {
@@ -3341,10 +3342,14 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
     showWarningIndicator || showDestructiveRowStyle
       ? undefined
       : (workEntry.toolIcon ?? workEntry.toolSource?.icon);
-  const previewText = displayLabel ?? workEntryDisplayLabel(workEntry, workspaceRoot);
-  const answerPreview = workEntry.questionAnswer
-    ? getQuestionAnswerPreview(workEntry.questionAnswer)
-    : null;
+  const questionAnswer = workEntry.questionAnswer;
+  const previewText = questionAnswer
+    ? getQuestionAnswerTitle(questionAnswer)
+    : (displayLabel ?? workEntryDisplayLabel(workEntry, workspaceRoot));
+  const answerPreview =
+    questionAnswer && hasQuestionAnswer(questionAnswer)
+      ? getQuestionAnswerPreview(questionAnswer)
+      : null;
   const viewedImagePath = workEntryViewedImagePath(workEntry);
   const viewedImage =
     viewedImagePath && threadRef
@@ -3440,8 +3445,10 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
             <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
               <span
                 className={cn(
-                  answerPreview ? "shrink-0" : "min-w-0 flex-1",
-                  expanded ? "whitespace-pre-wrap break-words select-text" : "truncate",
+                  "min-w-0",
+                  !answerPreview && "flex-1",
+                  expanded && !questionAnswer ? "whitespace-pre-wrap break-words" : "truncate",
+                  expanded && "select-text",
                   headingClass,
                 )}
                 onClick={expanded ? stopRowToggleWhileSelectingText : undefined}
@@ -3452,7 +3459,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
               {answerPreview ? (
                 <span
                   className={cn(
-                    "min-w-0 truncate",
+                    "min-w-0 max-w-[60%] shrink-0 truncate",
                     !expanded &&
                       workEntry.questionAnswer &&
                       hasQuestionAnswer(workEntry.questionAnswer)

@@ -163,6 +163,16 @@ export function getQuestionAnswerText(value: unknown): string {
   return nested ? getQuestionAnswerText(nested.answers) : "";
 }
 
+export function getQuestionAnswerTitle(answer: UserInputAttachmentAnswerPayload): string {
+  return (
+    Object.values(answer.questionTextById ?? {})
+      .filter((question) => question.trim())
+      .join(" · ")
+      .replace(/\s+/g, " ")
+      .trim() || "Question"
+  );
+}
+
 export function getQuestionAnswerPreview(answer: UserInputAttachmentAnswerPayload): string {
   const answers = Object.values(answer.answers).map(getQuestionAnswerText).filter(Boolean);
   const attachments = Object.values(answer.attachmentsByQuestionId)
