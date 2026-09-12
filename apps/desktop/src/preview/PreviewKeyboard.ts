@@ -256,11 +256,16 @@ export function previewAutomationEditingCommandExpression(
       if (!element.dispatchEvent(new KeyboardEvent("keydown", event))) return;
       for (const command of ${JSON.stringify(sequence.commands ?? [])}) {
         // Main-process clipboard reads also work on insecure HTTP previews.
-        // Let the page's paste handler consume the original MIME formats.
+        // Let the page's paste handler consume the clipboard MIME formats.
         if (command === "paste") {
           const transfer = new DataTransfer();
           for (const { type, data } of ${JSON.stringify(clipboardData)}) {
-            if (type.startsWith("text/")) transfer.setData(type, data);
+            if (type === "text/html") {
+              // Match native paste sanitization before page handlers or insertion.
+              const container = document.createElement("div");
+              container.setHTML(data);
+              transfer.setData(type, container.innerHTML);
+            } else if (type.startsWith("text/")) transfer.setData(type, data);
             else {
               const bytes = Uint8Array.from(atob(data), character => character.charCodeAt(0));
               transfer.items.add(new File([bytes], "clipboard", { type }));
